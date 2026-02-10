@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/* Enable class-based dark mode (toggle with .dark class on html element) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-hn-orange: #ff6600;
+}
+
+/* Custom styles for comment HTML content */
+.comment-content p {
+  margin-bottom: 0.75rem;
+}
+
+.comment-content p:last-child {
+  margin-bottom: 0;
+}
+
+.comment-content a {
+  @apply text-hn-orange hover:underline break-all;
+}
+
+.comment-content code {
+  @apply bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-sm font-mono;
+}
+
+.comment-content pre {
+  @apply bg-gray-200 dark:bg-gray-700 p-3 rounded overflow-x-auto text-sm font-mono my-2;
+}
+
+.comment-content i {
+  @apply italic;
+}
