@@ -1,0 +1,80 @@
+import { useState, useMemo } from 'react';
+import { formatTimeAgo } from '../api/hn';
+import { sanitizeHtml } from '../utils/sanitize';
+
+export function Comment({ comment, depth = 0 }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const sanitizedText = useMemo(
+    () => comment.text ? sanitizeHtml(comment.text) : '',
+    [comment.text]
+  );
+
+  return (
+    <div
+      className={`${depth > 0 ? 'border-l border-gray-200 dark:border-gray-800 pl-3 ml-2' : ''}`}
+    >
+      <div className="py-2">
+        {/* Comment header */}
+        <div className="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-400 mb-1.5">
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="hover:text-hn-orange transition-colors flex items-center"
+            aria-label={collapsed ? 'Expand comment' : 'Collapse comment'}
+          >
+            <svg
+              className={`w-3.5 h-3.5 transition-transform ${collapsed ? '-rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <span className="font-medium text-gray-700 dark:text-gray-300">{comment.author}</span>
+          <span className="text-gray-500 dark:text-gray-500">·</span>
+          <span>{formatTimeAgo(comment.createdAt)}</span>
+          {collapsed && comment.children?.length > 0 && (
+            <span className="text-gray-500 dark:text-gray-500">({comment.children.length})</span>
+          )}
+        </div>
+
+        {/* Comment content */}
+        {!collapsed && (
+          <>
+            {sanitizedText && (
+              <div
+                className="comment-content text-gray-800 dark:text-gray-300 text-[14px] leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: sanitizedText }}
+              />
+            )}
+
+            {/* Child comments */}
+            {comment.children && comment.children.length > 0 && (
+              <div className="mt-2">
+                {comment.children.map(child => (
+                  <Comment key={child.id} comment={child} depth={depth + 1} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function CommentTree({ comments }) {
+  if (!comments || comments.length === 0) {
+    return (
+      <p className="text-gray-500 dark:text-gray-500 text-sm py-4">No comments yet.</p>
+    );
+  }
+
+  return (
+    <div className="space-y-0">
+      {comments.map(comment => (
+        <Comment key={comment.id} comment={comment} depth={0} />
+      ))}
+    </div>
+  );
+}
