@@ -7,6 +7,20 @@
   --color-hn-orange: #ff6600;
 }
 
+/* Spin animation for loading spinners */
+@keyframes refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.refresh-spinner {
+  animation: refresh-spin 0.8s linear infinite;
+}
+
 /* Custom styles for comment HTML content */
 .comment-content p {
   margin-bottom: 0.75rem;

@@ -189,7 +189,9 @@ async function fetchAllCommentsAlgolia(storyId) {
 }
 
 // Build comment tree from flat list of comments
-function buildCommentTree(comments, storyId) {
+// If maxDepth is specified, children beyond that depth are collapsed
+// Uses kidsOrder map to maintain HN's ranking order (from Firebase kids arrays)
+function buildCommentTree(comments, storyId, maxDepth = Infinity, kidsOrder = new Map()) {
   // Create a map of all comments by ID
   const commentMap = new Map();
   
@@ -202,48 +204,175 @@ function buildCommentTree(comments, storyId) {
         createdAt: comment.created_at_i * 1000,
         parentId: comment.parent_id,
         children: [],
+        depth: 0, // Will be calculated
       });
     }
   });
   
-  // Build the tree structure
+  // Build the tree structure and calculate depths
   const rootComments = [];
   
   commentMap.forEach(comment => {
     if (comment.parentId === storyId) {
       // This is a top-level comment
+      comment.depth = 0;
       rootComments.push(comment);
     } else {
       // This is a reply - add it to its parent's children
       const parent = commentMap.get(comment.parentId);
       if (parent) {
+        comment.depth = parent.depth + 1;
         parent.children.push(comment);
       } else {
         // Parent not found (might be deleted), treat as root
+        comment.depth = 0;
         rootComments.push(comment);
       }
     }
   });
   
-  // Sort comments by creation time (oldest first, like HN)
-  const sortByTime = (a, b) => a.createdAt - b.createdAt;
+  // Sort function that uses HN's kids order if available, else by creation time
+  const sortByHNOrder = (parentId) => (a, b) => {
+    const order = kidsOrder.get(parentId);
+    if (order) {
+      const aIndex = order.indexOf(a.id);
+      const bIndex = order.indexOf(b.id);
+      // If both found in order, sort by position
+      if (aIndex !== -1 && bIndex !== -1) {
+        return aIndex - bIndex;
+      }
+      // If only one found, put found one first
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+    }
+    // Fallback to creation time (oldest first)
+    return a.createdAt - b.createdAt;
+  };
   
-  const sortTree = (commentList) => {
-    commentList.sort(sortByTime);
+  // Collapse deep threads if maxDepth is set
+  const processTree = (commentList, parentId, currentDepth = 0) => {
+    commentList.sort(sortByHNOrder(parentId));
     commentList.forEach(comment => {
       if (comment.children.length > 0) {
-        sortTree(comment.children);
+        if (currentDepth >= maxDepth) {
+          // Mark as having hidden children, collapse them
+          comment.hiddenChildCount = countAllChildren(comment);
+          comment.childrenCollapsed = true;
+          // Keep children reference for lazy loading but mark as not loaded initially
+        }
+        processTree(comment.children, comment.id, currentDepth + 1);
       }
     });
   };
   
-  sortTree(rootComments);
+  processTree(rootComments, storyId);
   
   return rootComments;
 }
 
+// Count total descendants of a comment
+function countAllChildren(comment) {
+  let count = comment.children.length;
+  comment.children.forEach(child => {
+    count += countAllChildren(child);
+  });
+  return count;
+}
+
+// Fetch just the story metadata (without comments)
+export async function fetchStoryOnly(id) {
+  const storyId = parseInt(id, 10);
+  const story = await fetchItem(storyId);
+  
+  if (!story) {
+    throw new Error(`Story ${id} not found`);
+  }
+  
+  return {
+    id: story.id,
+    title: story.title,
+    url: story.url,
+    points: story.score,
+    author: story.by,
+    createdAt: story.time * 1000,
+    commentCount: story.descendants || 0,
+    text: story.text,
+  };
+}
+
+// Fetch kids ordering from Firebase for a set of comment IDs
+// This is needed to maintain HN's ranking order (not chronological)
+// Processes in batches to avoid overwhelming the API
+async function fetchKidsOrdering(commentIds) {
+  const BATCH_SIZE = 20; // Parallel requests per batch
+  const kidsOrder = new Map();
+  
+  // Process in batches
+  for (let i = 0; i < commentIds.length; i += BATCH_SIZE) {
+    const batch = commentIds.slice(i, i + BATCH_SIZE);
+    
+    const results = await Promise.all(
+      batch.map(async (id) => {
+        try {
+          const item = await fetchItem(id);
+          if (item && item.kids) {
+            return { id: item.id, kids: item.kids };
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      })
+    );
+    
+    results.forEach(result => {
+      if (result) {
+        kidsOrder.set(result.id, result.kids);
+      }
+    });
+  }
+  
+  return kidsOrder;
+}
+
+// Fetch comments for a story (separate from story fetch)
+export async function fetchCommentsForStory(id, maxDepth = 3) {
+  const storyId = parseInt(id, 10);
+  
+  // Fetch story (for kids order) and comments in parallel
+  const [story, comments] = await Promise.all([
+    fetchItem(storyId),
+    fetchAllCommentsAlgolia(storyId),
+  ]);
+  
+  // Start with story's kids order for top-level comments
+  const kidsOrder = new Map();
+  if (story?.kids) {
+    kidsOrder.set(storyId, story.kids);
+  }
+  
+  // Count children per parent to identify which ones need ordering
+  const childrenCount = new Map();
+  comments.forEach(c => {
+    const count = childrenCount.get(c.parent_id) || 0;
+    childrenCount.set(c.parent_id, count + 1);
+  });
+  
+  // Only fetch kids for parents with multiple children (order matters)
+  // Single-child parents don't need ordering
+  const parentsNeedingOrder = [...childrenCount.entries()]
+    .filter(([parentId, count]) => count > 1 && parentId !== storyId)
+    .map(([parentId]) => parentId);
+  
+  // Fetch kids ordering for all parents that need it
+  const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder);
+  nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
+  
+  return buildCommentTree(comments, storyId, maxDepth, kidsOrder);
+}
+
 // Fetch story with its comments tree (fast version using Algolia)
-export async function fetchStoryWithComments(id) {
+export async function fetchStoryWithComments(id, maxDepth = 3) {
   const storyId = parseInt(id, 10);
   
   // Fetch story and comments in parallel
@@ -256,8 +385,29 @@ export async function fetchStoryWithComments(id) {
     throw new Error(`Story ${id} not found`);
   }
   
-  // Build comment tree from flat list
-  const commentTree = buildCommentTree(comments, storyId);
+  // Build kids order map starting with story's kids
+  const kidsOrder = new Map();
+  if (story.kids) {
+    kidsOrder.set(storyId, story.kids);
+  }
+  
+  // Count children per parent to identify which ones need ordering
+  const childrenCount = new Map();
+  comments.forEach(c => {
+    const count = childrenCount.get(c.parent_id) || 0;
+    childrenCount.set(c.parent_id, count + 1);
+  });
+  
+  // Only fetch kids for parents with multiple children
+  const parentsNeedingOrder = [...childrenCount.entries()]
+    .filter(([parentId, count]) => count > 1 && parentId !== storyId)
+    .map(([parentId]) => parentId);
+  
+  const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder);
+  nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
+  
+  // Build comment tree from flat list with proper ordering
+  const commentTree = buildCommentTree(comments, storyId, maxDepth, kidsOrder);
   
   return {
     id: story.id,

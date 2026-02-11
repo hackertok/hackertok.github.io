@@ -1,22 +1,38 @@
 import { useParams, Link } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useStoryWithComments } from '../hooks/useStoryWithComments';
-import { CommentTree, StoryDetailSkeleton } from '../components';
+import { CommentTree, StoryDetailSkeleton, CommentSkeleton } from '../components';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
 
+// Skeleton for just the comments section
+function CommentsSkeleton() {
+  return (
+    <div className="space-y-4">
+      {[...Array(5)].map((_, i) => (
+        <CommentSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
 export function StoryDetail() {
   const { id } = useParams();
-  const { story, loading, error } = useStoryWithComments(id);
+  const { story, comments, storyLoading, commentsLoading, error } = useStoryWithComments(id);
+  
+  // Scroll to top on navigation
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
   
   // useMemo must be called unconditionally (before any returns)
-  // Use story as dependency to satisfy React Compiler
   const sanitizedText = useMemo(
     () => story?.text ? sanitizeHtml(story.text) : '',
     [story]
   );
 
-  if (loading) {
+  // Show full skeleton only if story is loading
+  if (storyLoading && !story) {
     return <StoryDetailSkeleton />;
   }
 
@@ -55,7 +71,7 @@ export function StoryDetail() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-      {/* Story header */}
+      {/* Story header - shown immediately */}
       <article className="mb-6 pb-4 border-b border-gray-100 dark:border-gray-800">
         <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 leading-snug">
           {story.url ? (
@@ -110,9 +126,13 @@ export function StoryDetail() {
         )}
       </article>
 
-      {/* Comments section */}
+      {/* Comments section - progressive loading */}
       <section>
-        <CommentTree comments={story.comments} />
+        {commentsLoading && !comments ? (
+          <CommentsSkeleton />
+        ) : (
+          <CommentTree comments={comments || []} />
+        )}
       </section>
     </div>
   );

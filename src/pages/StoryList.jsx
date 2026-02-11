@@ -1,26 +1,33 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 
 export function StoryList({ type }) {
-  const { stories, loading, error, hasMore, loadMore, reset } = useInfiniteStories(type);
+  const { stories, loading, error, hasMore, loadMore, reset, isFromCache } = useInfiniteStories(type);
   const { ref, inView } = useInView({
     threshold: 0,
     rootMargin: '200px',
   });
+  
+  // Track previous type to only reset on CHANGE, not initial mount
+  const prevTypeRef = useRef(type);
 
-  // Reset when type changes
+  // Reset only when type CHANGES (not on initial mount)
   useEffect(() => {
-    reset();
+    if (prevTypeRef.current !== type) {
+      prevTypeRef.current = type;
+      reset();
+    }
   }, [type, reset]);
 
-  // Load initial stories
+  // Load initial stories (or revalidate if showing cached data)
   useEffect(() => {
-    if (stories.length === 0 && !loading) {
+    // Trigger load if no stories, OR if we have cached data that needs revalidation
+    if ((stories.length === 0 || isFromCache) && !loading) {
       loadMore();
     }
-  }, [stories.length, loading, loadMore]);
+  }, [stories.length, loading, loadMore, isFromCache]);
 
   // Load more when scrolling near bottom
   useEffect(() => {
@@ -46,7 +53,7 @@ export function StoryList({ type }) {
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
       {stories.length === 0 && loading ? (
-        <StoryCardSkeletonList count={15} />
+        <StoryCardSkeletonList count={8} />
       ) : (
         <>
           <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800/50">
