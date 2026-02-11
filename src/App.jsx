@@ -1,7 +1,13 @@
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, useParams } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { Header, ErrorBoundary } from './components';
 import { StoryList, StoryDetail, DomainStories } from './pages';
+
+// Wrapper to force StoryDetail remount when id changes (for proper cache initialization)
+function StoryDetailWrapper() {
+  const { id } = useParams();
+  return <StoryDetail key={id} />;
+}
 
 function App() {
   return (
@@ -15,7 +21,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<StoryList type="top" />} />
                 <Route path="/best" element={<StoryList type="best" />} />
-                <Route path="/item/:id" element={<StoryDetail />} />
+                <Route path="/item/:id" element={<StoryDetailWrapper />} />
                 <Route path="/from/*" element={<DomainStories />} />
               </Routes>
             </main>
