@@ -150,8 +150,9 @@ export async function fetchBestStories(offset = 0, limit = 30) {
 }
 
 // Fetch a single item from Firebase API (for story details)
-export async function fetchItem(id) {
-  const response = await fetch(`${FIREBASE_API}/item/${id}.json`);
+// Optionally accepts AbortSignal for cancellation
+export async function fetchItem(id, signal) {
+  const response = await fetch(`${FIREBASE_API}/item/${id}.json`, { signal });
   if (!response.ok) {
     throw new Error(`Failed to fetch item ${id}: ${response.status}`);
   }
@@ -159,15 +160,19 @@ export async function fetchItem(id) {
 }
 
 // Fetch all comments for a story using Algolia (much faster - 1-2 requests instead of hundreds)
-async function fetchAllCommentsAlgolia(storyId) {
+// Accepts optional AbortSignal for cancellation
+async function fetchAllCommentsAlgolia(storyId, signal) {
   const allComments = [];
   let page = 0;
   const hitsPerPage = 200; // Algolia max
   
   // Fetch all pages of comments
   while (true) {
+    // Check abort before each page
+    if (signal?.aborted) return allComments;
+    
     const url = `${ALGOLIA_API}/search?tags=comment,story_${storyId}&hitsPerPage=${hitsPerPage}&page=${page}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
     if (!response.ok) {
       throw new Error(`Failed to fetch comments: ${response.status}`);
     }
@@ -303,18 +308,22 @@ export async function fetchStoryOnly(id) {
 // Fetch kids ordering from Firebase for a set of comment IDs
 // This is needed to maintain HN's ranking order (not chronological)
 // Processes in batches to avoid overwhelming the API
-async function fetchKidsOrdering(commentIds) {
-  const BATCH_SIZE = 20; // Parallel requests per batch
+// Accepts optional AbortSignal for cancellation
+async function fetchKidsOrdering(commentIds, signal) {
+  const BATCH_SIZE = 10; // Reduced from 20 to lower concurrent requests
   const kidsOrder = new Map();
   
   // Process in batches
   for (let i = 0; i < commentIds.length; i += BATCH_SIZE) {
+    // Check abort before each batch
+    if (signal?.aborted) return kidsOrder;
+    
     const batch = commentIds.slice(i, i + BATCH_SIZE);
     
     const results = await Promise.all(
       batch.map(async (id) => {
         try {
-          const item = await fetchItem(id);
+          const item = await fetchItem(id, signal);
           if (item && item.kids) {
             return { id: item.id, kids: item.kids };
           }
@@ -333,6 +342,74 @@ async function fetchKidsOrdering(commentIds) {
   }
   
   return kidsOrder;
+}
+
+// Prefetch comments for a story (with AbortController support)
+// Used for background prefetching - silent failures, returns { story, comments } or null
+export async function prefetchStoryComments(id, signal) {
+  try {
+    const storyId = parseInt(id, 10);
+    
+    // Check if aborted before starting
+    if (signal?.aborted) return null;
+    
+    // Fetch story and comments in parallel (pass signal for cancellation)
+    const [story, comments] = await Promise.all([
+      fetchItem(storyId, signal),
+      fetchAllCommentsAlgolia(storyId, signal),
+    ]);
+    
+    // Check if aborted after network calls
+    if (signal?.aborted) return null;
+    
+    if (!story) return null;
+    
+    // Build kids order map
+    const kidsOrder = new Map();
+    if (story.kids) {
+      kidsOrder.set(storyId, story.kids);
+    }
+    
+    // Count children per parent
+    const childrenCount = new Map();
+    comments.forEach(c => {
+      const count = childrenCount.get(c.parent_id) || 0;
+      childrenCount.set(c.parent_id, count + 1);
+    });
+    
+    // Only fetch kids for parents with multiple children
+    const parentsNeedingOrder = [...childrenCount.entries()]
+      .filter(([parentId, count]) => count > 1 && parentId !== storyId)
+      .map(([parentId]) => parentId);
+    
+    // Check abort before expensive operation
+    if (signal?.aborted) return null;
+    
+    const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder, signal);
+    nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
+    
+    // Check final abort
+    if (signal?.aborted) return null;
+    
+    const commentTree = buildCommentTree(comments, storyId, 3, kidsOrder);
+    
+    return {
+      story: {
+        id: story.id,
+        title: story.title,
+        url: story.url,
+        points: story.score,
+        author: story.by,
+        createdAt: story.time * 1000,
+        commentCount: story.descendants || 0,
+        text: story.text,
+      },
+      comments: commentTree,
+    };
+  } catch {
+    // Silent failure for prefetch
+    return null;
+  }
 }
 
 // Fetch comments for a story (separate from story fetch)

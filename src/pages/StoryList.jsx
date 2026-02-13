@@ -1,10 +1,21 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useLayoutEffect } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 
 export function StoryList({ type }) {
-  const { stories, loading, error, hasMore, loadMore, reset, isFromCache } = useInfiniteStories(type);
+  const { 
+    stories, 
+    loading, 
+    error, 
+    hasMore, 
+    loadMore, 
+    reset, 
+    isFromCache,
+    isFromSession,
+    initialScrollY,
+    saveSessionState,
+  } = useInfiniteStories(type);
   const { ref, inView } = useInView({
     threshold: 0,
     rootMargin: '200px',
@@ -12,22 +23,42 @@ export function StoryList({ type }) {
   
   // Track previous type to only reset on CHANGE, not initial mount
   const prevTypeRef = useRef(type);
+  const hasRestoredScroll = useRef(false);
 
   // Reset only when type CHANGES (not on initial mount)
   useEffect(() => {
     if (prevTypeRef.current !== type) {
       prevTypeRef.current = type;
+      hasRestoredScroll.current = false;
       reset();
     }
   }, [type, reset]);
 
+  // Restore scroll position from session (before paint), or reset to top
+  useLayoutEffect(() => {
+    if (isFromSession && initialScrollY > 0 && !hasRestoredScroll.current && stories.length > 0) {
+      hasRestoredScroll.current = true;
+      // Small delay to ensure DOM is ready
+      requestAnimationFrame(() => {
+        window.scrollTo(0, initialScrollY);
+      });
+    } else if (!isFromSession && !hasRestoredScroll.current) {
+      // Not from session (e.g., logo click) - scroll to top
+      hasRestoredScroll.current = true;
+      window.scrollTo(0, 0);
+    }
+  }, [isFromSession, initialScrollY, stories.length]);
+
   // Load initial stories (or revalidate if showing cached data)
+  // Skip if we restored from session - user is coming back, don't refetch
   useEffect(() => {
+    if (isFromSession) return; // Don't refetch on back navigation
+    
     // Trigger load if no stories, OR if we have cached data that needs revalidation
     if ((stories.length === 0 || isFromCache) && !loading) {
       loadMore();
     }
-  }, [stories.length, loading, loadMore, isFromCache]);
+  }, [stories.length, loading, loadMore, isFromCache, isFromSession]);
 
   // Load more when scrolling near bottom
   useEffect(() => {
@@ -58,7 +89,7 @@ export function StoryList({ type }) {
         <>
           <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800/50">
             {stories.map(story => (
-              <StoryCard key={story.id} story={story} />
+              <StoryCard key={story.id} story={story} onBeforeNavigate={saveSessionState} />
             ))}
           </div>
 
