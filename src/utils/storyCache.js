@@ -6,7 +6,7 @@
 const CACHE_KEY_PREFIX = 'hackertok_story_';
 const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes - consider data "fresh"
 const CACHE_STALE_AGE = 24 * 60 * 60 * 1000; // 24 hours - max age before discarding
-const MAX_CACHED_STORIES = 20; // Limit to prevent localStorage bloat
+const MAX_CACHED_STORIES = 35; // Limit to prevent localStorage bloat (increased for prefetch)
 
 /**
  * Get cached story with comments
@@ -111,6 +111,80 @@ function pruneStoryCache(removeCount = 0) {
 export function clearCachedStory(storyId) {
   try {
     localStorage.removeItem(`${CACHE_KEY_PREFIX}${storyId}`);
+  } catch {
+    // Silently fail
+  }
+}
+
+// ============================================================================
+// Session State (for instant back navigation)
+// Uses sessionStorage - clears when tab closes (desired behavior)
+// ============================================================================
+
+const SESSION_KEY_PREFIX = 'hackertok_session_';
+
+/**
+ * Save list session state for instant back navigation
+ * @param {string} storyType - 'top' or 'best'
+ * @param {Object} state - { scrollY, storyIds, position, seenIds, hasMore }
+ */
+export function saveListSessionState(storyType, state) {
+  try {
+    const key = `${SESSION_KEY_PREFIX}${storyType}`;
+    const data = {
+      scrollY: state.scrollY,
+      storyIds: state.storyIds,
+      position: state.position,
+      seenIds: Array.from(state.seenIds),
+      hasMore: state.hasMore,
+      timestamp: Date.now(),
+    };
+    sessionStorage.setItem(key, JSON.stringify(data));
+  } catch {
+    // Silently fail - sessionStorage might be full
+  }
+}
+
+/**
+ * Get saved list session state
+ * @param {string} storyType - 'top' or 'best'
+ * @returns {{ scrollY: number, storyIds: number[], position: number, seenIds: Set<number>, hasMore: boolean } | null}
+ */
+export function getListSessionState(storyType) {
+  try {
+    const key = `${SESSION_KEY_PREFIX}${storyType}`;
+    const cached = sessionStorage.getItem(key);
+    
+    if (!cached) return null;
+    
+    const data = JSON.parse(cached);
+    
+    // Session state expires after 30 minutes (for very long sessions)
+    const age = Date.now() - data.timestamp;
+    if (age > 30 * 60 * 1000) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    
+    return {
+      scrollY: data.scrollY || 0,
+      storyIds: data.storyIds || [],
+      position: data.position || 0,
+      seenIds: new Set(data.seenIds || []),
+      hasMore: data.hasMore ?? true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clear session state for a story type
+ * @param {string} storyType - 'top' or 'best'
+ */
+export function clearListSessionState(storyType) {
+  try {
+    sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${storyType}`);
   } catch {
     // Silently fail
   }
