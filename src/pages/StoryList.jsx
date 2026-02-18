@@ -88,8 +88,8 @@ export function StoryList({ type }) {
       ) : (
         <>
           <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800/50">
-            {stories.map(story => (
-              <StoryCard key={story.id} story={story} onBeforeNavigate={saveSessionState} />
+            {stories.map((story, index) => (
+              <StoryCard key={story.id} story={story} index={index} onBeforeNavigate={saveSessionState} />
             ))}
           </div>
 

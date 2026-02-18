@@ -6,12 +6,12 @@
 const CACHE_KEY_PREFIX = 'hackertok_story_';
 const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes - consider data "fresh"
 const CACHE_STALE_AGE = 24 * 60 * 60 * 1000; // 24 hours - max age before discarding
-const MAX_CACHED_STORIES = 35; // Limit to prevent localStorage bloat (increased for prefetch)
+const MAX_CACHED_STORIES = 50; // Limit to prevent localStorage bloat
 
 /**
  * Get cached story with comments
  * @param {string|number} storyId
- * @returns {{ story: Object, comments: Array, timestamp: number, isFresh: boolean } | null}
+ * @returns {{ story: Object, comments: Array, timestamp: number, isFresh: boolean, orderedDepth: number } | null}
  */
 export function getCachedStory(storyId) {
   try {
@@ -20,7 +20,7 @@ export function getCachedStory(storyId) {
     
     if (!cached) return null;
     
-    const { story, comments, timestamp } = JSON.parse(cached);
+    const { story, comments, timestamp, orderedDepth } = JSON.parse(cached);
     const age = Date.now() - timestamp;
     
     // Discard if too old
@@ -34,6 +34,7 @@ export function getCachedStory(storyId) {
       comments,
       timestamp,
       isFresh: age <= CACHE_MAX_AGE,
+      orderedDepth: orderedDepth ?? 3, // Default to full ordering for old caches
     };
   } catch {
     return null;
@@ -45,8 +46,9 @@ export function getCachedStory(storyId) {
  * @param {string|number} storyId
  * @param {Object} story
  * @param {Array} comments
+ * @param {number} [orderedDepth=3] - How deep comments are properly ordered (1 = top-level only during prefetch)
  */
-export function setCachedStory(storyId, story, comments) {
+export function setCachedStory(storyId, story, comments, orderedDepth = 3) {
   try {
     // Clean up old entries first
     pruneStoryCache();
@@ -56,6 +58,7 @@ export function setCachedStory(storyId, story, comments) {
       story,
       comments,
       timestamp: Date.now(),
+      orderedDepth,
     };
     localStorage.setItem(key, JSON.stringify(data));
   } catch {
@@ -63,7 +66,7 @@ export function setCachedStory(storyId, story, comments) {
     try {
       pruneStoryCache(5);
       const key = `${CACHE_KEY_PREFIX}${storyId}`;
-      localStorage.setItem(key, JSON.stringify({ story, comments, timestamp: Date.now() }));
+      localStorage.setItem(key, JSON.stringify({ story, comments, timestamp: Date.now(), orderedDepth }));
     } catch {
       // Still failed, silently give up
     }

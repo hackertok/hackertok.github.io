@@ -1,18 +1,30 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { usePrefetchStory, shouldPrefetch, cancelAllPrefetches } from '../hooks/usePrefetchStory';
 
-export function StoryCard({ story, onBeforeNavigate }) {
+export function StoryCard({ story, index = 0, onBeforeNavigate }) {
   const hostname = getHostname(story.url);
-  const { prefetch, cancel } = usePrefetchStory();
+  const { startPrefetch, stopPrefetch } = usePrefetchStory();
+  const isPrefetchingRef = useRef(false);
+  const wasInExitZoneRef = useRef(false); // Track if card was ever in exit zone
   
-  // Observe visibility with 1000px margin (start prefetch early)
-  const { ref, inView } = useInView({
-    rootMargin: '1000px',
-    triggerOnce: true, // Only trigger once per card
+  // Observe visibility with 800px margin for starting prefetch (eager)
+  const { ref: enterRef, inView: enterInView } = useInView({
+    rootMargin: '800px',
   });
+  
+  // Observe visibility with -100px margin for stopping prefetch (only abort when well off-screen)
+  const { ref: exitRef, inView: exitInView } = useInView({
+    rootMargin: '-100px',
+  });
+  
+  // Merge refs to attach both observers to the same element
+  const setRefs = useCallback((node) => {
+    enterRef(node);
+    exitRef(node);
+  }, [enterRef, exitRef]);
   
   // Handle navigation: save session state and cancel prefetches
   const handleNavigate = () => {
@@ -22,20 +34,42 @@ export function StoryCard({ story, onBeforeNavigate }) {
     }
   };
   
-  // Prefetch when card becomes visible (with margin)
+  // Start prefetch when card enters expanded viewport (800px margin)
+  // Pass index for priority ordering (lower index = prefetch first)
+  // Re-prefetches if cache was evicted while scrolled away
   useEffect(() => {
-    if (inView && shouldPrefetch(story.commentCount)) {
-      prefetch(story.id, story.commentCount);
+    if (enterInView && shouldPrefetch(story.commentCount)) {
+      isPrefetchingRef.current = true;
+      startPrefetch(story.id, story.commentCount, index);
     }
-  }, [inView, story.id, story.commentCount, prefetch]);
+  }, [enterInView, story.id, story.commentCount, index, startPrefetch]);
+  
+  // Track when card enters the tight exit zone
+  useEffect(() => {
+    if (exitInView) {
+      wasInExitZoneRef.current = true;
+    }
+  }, [exitInView]);
+  
+  // Stop prefetch only when card LEAVES the tight viewport (was in, now out)
+  useEffect(() => {
+    if (!exitInView && wasInExitZoneRef.current && isPrefetchingRef.current) {
+      isPrefetchingRef.current = false;
+      stopPrefetch();
+    }
+  }, [exitInView, stopPrefetch]);
   
   // Cleanup on unmount
   useEffect(() => {
-    return () => cancel();
-  }, [cancel]);
+    return () => {
+      if (isPrefetchingRef.current) {
+        stopPrefetch();
+      }
+    };
+  }, [stopPrefetch]);
 
   return (
-    <article ref={ref} className="py-3 first:pt-0">
+    <article ref={setRefs} className="py-3 first:pt-0">
       <div className="space-y-1">
         {/* Title with hostname */}
         <h2 className="text-[15px] leading-snug font-semibold">
