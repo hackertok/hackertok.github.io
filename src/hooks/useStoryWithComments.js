@@ -15,9 +15,14 @@ export function useStoryWithComments(storyId) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Skip fetch if cache is fresh (data already loaded via lazy init)
     const cached = getCachedStory(storyId);
-    if (cached?.isFresh && cached.story && cached.comments) {
+    
+    // Determine if we need to fetch: either no cache, stale cache, or partial ordering
+    const needsFullFetch = !cached?.isFresh || !cached?.story || !cached?.comments;
+    const needsOrderingCompletion = cached?.isFresh && cached?.orderedDepth < 3;
+    
+    // If cache is fresh AND fully ordered, skip fetch entirely
+    if (cached?.isFresh && cached?.story && cached?.comments && cached?.orderedDepth >= 3) {
       return;
     }
     
@@ -46,21 +51,22 @@ export function useStoryWithComments(storyId) {
       }
     }
 
-    async function loadComments(storyData) {
-      // Only set loading if we don't have cached comments
-      if (!cached?.comments) {
+    async function loadComments(storyData, isBackgroundReorder = false) {
+      // Only set loading if we don't have cached comments AND not a background reorder
+      if (!cached?.comments && !isBackgroundReorder) {
         setCommentsLoading(true);
       }
       
       try {
+        // Fetch with full ordering (default maxDepth=3)
         const commentsData = await fetchCommentsForStory(storyId);
         if (!cancelled) {
           setComments(commentsData);
           setCommentsLoading(false);
           
-          // Cache the complete story with comments
+          // Cache the complete story with comments and full ordering
           if (storyData) {
-            setCachedStory(storyId, storyData, commentsData);
+            setCachedStory(storyId, storyData, commentsData, 3);
           }
         }
       } catch (err) {
@@ -75,12 +81,18 @@ export function useStoryWithComments(storyId) {
     async function load() {
       setError(null);
       
-      // Load story first for progressive render
-      const storyData = await loadStory();
-      
-      // Then load comments
-      if (storyData && !cancelled) {
-        await loadComments(storyData);
+      if (needsOrderingCompletion && cached?.story) {
+        // We have cached data with partial ordering - show it immediately
+        // and fetch fully ordered comments in the background
+        await loadComments(cached.story, true);
+      } else if (needsFullFetch) {
+        // Need to fetch story and/or comments
+        const storyData = cached?.story || await loadStory();
+        
+        // Then load comments
+        if (storyData && !cancelled) {
+          await loadComments(storyData, false);
+        }
       }
     }
 

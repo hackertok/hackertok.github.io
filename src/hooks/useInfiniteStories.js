@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { fetchCurrentTopStories, fetchFrontPageForDay, fetchBestStories } from '../api/hn';
+import { fetchTopStoriesAlgolia, fetchFrontPageForDay, fetchBestStories } from '../api/hn';
 import { getCachedStories, setCachedStories } from '../utils/storiesCache';
 import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/storyCache';
 
@@ -91,8 +91,8 @@ export function useInfiniteStories(type = 'top') {
         const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
         
         if (positionRef.current === 0) {
-          // First load: fetch current front page from Firebase
-          const frontPage = await fetchCurrentTopStories(30);
+          // First load: fetch current front page from Algolia (single fast request)
+          const frontPage = await fetchTopStoriesAlgolia(20);
           
           // Check if we've been reset during the fetch
           if (versionRef.current !== currentVersion) return;

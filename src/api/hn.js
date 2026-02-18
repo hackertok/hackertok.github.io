@@ -5,6 +5,18 @@ const FIREBASE_API = 'https://hacker-news.firebaseio.com/v0';
 let bestStoriesCache = { ids: null, timestamp: 0 };
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// HN's gravity constant for ranking
+const HN_GRAVITY = 1.8;
+
+/**
+ * Calculate HN ranking score using gravity algorithm
+ * score = (points - 1) / pow((hoursAgo + 2), gravity)
+ */
+function calculateHNScore(points, createdAtMs) {
+  const hoursAgo = (Date.now() - createdAtMs) / (1000 * 60 * 60);
+  return (points - 1) / Math.pow(hoursAgo + 2, HN_GRAVITY);
+}
+
 // Get start and end timestamps for a specific day (UTC)
 function getDayRange(daysAgo = 0) {
   const now = new Date();
@@ -69,6 +81,41 @@ export async function fetchCurrentTopStories(limit = 30) {
   return stories
     .filter(story => story && !story.deleted && !story.dead && story.type !== 'job')
     .map(normalizeFirebaseStory);
+}
+
+/**
+ * Fetch current front page stories from Algolia (single request, fast)
+ * Applies HN's gravity algorithm for approximate ranking
+ * @param {number} limit - Number of stories to fetch (default 20)
+ */
+export async function fetchTopStoriesAlgolia(limit = 20) {
+  const url = `${ALGOLIA_API}/search?tags=front_page&hitsPerPage=${limit}`;
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch top stories: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  
+  // Filter out job posts and normalize
+  const stories = data.hits
+    .filter(hit => {
+      if (hit.type === 'job' || hit._tags?.includes('job')) return false;
+      const title = (hit.title || '').toLowerCase();
+      if (title.includes('who is hiring') || title.includes('who wants to be hired')) return false;
+      return true;
+    })
+    .map(normalizeAlgoliaHit);
+  
+  // Sort by HN gravity score (approximate HN ranking)
+  stories.sort((a, b) => {
+    const scoreA = calculateHNScore(a.points || 0, a.createdAt);
+    const scoreB = calculateHNScore(b.points || 0, b.createdAt);
+    return scoreB - scoreA;
+  });
+  
+  return stories;
 }
 
 // Fetch historical top stories for a specific day using Algolia
@@ -346,7 +393,8 @@ async function fetchKidsOrdering(commentIds, signal) {
 
 // Prefetch comments for a story (with AbortController support)
 // Used for background prefetching - silent failures, returns { story, comments } or null
-export async function prefetchStoryComments(id, signal) {
+// maxOrderingDepth: only fetch HN ordering for comments up to this depth (0=top-level, 1=replies, etc.)
+export async function prefetchStoryComments(id, signal, maxOrderingDepth = Infinity) {
   try {
     const storyId = parseInt(id, 10);
     
@@ -364,11 +412,45 @@ export async function prefetchStoryComments(id, signal) {
     
     if (!story) return null;
     
-    // Build kids order map
+    // Build kids order map - always include story's kids (depth 0)
     const kidsOrder = new Map();
     if (story.kids) {
       kidsOrder.set(storyId, story.kids);
     }
+    
+    // Build a map of comment depths from the flat list
+    const commentDepths = new Map();
+    const commentParents = new Map();
+    comments.forEach(c => {
+      const id = parseInt(c.objectID, 10);
+      commentParents.set(id, c.parent_id);
+    });
+    
+    // Calculate depth for each comment by traversing parent chain
+    const getDepth = (commentId) => {
+      if (commentDepths.has(commentId)) return commentDepths.get(commentId);
+      const parentId = commentParents.get(commentId);
+      
+      // If no parent info, or parent is the story, this is a root comment
+      if (parentId === undefined || parentId === storyId) {
+        commentDepths.set(commentId, 0);
+        return 0;
+      }
+      
+      // If parent isn't in our comment set (deleted/not fetched), treat as root
+      if (!commentParents.has(parentId)) {
+        commentDepths.set(commentId, 0);
+        return 0;
+      }
+      
+      const parentDepth = getDepth(parentId);
+      const depth = parentDepth + 1;
+      commentDepths.set(commentId, depth);
+      return depth;
+    };
+    
+    // Calculate depths for all comments
+    comments.forEach(c => getDepth(parseInt(c.objectID, 10)));
     
     // Count children per parent
     const childrenCount = new Map();
@@ -377,9 +459,14 @@ export async function prefetchStoryComments(id, signal) {
       childrenCount.set(c.parent_id, count + 1);
     });
     
-    // Only fetch kids for parents with multiple children
+    // Only fetch kids for parents with multiple children AND within depth limit
+    // A parent at depth D has children at depth D+1, so we need ordering for parents at depth < maxOrderingDepth
     const parentsNeedingOrder = [...childrenCount.entries()]
-      .filter(([parentId, count]) => count > 1 && parentId !== storyId)
+      .filter(([parentId, count]) => {
+        if (count <= 1 || parentId === storyId) return false;
+        const parentDepth = commentDepths.get(parentId) ?? -1;
+        return parentDepth >= 0 && parentDepth < maxOrderingDepth;
+      })
       .map(([parentId]) => parentId);
     
     // Check abort before expensive operation
