@@ -1,8 +1,9 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { usePrefetchStory, shouldPrefetch, cancelAllPrefetches } from '../hooks/usePrefetchStory';
+import { isViewed, markViewed } from '../utils/viewedStories';
 
 export function StoryCard({ story, index = 0, onBeforeNavigate }) {
   const hostname = getHostname(story.url);
@@ -26,8 +27,21 @@ export function StoryCard({ story, index = 0, onBeforeNavigate }) {
     exitRef(node);
   }, [enterRef, exitRef]);
   
-  // Handle navigation: save session state and cancel prefetches
-  const handleNavigate = () => {
+  // Track viewed status locally for internal links only (initialized from localStorage)
+  const [viewed, setViewed] = useState(() => isViewed(story.id));
+  
+  // Handle internal title click: mark as viewed, save session state and cancel prefetches
+  const handleTitleClick = () => {
+    markViewed(story.id);
+    setViewed(true);
+    cancelAllPrefetches();
+    if (onBeforeNavigate) {
+      onBeforeNavigate();
+    }
+  };
+  
+  // Handle comments click: save session state and cancel prefetches (does NOT mark as viewed)
+  const handleCommentsClick = () => {
     cancelAllPrefetches();
     if (onBeforeNavigate) {
       onBeforeNavigate();
@@ -78,15 +92,19 @@ export function StoryCard({ story, index = 0, onBeforeNavigate }) {
               href={story.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-900 dark:text-gray-100 hover:text-hn-orange transition-colors"
+              className="story-link"
             >
               {story.title}
             </a>
           ) : (
             <Link
               to={`/item/${story.id}`}
-              onClick={handleNavigate}
-              className="text-gray-900 dark:text-gray-100 hover:text-hn-orange transition-colors"
+              onClick={handleTitleClick}
+              className={`hover:text-hn-orange transition-colors ${
+                viewed
+                  ? 'text-gray-500 dark:text-gray-500'
+                  : 'text-gray-900 dark:text-gray-100'
+              }`}
             >
               {story.title}
             </Link>
@@ -112,7 +130,7 @@ export function StoryCard({ story, index = 0, onBeforeNavigate }) {
           <span className="mx-1.5">|</span>
           <Link
             to={`/item/${story.id}`}
-            onClick={handleNavigate}
+            onClick={handleCommentsClick}
             className="hover:text-hn-orange transition-colors"
           >
             {story.commentCount ?? 0} comments
