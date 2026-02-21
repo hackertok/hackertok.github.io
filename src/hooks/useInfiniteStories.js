@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { fetchTopStoriesAlgolia, fetchFrontPageForDay, fetchBestStories } from '../api/hn';
 import { getCachedStories, setCachedStories } from '../utils/storiesCache';
 import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/storyCache';
@@ -53,7 +53,8 @@ export function useInfiniteStories(type = 'top') {
   const [initialState] = useState(() => getInitialState(type));
   const [stories, setStories] = useState(initialState.stories);
   const [isFromCache, setIsFromCache] = useState(initialState.isFromCache);
-  const [isFromSession] = useState(initialState.isFromSession);
+  const [isFromSession, setIsFromSession] = useState(initialState.isFromSession);
+  const [initialScrollY, setInitialScrollY] = useState(initialState.sessionState?.scrollY ?? 0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(
@@ -72,9 +73,6 @@ export function useInfiniteStories(type = 'top') {
   const versionRef = useRef(0);
   // Track if we have cached data that needs revalidation (start true if we loaded from cache)
   const hasStaleCacheRef = useRef(initialState.isFromCache);
-  
-  // Expose scroll position from session for StoryList to use
-  const initialScrollY = initialState.sessionState?.scrollY ?? 0;
 
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
@@ -219,6 +217,9 @@ export function useInfiniteStories(type = 'top') {
     const initial = getInitialState(type);
     setStories(initial.stories);
     setIsFromCache(initial.isFromCache);
+    // Reset session state - we're starting fresh, not restoring
+    setIsFromSession(false);
+    setInitialScrollY(0);
     hasStaleCacheRef.current = initial.isFromCache;
     
     setLoading(false);

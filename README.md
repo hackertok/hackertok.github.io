@@ -27,3 +27,19 @@ npm run build
 # Preview production build
 npm run preview
 ```
+
+## Testing
+
+```bash
+# Run tests in watch mode
+npm test
+
+# Run tests once (CI mode)
+npm run test:run
+
+# Run tests with UI
+npm run test:ui
+
+# Run tests with coverage
+npm run test:coverage
+```

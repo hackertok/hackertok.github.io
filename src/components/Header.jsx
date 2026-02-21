@@ -7,6 +7,12 @@ export function Header() {
   const { scrollDirection, isAtTop } = useScrollDirection();
   const location = useLocation();
   
+  // Determine if Best should be highlighted:
+  // - On /best route, or
+  // - On story detail page when navigated from best list
+  const isBestActive = location.pathname === '/best' || 
+    (location.pathname.startsWith('/item/') && location.state?.from === 'best');
+  
   // On mobile: show header when scrolling up or at top
   // On desktop: always visible (not sticky)
   const mobileHidden = scrollDirection === 'down' && !isAtTop;
@@ -30,10 +36,10 @@ export function Header() {
   };
 
   const navLinkClass = (isActive) =>
-    `px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+    `px-3 py-1.5 rounded-full text-sm font-medium ${
       isActive
         ? 'bg-hn-orange text-white shadow-sm'
-        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800'
+        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors'
     }`;
 
   return (
@@ -62,7 +68,7 @@ export function Header() {
               <NavLink
                 to="/best"
                 onClick={handleBestClick}
-                className={({ isActive }) => navLinkClass(isActive)}
+                className={() => navLinkClass(isBestActive)}
               >
                 best
               </NavLink>
