@@ -5,7 +5,7 @@ import { formatTimeAgo, getHostname } from '../api/hn';
 import { usePrefetchStory, shouldPrefetch, cancelAllPrefetches } from '../hooks/usePrefetchStory';
 import { isViewed, markViewed } from '../utils/viewedStories';
 
-export function StoryCard({ story, index = 0, onBeforeNavigate }) {
+export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate }) {
   const hostname = getHostname(story.url);
   const { startPrefetch, stopPrefetch } = usePrefetchStory();
   const isPrefetchingRef = useRef(false);
@@ -99,6 +99,7 @@ export function StoryCard({ story, index = 0, onBeforeNavigate }) {
           ) : (
             <Link
               to={`/item/${story.id}`}
+              state={{ from: listType }}
               onClick={handleTitleClick}
               className={`hover:text-hn-orange transition-colors ${
                 viewed
@@ -130,6 +131,7 @@ export function StoryCard({ story, index = 0, onBeforeNavigate }) {
           <span className="mx-1.5">|</span>
           <Link
             to={`/item/${story.id}`}
+            state={{ from: listType }}
             onClick={handleCommentsClick}
             className="hover:text-hn-orange transition-colors"
           >
