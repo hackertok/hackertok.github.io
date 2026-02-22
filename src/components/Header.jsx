@@ -7,6 +7,12 @@ export function Header() {
   const { scrollDirection, isAtTop } = useScrollDirection();
   const location = useLocation();
   
+  // Determine if Show should be highlighted:
+  // - On /show route, or
+  // - On story detail page when navigated from show list
+  const isShowActive = location.pathname === '/show' || 
+    (location.pathname.startsWith('/item/') && location.state?.from === 'show');
+  
   // Determine if Best should be highlighted:
   // - On /best route, or
   // - On story detail page when navigated from best list
@@ -17,12 +23,21 @@ export function Header() {
   // On desktop: always visible (not sticky)
   const mobileHidden = scrollDirection === 'down' && !isAtTop;
 
-  // Clear session state so we start fresh at top (not restore scroll position)
+  // Clear all session states so we start fresh (logo = "home/reset" action)
   const handleLogoClick = () => {
     clearListSessionState('top');
     clearListSessionState('best');
+    clearListSessionState('show');
     // Only smooth scroll if already on home - otherwise just navigate (new page starts at top)
     if (location.pathname === '/') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleShowClick = () => {
+    clearListSessionState('show');
+    // Only smooth scroll if already on show - otherwise just navigate
+    if (location.pathname === '/show') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -64,13 +79,20 @@ export function Header() {
             Hacker<span className="text-gray-500 dark:text-gray-400">Tok</span>
           </Link>
           <div className="flex items-center gap-3">
-            <nav>
+            <nav className="flex gap-1">
               <NavLink
                 to="/best"
                 onClick={handleBestClick}
                 className={() => navLinkClass(isBestActive)}
               >
                 best
+              </NavLink>
+              <NavLink
+                to="/show"
+                onClick={handleShowClick}
+                className={() => navLinkClass(isShowActive)}
+              >
+                show
               </NavLink>
             </nav>
             <ThemeToggle />

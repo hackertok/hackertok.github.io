@@ -67,4 +67,48 @@ describe('Header', () => {
       expect(bestLink).not.toHaveClass('bg-hn-orange');
     });
   });
+
+  describe('show button', () => {
+    it('renders show navigation link', () => {
+      render(<Header />);
+      
+      expect(screen.getByRole('link', { name: /show/i })).toBeInTheDocument();
+    });
+
+    it('highlights show button on /show route', () => {
+      render(<Header />, { initialEntries: ['/show'] });
+      
+      const showLink = screen.getByRole('link', { name: /show/i });
+      expect(showLink).toHaveClass('bg-hn-orange');
+    });
+
+    it('does not highlight show button on home route', () => {
+      render(<Header />, { initialEntries: ['/'] });
+      
+      const showLink = screen.getByRole('link', { name: /show/i });
+      expect(showLink).not.toHaveClass('bg-hn-orange');
+    });
+
+    it('highlights show button on story detail when navigated from show list', () => {
+      render(<Header />, { 
+        initialEntries: [
+          { pathname: '/item/12345', state: { from: 'show' } }
+        ] 
+      });
+      
+      const showLink = screen.getByRole('link', { name: /show/i });
+      expect(showLink).toHaveClass('bg-hn-orange');
+    });
+
+    it('does not highlight show button on story detail when navigated from top list', () => {
+      render(<Header />, { 
+        initialEntries: [
+          { pathname: '/item/12345', state: { from: 'top' } }
+        ] 
+      });
+      
+      const showLink = screen.getByRole('link', { name: /show/i });
+      expect(showLink).not.toHaveClass('bg-hn-orange');
+    });
+  });
 });
