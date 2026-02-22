@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { fetchTopStoriesAlgolia, fetchFrontPageForDay, fetchBestStories } from '../api/hn';
+import { fetchTopStoriesAlgolia, fetchFrontPageForDay, fetchBestStories, fetchShowStories } from '../api/hn';
 import { getCachedStories, setCachedStories } from '../utils/storiesCache';
 import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/storyCache';
 
@@ -155,7 +155,7 @@ export function useInfiniteStories(type = 'top') {
             setStories(prev => [...prev, ...newStories]);
           }
         }
-      } else {
+      } else if (type === 'best') {
         // Best stories: offset-based pagination using Firebase
         const isRevalidatingBest = hasStaleCacheRef.current && positionRef.current === 0;
         const result = await fetchBestStories(positionRef.current, 30);
@@ -190,6 +190,46 @@ export function useInfiniteStories(type = 'top') {
         if (uniqueStories.length > 0) {
           // If revalidating, replace stories instead of appending
           if (isRevalidatingBest) {
+            setStories(uniqueStories);
+          } else {
+            setStories(prev => [...prev, ...uniqueStories]);
+          }
+        }
+      } else if (type === 'show') {
+        // Show HN stories: day-based pagination (top 20 per 24-hour window) using Algolia
+        const isRevalidatingShow = hasStaleCacheRef.current && positionRef.current === 0;
+        const result = await fetchShowStories(positionRef.current);
+        
+        // Check if we've been reset during the fetch
+        if (versionRef.current !== currentVersion) return;
+        
+        // For revalidation, we replace all stories, so don't filter by seenIds
+        if (isRevalidatingShow) {
+          seenIdsRef.current.clear();
+        }
+        
+        // Filter out duplicates
+        const uniqueStories = result.stories.filter(story => {
+          if (seenIdsRef.current.has(story.id)) {
+            return false;
+          }
+          seenIdsRef.current.add(story.id);
+          return true;
+        });
+
+        // Cache first window of show stories
+        if (positionRef.current === 0 && uniqueStories.length > 0) {
+          setCachedStories(type, uniqueStories);
+          setIsFromCache(false);
+          hasStaleCacheRef.current = false;
+        }
+
+        positionRef.current = result.nextWindow;
+        setHasMore(result.hasMore);
+        
+        if (uniqueStories.length > 0) {
+          // If revalidating, replace stories instead of appending
+          if (isRevalidatingShow) {
             setStories(uniqueStories);
           } else {
             setStories(prev => [...prev, ...uniqueStories]);

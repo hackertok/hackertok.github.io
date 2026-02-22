@@ -196,6 +196,72 @@ export async function fetchBestStories(offset = 0, limit = 30) {
   };
 }
 
+/**
+ * Fetch Show HN stories for a specific 24-hour window using Algolia API
+ * Returns top 20 stories from that day sorted by HN gravity algorithm
+ * Skips empty days automatically (up to 30 consecutive empty days)
+ * @param {number} windowIndex - Which day to start from (0 = today, 1 = yesterday, etc.)
+ */
+export async function fetchShowStories(windowIndex = 0) {
+  const now = Math.floor(Date.now() / 1000);
+  const maxEmptyDays = 30; // Stop after 30 consecutive empty days (likely reached HN's beginning)
+  
+  let currentWindow = windowIndex;
+  let attempts = 0;
+  
+  while (attempts < maxEmptyDays) {
+    // Calculate the 24-hour window boundaries:
+    // - windowIndex=0: last 24 hours (now-86400 to now)
+    // - windowIndex=1: 24-48 hours ago, etc.
+    // Using (currentWindow + 1) for start ensures we get a full day's worth of stories
+    const windowStart = now - ((currentWindow + 1) * 24 * 60 * 60);
+    const windowEnd = now - (currentWindow * 24 * 60 * 60);
+    
+    // Fetch up to 100 stories so we have enough to sort by gravity, then take top 20
+    // Using > for start and <= for end prevents stories from appearing in two windows
+    const url = `${ALGOLIA_API}/search?tags=show_hn&numericFilters=created_at_i>${windowStart},created_at_i<=${windowEnd}&hitsPerPage=100`;
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch show stories: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Normalize all stories
+    const stories = data.hits.map(normalizeAlgoliaHit);
+    
+    if (stories.length > 0) {
+      // Sort by HN gravity score within this window
+      stories.sort((a, b) => {
+        const scoreA = calculateHNScore(a.points || 0, a.createdAt);
+        const scoreB = calculateHNScore(b.points || 0, b.createdAt);
+        return scoreB - scoreA;
+      });
+      
+      // Return only top 20 from this day (we fetched 100 to ensure good gravity sorting)
+      const topStories = stories.slice(0, 20);
+      
+      return {
+        stories: topStories,
+        hasMore: true, // Always true since we found stories
+        nextWindow: currentWindow + 1,
+      };
+    }
+    
+    // Empty day, try the next one
+    currentWindow++;
+    attempts++;
+  }
+  
+  // Reached max empty days - likely at HN's beginning or a gap
+  return {
+    stories: [],
+    hasMore: false,
+    nextWindow: currentWindow,
+  };
+}
+
 // Fetch a single item from Firebase API (for story details)
 // Optionally accepts AbortSignal for cancellation
 export async function fetchItem(id, signal) {

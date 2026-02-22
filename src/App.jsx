@@ -20,6 +20,7 @@ function App() {
             <main className="pt-14 md:pt-0">
               <Routes>
                 <Route path="/" element={<StoryList type="top" />} />
+                <Route path="/show" element={<StoryList type="show" />} />
                 <Route path="/best" element={<StoryList type="best" />} />
                 <Route path="/item/:id" element={<StoryDetailWrapper />} />
                 <Route path="/from/*" element={<DomainStories />} />

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { formatTimeAgo, getHostname } from './hn';
+import { formatTimeAgo, getHostname, fetchShowStories } from './hn';
 
 describe('hn API utilities', () => {
   describe('formatTimeAgo', () => {
@@ -134,6 +134,64 @@ describe('hn API utilities', () => {
     it('handles URLs without path segments', () => {
       expect(getHostname('https://github.com')).toBe('github.com');
       expect(getHostname('https://github.com/')).toBe('github.com');
+    });
+  });
+
+  describe('fetchShowStories', () => {
+    it('returns normalized Show HN stories', async () => {
+      const result = await fetchShowStories(0);
+      
+      expect(result.stories).toBeDefined();
+      expect(result.stories.length).toBeGreaterThan(0);
+      expect(result.hasMore).toBeDefined();
+      expect(result.nextWindow).toBe(1);
+    });
+
+    it('returns stories with show type', async () => {
+      const result = await fetchShowStories(0);
+      
+      result.stories.forEach(story => {
+        expect(story.type).toBe('show');
+      });
+    });
+
+    it('returns stories with expected properties', async () => {
+      const result = await fetchShowStories(0);
+      const story = result.stories[0];
+      
+      expect(story).toHaveProperty('id');
+      expect(story).toHaveProperty('title');
+      expect(story).toHaveProperty('points');
+      expect(story).toHaveProperty('author');
+      expect(story).toHaveProperty('createdAt');
+      expect(story).toHaveProperty('commentCount');
+    });
+
+    it('sorts stories by gravity score', async () => {
+      const result = await fetchShowStories(0);
+      
+      // With 2 mock stories:
+      // - Story1: 150 pts, 2hr ago → gravity = (150-1)/(2+2)^1.8 ≈ 13.2
+      // - Story2: 75 pts, 1hr ago → gravity = (75-1)/(1+2)^1.8 ≈ 11.9
+      // Higher gravity score ranks first
+      expect(result.stories.length).toBe(2);
+      expect(result.stories[0].points).toBe(150); // Higher gravity score first
+      expect(result.stories[1].points).toBe(75);
+    });
+
+    it('returns correct pagination info', async () => {
+      const result = await fetchShowStories(0);
+      
+      expect(result.nextWindow).toBe(1);
+      expect(result.hasMore).toBe(true); // Always true when stories are found (skips empty days)
+    });
+
+    it('increments window index for next page', async () => {
+      const result1 = await fetchShowStories(0);
+      expect(result1.nextWindow).toBe(1);
+      
+      const result2 = await fetchShowStories(result1.nextWindow);
+      expect(result2.nextWindow).toBe(2);
     });
   });
 });

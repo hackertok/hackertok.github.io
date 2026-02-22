@@ -47,6 +47,29 @@ export const mockAlgoliaStory = {
   _tags: ['story', 'front_page'],
 };
 
+// Show HN story (Algolia format)
+export const mockShowHNStory = {
+  objectID: '99999',
+  title: 'Show HN: My Awesome Project',
+  url: 'https://example.com/show-hn-project',
+  author: 'showhnuser',
+  points: 150,
+  created_at_i: Math.floor(Date.now() / 1000) - 7200, // 2 hours ago
+  num_comments: 25,
+  _tags: ['story', 'show_hn'],
+};
+
+export const mockShowHNStory2 = {
+  objectID: '99998',
+  title: 'Show HN: Another Cool Demo',
+  url: 'https://example.com/show-hn-demo',
+  author: 'demouser',
+  points: 75,
+  created_at_i: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
+  num_comments: 12,
+  _tags: ['story', 'show_hn'],
+};
+
 // Top story IDs
 export const mockTopStoryIds = [12345, 12346, 12347, 12348, 12349];
 
@@ -98,10 +121,21 @@ export const handlers = [
     });
   }),
 
-  // Algolia: Search (used for front page stories)
+  // Algolia: Search (used for front page stories and show stories)
   http.get(`${ALGOLIA_API}/search`, ({ request }) => {
     const url = new URL(request.url);
     const tags = url.searchParams.get('tags');
+    const page = parseInt(url.searchParams.get('page') || '0', 10);
+    
+    if (tags?.includes('show_hn')) {
+      return HttpResponse.json({
+        hits: [mockShowHNStory, mockShowHNStory2],
+        nbHits: 2,
+        page: page,
+        nbPages: 1,
+        hitsPerPage: 30,
+      });
+    }
     
     if (tags?.includes('front_page')) {
       return HttpResponse.json({
