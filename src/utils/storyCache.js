@@ -107,18 +107,6 @@ function pruneStoryCache(removeCount = 0) {
   }
 }
 
-/**
- * Clear cached story
- * @param {string|number} storyId
- */
-export function clearCachedStory(storyId) {
-  try {
-    localStorage.removeItem(`${CACHE_KEY_PREFIX}${storyId}`);
-  } catch {
-    // Silently fail
-  }
-}
-
 // ============================================================================
 // Session State (for instant back navigation)
 // Uses sessionStorage - clears when tab closes (desired behavior)

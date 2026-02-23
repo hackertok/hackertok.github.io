@@ -1,5 +1,4 @@
-const ALGOLIA_API = 'https://hn.algolia.com/api/v1';
-const FIREBASE_API = 'https://hacker-news.firebaseio.com/v0';
+import { ALGOLIA_API, FIREBASE_API } from '../config/api';
 
 // Cache for best story IDs to avoid refetching on every pagination
 let bestStoriesCache = { ids: null, timestamp: 0 };
@@ -60,27 +59,6 @@ function normalizeFirebaseStory(story) {
     commentCount: story.descendants || 0,
     type: story.type,
   };
-}
-
-// Fetch current front page stories from Firebase (matches live HN homepage)
-export async function fetchCurrentTopStories(limit = 30) {
-  const response = await fetch(`${FIREBASE_API}/topstories.json`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch top stories: ${response.status}`);
-  }
-  
-  const allIds = await response.json();
-  const pageIds = allIds.slice(0, limit);
-  
-  // Fetch story details in parallel
-  const stories = await Promise.all(
-    pageIds.map(id => fetchItem(id).catch(() => null))
-  );
-  
-  // Filter out failed fetches, deleted, dead, and job posts
-  return stories
-    .filter(story => story && !story.deleted && !story.dead && story.type !== 'job')
-    .map(normalizeFirebaseStory);
 }
 
 /**
@@ -610,57 +588,6 @@ export async function fetchCommentsForStory(id, maxDepth = 3) {
   nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
   
   return buildCommentTree(comments, storyId, maxDepth, kidsOrder);
-}
-
-// Fetch story with its comments tree (fast version using Algolia)
-export async function fetchStoryWithComments(id, maxDepth = 3) {
-  const storyId = parseInt(id, 10);
-  
-  // Fetch story and comments in parallel
-  const [story, comments] = await Promise.all([
-    fetchItem(storyId),
-    fetchAllCommentsAlgolia(storyId),
-  ]);
-  
-  if (!story) {
-    throw new Error(`Story ${id} not found`);
-  }
-  
-  // Build kids order map starting with story's kids
-  const kidsOrder = new Map();
-  if (story.kids) {
-    kidsOrder.set(storyId, story.kids);
-  }
-  
-  // Count children per parent to identify which ones need ordering
-  const childrenCount = new Map();
-  comments.forEach(c => {
-    const count = childrenCount.get(c.parent_id) || 0;
-    childrenCount.set(c.parent_id, count + 1);
-  });
-  
-  // Only fetch kids for parents with multiple children
-  const parentsNeedingOrder = [...childrenCount.entries()]
-    .filter(([parentId, count]) => count > 1 && parentId !== storyId)
-    .map(([parentId]) => parentId);
-  
-  const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder);
-  nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
-  
-  // Build comment tree from flat list with proper ordering
-  const commentTree = buildCommentTree(comments, storyId, maxDepth, kidsOrder);
-  
-  return {
-    id: story.id,
-    title: story.title,
-    url: story.url,
-    points: story.score,
-    author: story.by,
-    createdAt: story.time * 1000,
-    commentCount: story.descendants || 0,
-    text: story.text, // For Ask HN posts
-    comments: commentTree,
-  };
 }
 
 // Format relative time

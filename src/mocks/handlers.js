@@ -1,7 +1,5 @@
 import { http, HttpResponse } from 'msw';
-
-const FIREBASE_API = 'https://hacker-news.firebaseio.com/v0';
-const ALGOLIA_API = 'https://hn.algolia.com/api/v1';
+import { ALGOLIA_API, FIREBASE_API } from '../config/api';
 
 // Sample story data
 export const mockStory = {
