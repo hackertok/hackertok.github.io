@@ -13,8 +13,8 @@ const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes - consider data "fresh"
 const CACHE_STALE_AGE = 24 * 60 * 60 * 1000; // 24 hours - max age before discarding
 
 /**
- * Get cached stories for a specific type (top/best)
- * @param {string} type - 'top' or 'best'
+ * Get cached stories for a specific type
+ * @param {string} type - 'top' | 'best' | 'show' | 'ask'
  * @returns {{ stories: Array, timestamp: number, isStale: boolean } | null}
  */
 export function getCachedStories(type) {
@@ -46,7 +46,7 @@ export function getCachedStories(type) {
 
 /**
  * Save stories to cache
- * @param {string} type - 'top' or 'best'
+ * @param {string} type - 'top' | 'best' | 'show' | 'ask'
  * @param {Array} stories - Stories to cache
  */
 export function setCachedStories(type, stories) {
@@ -64,7 +64,7 @@ export function setCachedStories(type, stories) {
 
 /**
  * Clear cache for a specific type or all types
- * @param {string} [type] - 'top' or 'best', or undefined to clear all
+ * @param {string} [type] - 'top' | 'best' | 'show' | 'ask', or undefined to clear all
  */
 export function clearStoriesCache(type) {
   try {
@@ -83,7 +83,7 @@ export function clearStoriesCache(type) {
 
 /**
  * Check if cache is fresh (not stale)
- * @param {string} type - 'top' or 'best'
+ * @param {string} type - 'top' | 'best' | 'show' | 'ask'
  * @returns {boolean}
  */
 export function isCacheFresh(type) {

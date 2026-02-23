@@ -111,4 +111,48 @@ describe('Header', () => {
       expect(showLink).not.toHaveClass('bg-hn-orange');
     });
   });
+
+  describe('ask button', () => {
+    it('renders ask navigation link', () => {
+      render(<Header />);
+      
+      expect(screen.getByRole('link', { name: /ask/i })).toBeInTheDocument();
+    });
+
+    it('highlights ask button on /ask route', () => {
+      render(<Header />, { initialEntries: ['/ask'] });
+      
+      const askLink = screen.getByRole('link', { name: /ask/i });
+      expect(askLink).toHaveClass('bg-hn-orange');
+    });
+
+    it('does not highlight ask button on home route', () => {
+      render(<Header />, { initialEntries: ['/'] });
+      
+      const askLink = screen.getByRole('link', { name: /ask/i });
+      expect(askLink).not.toHaveClass('bg-hn-orange');
+    });
+
+    it('highlights ask button on story detail when navigated from ask list', () => {
+      render(<Header />, { 
+        initialEntries: [
+          { pathname: '/item/12345', state: { from: 'ask' } }
+        ] 
+      });
+      
+      const askLink = screen.getByRole('link', { name: /ask/i });
+      expect(askLink).toHaveClass('bg-hn-orange');
+    });
+
+    it('does not highlight ask button on story detail when navigated from top list', () => {
+      render(<Header />, { 
+        initialEntries: [
+          { pathname: '/item/12345', state: { from: 'top' } }
+        ] 
+      });
+      
+      const askLink = screen.getByRole('link', { name: /ask/i });
+      expect(askLink).not.toHaveClass('bg-hn-orange');
+    });
+  });
 });

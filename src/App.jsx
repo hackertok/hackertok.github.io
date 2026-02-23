@@ -21,6 +21,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<StoryList type="top" />} />
                 <Route path="/show" element={<StoryList type="show" />} />
+                <Route path="/ask" element={<StoryList type="ask" />} />
                 <Route path="/best" element={<StoryList type="best" />} />
                 <Route path="/item/:id" element={<StoryDetailWrapper />} />
                 <Route path="/from/*" element={<DomainStories />} />

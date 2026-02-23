@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { formatTimeAgo, getHostname } from '../api/hn';
-import { usePrefetchStory, shouldPrefetch, cancelAllPrefetches } from '../hooks/usePrefetchStory';
+import { usePrefetchStory, cancelAllPrefetches } from '../hooks/usePrefetchStory';
 import { isViewed, markViewed } from '../utils/viewedStories';
 
 export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate }) {
@@ -40,8 +40,13 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
     }
   };
   
-  // Handle comments click: save session state and cancel prefetches (does NOT mark as viewed)
+  // Handle comments click: save session state and cancel prefetches
+  // For text posts (Ask HN), also mark as viewed since comments IS the content
   const handleCommentsClick = () => {
+    if (!story.url) {
+      markViewed(story.id);
+      setViewed(true);
+    }
     cancelAllPrefetches();
     if (onBeforeNavigate) {
       onBeforeNavigate();
@@ -52,11 +57,11 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
   // Pass index for priority ordering (lower index = prefetch first)
   // Re-prefetches if cache was evicted while scrolled away
   useEffect(() => {
-    if (enterInView && shouldPrefetch(story.commentCount)) {
+    if (enterInView) {
       isPrefetchingRef.current = true;
-      startPrefetch(story.id, story.commentCount, index);
+      startPrefetch(story.id, index);
     }
-  }, [enterInView, story.id, story.commentCount, index, startPrefetch]);
+  }, [enterInView, story.id, index, startPrefetch]);
   
   // Track when card enters the tight exit zone
   useEffect(() => {

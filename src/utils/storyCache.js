@@ -128,7 +128,7 @@ const SESSION_KEY_PREFIX = 'hackertok_session_';
 
 /**
  * Save list session state for instant back navigation
- * @param {string} storyType - 'top' or 'best'
+ * @param {string} storyType - 'top' | 'best' | 'show' | 'ask'
  * @param {Object} state - { scrollY, storyIds, position, seenIds, hasMore }
  */
 export function saveListSessionState(storyType, state) {
@@ -150,7 +150,7 @@ export function saveListSessionState(storyType, state) {
 
 /**
  * Get saved list session state
- * @param {string} storyType - 'top' or 'best'
+ * @param {string} storyType - 'top' | 'best' | 'show' | 'ask'
  * @returns {{ scrollY: number, storyIds: number[], position: number, seenIds: Set<number>, hasMore: boolean } | null}
  */
 export function getListSessionState(storyType) {
@@ -183,7 +183,7 @@ export function getListSessionState(storyType) {
 
 /**
  * Clear session state for a story type
- * @param {string} storyType - 'top' or 'best'
+ * @param {string} storyType - 'top' | 'best' | 'show' | 'ask'
  */
 export function clearListSessionState(storyType) {
   try {

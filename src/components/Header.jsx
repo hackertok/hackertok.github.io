@@ -13,6 +13,12 @@ export function Header() {
   const isShowActive = location.pathname === '/show' || 
     (location.pathname.startsWith('/item/') && location.state?.from === 'show');
   
+  // Determine if Ask should be highlighted:
+  // - On /ask route, or
+  // - On story detail page when navigated from ask list
+  const isAskActive = location.pathname === '/ask' || 
+    (location.pathname.startsWith('/item/') && location.state?.from === 'ask');
+  
   // Determine if Best should be highlighted:
   // - On /best route, or
   // - On story detail page when navigated from best list
@@ -28,6 +34,7 @@ export function Header() {
     clearListSessionState('top');
     clearListSessionState('best');
     clearListSessionState('show');
+    clearListSessionState('ask');
     // Only smooth scroll if already on home - otherwise just navigate (new page starts at top)
     if (location.pathname === '/') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -38,6 +45,14 @@ export function Header() {
     clearListSessionState('show');
     // Only smooth scroll if already on show - otherwise just navigate
     if (location.pathname === '/show') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleAskClick = () => {
+    clearListSessionState('ask');
+    // Only smooth scroll if already on ask - otherwise just navigate
+    if (location.pathname === '/ask') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -93,6 +108,13 @@ export function Header() {
                 className={() => navLinkClass(isShowActive)}
               >
                 show
+              </NavLink>
+              <NavLink
+                to="/ask"
+                onClick={handleAskClick}
+                className={() => navLinkClass(isAskActive)}
+              >
+                ask
               </NavLink>
             </nav>
             <ThemeToggle />

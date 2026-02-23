@@ -70,6 +70,29 @@ export const mockShowHNStory2 = {
   _tags: ['story', 'show_hn'],
 };
 
+// Ask HN story (Algolia format) - note: no URL (text posts)
+export const mockAskHNStory = {
+  objectID: '88888',
+  title: 'Ask HN: What are you working on?',
+  url: null, // Ask HN posts typically have no external URL
+  author: 'askhnuser',
+  points: 120,
+  created_at_i: Math.floor(Date.now() / 1000) - 7200, // 2 hours ago
+  num_comments: 89,
+  _tags: ['story', 'ask_hn'],
+};
+
+export const mockAskHNStory2 = {
+  objectID: '88887',
+  title: 'Ask HN: Best resources to learn Rust?',
+  url: null,
+  author: 'rustlearner',
+  points: 65,
+  created_at_i: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
+  num_comments: 42,
+  _tags: ['story', 'ask_hn'],
+};
+
 // Top story IDs
 export const mockTopStoryIds = [12345, 12346, 12347, 12348, 12349];
 
@@ -130,6 +153,16 @@ export const handlers = [
     if (tags?.includes('show_hn')) {
       return HttpResponse.json({
         hits: [mockShowHNStory, mockShowHNStory2],
+        nbHits: 2,
+        page: page,
+        nbPages: 1,
+        hitsPerPage: 30,
+      });
+    }
+    
+    if (tags?.includes('ask_hn')) {
+      return HttpResponse.json({
+        hits: [mockAskHNStory, mockAskHNStory2],
         nbHits: 2,
         page: page,
         nbPages: 1,

@@ -119,6 +119,31 @@ describe('StoryCard', () => {
       const newTitleLink = screen.getByRole('link', { name: /Ask HN/i });
       expect(newTitleLink).toHaveClass('text-gray-500');
     });
+
+    it('marks text post as viewed when clicking comments link', () => {
+      const { rerender } = render(<StoryCard story={mockTextStory} />);
+      
+      const commentsLink = screen.getByRole('link', { name: /15 comments/i });
+      fireEvent.click(commentsLink);
+      
+      // Re-render to see the style change
+      rerender(<StoryCard story={mockTextStory} />);
+      const titleLink = screen.getByRole('link', { name: /Ask HN/i });
+      expect(titleLink).toHaveClass('text-gray-500');
+    });
+
+    it('does not mark regular story as viewed when clicking comments link', () => {
+      const { rerender } = render(<StoryCard story={mockStory} />);
+      
+      const commentsLink = screen.getByRole('link', { name: /42 comments/i });
+      fireEvent.click(commentsLink);
+      
+      // Re-render - external link titles don't have viewed state styling
+      rerender(<StoryCard story={mockStory} />);
+      // For external links, title is an <a> not a Link, so no viewed styling applies
+      const titleLink = screen.getByRole('link', { name: /Test Story/i });
+      expect(titleLink).toHaveClass('story-link');
+    });
   });
 
   describe('callbacks', () => {
