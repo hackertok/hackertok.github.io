@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { formatTimeAgo, getHostname, fetchShowStories } from './hn';
+import { formatTimeAgo, getHostname, fetchShowStories, fetchAskStories } from './hn';
 
 describe('hn API utilities', () => {
   describe('formatTimeAgo', () => {
@@ -191,6 +191,74 @@ describe('hn API utilities', () => {
       expect(result1.nextWindow).toBe(1);
       
       const result2 = await fetchShowStories(result1.nextWindow);
+      expect(result2.nextWindow).toBe(2);
+    });
+  });
+
+  describe('fetchAskStories', () => {
+    it('returns normalized Ask HN stories', async () => {
+      const result = await fetchAskStories(0);
+      
+      expect(result.stories).toBeDefined();
+      expect(result.stories.length).toBeGreaterThan(0);
+      expect(result.hasMore).toBeDefined();
+      expect(result.nextWindow).toBe(1);
+    });
+
+    it('returns stories with ask type', async () => {
+      const result = await fetchAskStories(0);
+      
+      result.stories.forEach(story => {
+        expect(story.type).toBe('ask');
+      });
+    });
+
+    it('returns stories with expected properties', async () => {
+      const result = await fetchAskStories(0);
+      const story = result.stories[0];
+      
+      expect(story).toHaveProperty('id');
+      expect(story).toHaveProperty('title');
+      expect(story).toHaveProperty('points');
+      expect(story).toHaveProperty('author');
+      expect(story).toHaveProperty('createdAt');
+      expect(story).toHaveProperty('commentCount');
+    });
+
+    it('handles Ask HN posts without URL', async () => {
+      const result = await fetchAskStories(0);
+      
+      // Ask HN posts typically have no external URL
+      result.stories.forEach(story => {
+        // url can be null or undefined for Ask HN
+        expect(story.url === null || story.url === undefined).toBe(true);
+      });
+    });
+
+    it('sorts stories by gravity score', async () => {
+      const result = await fetchAskStories(0);
+      
+      // With 2 mock stories:
+      // - Story1: 120 pts, 2hr ago → gravity = (120-1)/(2+2)^1.8 ≈ 10.5
+      // - Story2: 65 pts, 1hr ago → gravity = (65-1)/(1+2)^1.8 ≈ 10.3
+      // Higher gravity score ranks first
+      expect(result.stories.length).toBe(2);
+      expect(result.stories[0].points).toBe(120); // Higher gravity score first
+      expect(result.stories[1].points).toBe(65);
+    });
+
+    it('returns correct pagination info', async () => {
+      const result = await fetchAskStories(0);
+      
+      expect(result.nextWindow).toBe(1);
+      expect(result.hasMore).toBe(true); // Always true when stories are found (skips empty days)
+    });
+
+    it('increments window index for next page', async () => {
+      const result1 = await fetchAskStories(0);
+      expect(result1.nextWindow).toBe(1);
+      
+      const result2 = await fetchAskStories(result1.nextWindow);
       expect(result2.nextWindow).toBe(2);
     });
   });

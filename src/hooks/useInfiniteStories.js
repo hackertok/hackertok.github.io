@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { fetchTopStoriesAlgolia, fetchFrontPageForDay, fetchBestStories, fetchShowStories } from '../api/hn';
+import { fetchTopStoriesAlgolia, fetchFrontPageForDay, fetchBestStories, fetchShowStories, fetchAskStories } from '../api/hn';
 import { getCachedStories, setCachedStories } from '../utils/storiesCache';
 import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/storyCache';
 
@@ -195,16 +195,17 @@ export function useInfiniteStories(type = 'top') {
             setStories(prev => [...prev, ...uniqueStories]);
           }
         }
-      } else if (type === 'show') {
-        // Show HN stories: day-based pagination (top 20 per 24-hour window) using Algolia
-        const isRevalidatingShow = hasStaleCacheRef.current && positionRef.current === 0;
-        const result = await fetchShowStories(positionRef.current);
+      } else if (type === 'show' || type === 'ask') {
+        // Show HN / Ask HN stories: day-based pagination (top 20 per 24-hour window) using Algolia
+        const fetchFn = type === 'show' ? fetchShowStories : fetchAskStories;
+        const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
+        const result = await fetchFn(positionRef.current);
         
         // Check if we've been reset during the fetch
         if (versionRef.current !== currentVersion) return;
         
         // For revalidation, we replace all stories, so don't filter by seenIds
-        if (isRevalidatingShow) {
+        if (isRevalidating) {
           seenIdsRef.current.clear();
         }
         
@@ -217,7 +218,7 @@ export function useInfiniteStories(type = 'top') {
           return true;
         });
 
-        // Cache first window of show stories
+        // Cache first window of stories
         if (positionRef.current === 0 && uniqueStories.length > 0) {
           setCachedStories(type, uniqueStories);
           setIsFromCache(false);
@@ -229,7 +230,7 @@ export function useInfiniteStories(type = 'top') {
         
         if (uniqueStories.length > 0) {
           // If revalidating, replace stories instead of appending
-          if (isRevalidatingShow) {
+          if (isRevalidating) {
             setStories(uniqueStories);
           } else {
             setStories(prev => [...prev, ...uniqueStories]);

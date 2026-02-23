@@ -2,14 +2,11 @@ import { useCallback, useRef } from 'react';
 import { prefetchStoryComments } from '../api/hn';
 import { getCachedStory, setCachedStory } from '../utils/storyCache';
 
-// Threshold: prefetch stories with any comments
-const MIN_COMMENTS_TO_PREFETCH = 1;
-
 // Maximum concurrent prefetches
 const MAX_CONCURRENT = 2;
 
 // Priority queue for prefetching - lower index = higher priority (top of list)
-const prefetchQueue = new Map(); // storyId -> { index, commentCount }
+const prefetchQueue = new Map(); // storyId -> { index }
 const activePrefetches = new Map(); // storyId -> AbortController
 let isProcessing = false;
 let scheduleTimeout = null;
@@ -110,15 +107,9 @@ export function usePrefetchStory() {
    * Add story to prefetch queue with priority based on list index.
    * Call when story card enters viewport.
    * @param {number} storyId - Story ID
-   * @param {number} commentCount - Number of comments
-   * @param {number} index - Position in the story list (0 = top)
+   * @param {number} index - Position in the story list (0 = top, lower = higher priority)
    */
-  const startPrefetch = useCallback((storyId, commentCount, index = 0) => {
-    // Skip if below threshold
-    if (commentCount < MIN_COMMENTS_TO_PREFETCH) {
-      return;
-    }
-    
+  const startPrefetch = useCallback((storyId, index = 0) => {
     // Skip if already in queue or active
     if (prefetchQueue.has(storyId) || activePrefetches.has(storyId)) {
       return;
@@ -132,8 +123,8 @@ export function usePrefetchStory() {
     
     storyIdRef.current = storyId;
     
-    // Add to queue with priority
-    prefetchQueue.set(storyId, { index, commentCount });
+    // Add to queue with priority (lower index = prefetch first)
+    prefetchQueue.set(storyId, { index });
     
     // Schedule processing (debounced to wait for all visible items)
     scheduleProcessQueue();
@@ -183,11 +174,4 @@ export function cancelAllPrefetches() {
     controller.abort();
   }
   activePrefetches.clear();
-}
-
-/**
- * Check if a story should be prefetched based on comment count.
- */
-export function shouldPrefetch(commentCount) {
-  return commentCount >= MIN_COMMENTS_TO_PREFETCH;
 }

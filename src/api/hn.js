@@ -197,12 +197,13 @@ export async function fetchBestStories(offset = 0, limit = 30) {
 }
 
 /**
- * Fetch Show HN stories for a specific 24-hour window using Algolia API
+ * Fetch tagged stories (Show HN or Ask HN) for a specific 24-hour window
  * Returns top 20 stories from that day sorted by HN gravity algorithm
  * Skips empty days automatically (up to 30 consecutive empty days)
+ * @param {string} tag - Algolia tag ('show_hn' or 'ask_hn')
  * @param {number} windowIndex - Which day to start from (0 = today, 1 = yesterday, etc.)
  */
-export async function fetchShowStories(windowIndex = 0) {
+async function fetchTaggedStories(tag, windowIndex = 0) {
   const now = Math.floor(Date.now() / 1000);
   const maxEmptyDays = 30; // Stop after 30 consecutive empty days (likely reached HN's beginning)
   
@@ -219,11 +220,11 @@ export async function fetchShowStories(windowIndex = 0) {
     
     // Fetch up to 100 stories so we have enough to sort by gravity, then take top 20
     // Using > for start and <= for end prevents stories from appearing in two windows
-    const url = `${ALGOLIA_API}/search?tags=show_hn&numericFilters=created_at_i>${windowStart},created_at_i<=${windowEnd}&hitsPerPage=100`;
+    const url = `${ALGOLIA_API}/search?tags=${tag}&numericFilters=created_at_i>${windowStart},created_at_i<=${windowEnd}&hitsPerPage=100`;
     
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Failed to fetch show stories: ${response.status}`);
+      throw new Error(`Failed to fetch ${tag} stories: ${response.status}`);
     }
     
     const data = await response.json();
@@ -260,6 +261,16 @@ export async function fetchShowStories(windowIndex = 0) {
     hasMore: false,
     nextWindow: currentWindow,
   };
+}
+
+/** Fetch Show HN stories - wrapper around fetchTaggedStories */
+export function fetchShowStories(windowIndex = 0) {
+  return fetchTaggedStories('show_hn', windowIndex);
+}
+
+/** Fetch Ask HN stories - wrapper around fetchTaggedStories */
+export function fetchAskStories(windowIndex = 0) {
+  return fetchTaggedStories('ask_hn', windowIndex);
 }
 
 // Fetch a single item from Firebase API (for story details)
