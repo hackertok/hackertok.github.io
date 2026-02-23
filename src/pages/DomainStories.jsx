@@ -2,8 +2,7 @@ import { useParams } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
-
-const ALGOLIA_API = 'https://hn.algolia.com/api/v1';
+import { ALGOLIA_API } from '../config/api';
 
 export function DomainStories() {
   // Use wildcard param to capture paths like github.com/foo
@@ -141,7 +140,7 @@ export function DomainStories() {
 
           {!hasMore && stories.length > 0 && (
             <p className="text-center text-sm text-gray-500 dark:text-gray-500 py-8">
-              You've reached the end
+              You&apos;ve reached the end
             </p>
           )}
         </>
