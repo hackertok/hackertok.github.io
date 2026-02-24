@@ -33,7 +33,16 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Industry-standard: only ignore underscore-prefixed variables (intentionally unused)
+      'no-unused-vars': ['error', { 
+        vars: 'all',
+        args: 'after-used',
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+        destructuredArrayIgnorePattern: '^_',
+        ignoreRestSiblings: true,
+      }],
       'react/prop-types': 'off', // Using modern React without PropTypes (TypeScript is the modern alternative)
     },
   },

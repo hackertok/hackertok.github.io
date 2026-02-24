@@ -1,10 +1,12 @@
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import { ThemeToggle } from './ThemeToggle';
 import { useScrollDirection } from '../hooks/useScrollDirection';
+import { useScrollContainer } from '../context/ScrollContainerContext';
 import { clearListSessionState } from '../utils/storyCache';
 
 export function Header() {
   const { scrollDirection, isAtTop } = useScrollDirection();
+  const { isSwipeMode } = useScrollContainer();
   const location = useLocation();
   
   // Determine if Show should be highlighted:
@@ -25,9 +27,13 @@ export function Header() {
   const isBestActive = location.pathname === '/best' || 
     (location.pathname.startsWith('/item/') && location.state?.from === 'best');
   
-  // On mobile: show header when scrolling up or at top
+  // On mobile: 
+  // - In swipe mode: always visible (like desktop)
+  // - In normal mode: show header when scrolling up or at top
   // On desktop: always visible (not sticky)
-  const mobileHidden = scrollDirection === 'down' && !isAtTop;
+  const mobileHidden = isSwipeMode 
+    ? false  // In swipe mode, always visible
+    : scrollDirection === 'down' && !isAtTop;  // Normal scroll behavior
 
   // Clear all session states so we start fresh (logo = "home/reset" action)
   const handleLogoClick = () => {
@@ -78,9 +84,9 @@ export function Header() {
         bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm
         border-b border-gray-100 dark:border-gray-800
         md:relative md:transform-none
-        fixed top-0 left-0 right-0 z-50
+        ${isSwipeMode ? 'relative' : 'fixed top-0 left-0 right-0 z-50'}
         transition-transform duration-300 ease-out
-        ${mobileHidden ? '-translate-y-full' : 'translate-y-0'}
+        ${!isSwipeMode && mobileHidden ? '-translate-y-full' : 'translate-y-0'}
         md:translate-y-0
       `}
     >

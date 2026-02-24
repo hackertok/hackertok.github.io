@@ -54,3 +54,61 @@
 .story-link:visited {
   @apply text-gray-500 dark:text-gray-500;
 }
+
+/* CSS Scroll Snap based swipe viewer (industry standard for carousels)
+   Reference: https://web.dev/articles/css-scroll-snap */
+.swipe-snap-container {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* mandatory: always snap to a panel after scroll ends */
+  scroll-snap-type: x mandatory;
+  /* Legacy iOS momentum scrolling (deprecated but improves UX on older devices) */
+  -webkit-overflow-scrolling: touch;
+  /* Prevent browser back/forward gestures */
+  overscroll-behavior-x: contain;
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  width: 100vw;
+  height: calc(100dvh - 56px);
+}
+
+.swipe-snap-container::-webkit-scrollbar {
+  display: none;
+}
+
+.swipe-snap-panel {
+  flex: 0 0 100vw;
+  width: 100vw;
+  height: 100%;
+  scroll-snap-align: start;
+  /* scroll-snap-stop: always prevents "passing over" panels on fast swipe,
+     ensuring TikTok-style one-story-at-a-time navigation */
+  scroll-snap-stop: always;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Enable smooth vertical scrolling within each panel */
+  -webkit-overflow-scrolling: touch;
+}
+
+.full-screen-story {
+  width: 100%;
+  min-height: calc(100dvh - 56px);
+}
+
+/* Prevent pull-to-refresh on iOS in swipe mode.
+   Uses @supports (-webkit-touch-callout: none) as iOS-only detection heuristic.
+   Note: Safari's overscroll-behavior support is partial - may not fully prevent
+   pull-to-refresh gesture in all iOS versions (known platform limitation). */
+@supports (-webkit-touch-callout: none) {
+  body.swipe-mode {
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* Prevent body scrolling in swipe mode - panels handle their own scrolling.
+   Without this, both body and panel scrollbars appear. */
+body.swipe-mode {
+  overflow: hidden;
+}
