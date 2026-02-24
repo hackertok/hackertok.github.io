@@ -1,6 +1,7 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import { prefetchStoryComments } from '../api/hn';
 import { getCachedStory, setCachedStory } from '../utils/storyCache';
+import { isPriorityFetchActive, onPriorityFetchChange } from '../utils/fetchPriority';
 
 // Maximum concurrent prefetches
 const MAX_CONCURRENT = 2;
@@ -10,6 +11,7 @@ const prefetchQueue = new Map(); // storyId -> { index }
 const activePrefetches = new Map(); // storyId -> AbortController
 let isProcessing = false;
 let scheduleTimeout = null;
+let priorityUnsubscribe = null;
 
 /**
  * Schedule queue processing with debounce.
@@ -36,10 +38,29 @@ function processQueueNow() {
 }
 
 /**
- * Process the prefetch queue - start prefetches for highest priority items
+ * Process the prefetch queue - start prefetches for highest priority items.
+ * Waits for any user-visible priority fetch to complete first.
  */
 async function processQueue() {
   if (isProcessing) return;
+  
+  // Wait for user-visible content to load first
+  // This ensures current story's comments get full network bandwidth
+  if (isPriorityFetchActive()) {
+    // Subscribe to be notified when priority fetch completes
+    if (!priorityUnsubscribe) {
+      priorityUnsubscribe = onPriorityFetchChange((isActive) => {
+        if (!isActive) {
+          // Priority fetch done - resume queue processing
+          priorityUnsubscribe?.();
+          priorityUnsubscribe = null;
+          processQueue();
+        }
+      });
+    }
+    return;
+  }
+  
   isProcessing = true;
   
   try {
@@ -154,6 +175,49 @@ export function usePrefetchStory() {
   }, []);
   
   return { startPrefetch, stopPrefetch };
+}
+
+/**
+ * Hook to prefetch multiple stories ahead of the current index.
+ * Used by SwipeStoryViewer for batch prefetching.
+ * @param {number} currentIndex - Current story index
+ * @param {Array} stories - Array of story objects with id property
+ * @param {number} count - Number of stories to prefetch ahead (default: 3)
+ */
+export function usePrefetchStories(currentIndex, stories, count = 3) {
+  const prefetchedRef = useRef(new Set());
+  
+  useEffect(() => {
+    if (!stories || stories.length === 0) return;
+    
+    // Prefetch the next `count` stories
+    for (let i = 1; i <= count; i++) {
+      const targetIndex = currentIndex + i;
+      if (targetIndex >= stories.length) break;
+      
+      const story = stories[targetIndex];
+      if (!story || !story.id) continue;
+      
+      const storyId = story.id;
+      
+      // Skip if already prefetched in this session
+      if (prefetchedRef.current.has(storyId)) continue;
+      
+      // Skip if cache is fresh
+      const cached = getCachedStory(storyId);
+      if (cached?.isFresh) {
+        prefetchedRef.current.add(storyId);
+        continue;
+      }
+      
+      // Add to queue with priority based on distance from current
+      prefetchQueue.set(storyId, { index: targetIndex });
+      prefetchedRef.current.add(storyId);
+    }
+    
+    // Schedule processing
+    scheduleProcessQueue();
+  }, [currentIndex, stories, count]);
 }
 
 /**

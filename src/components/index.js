@@ -6,3 +6,5 @@ export { Spinner } from './Spinner';
 export { Comment, CommentTree } from './Comment';
 export { CommentSkeleton, CommentSkeletonTree, StoryDetailSkeleton } from './CommentSkeleton';
 export { ErrorBoundary } from './ErrorBoundary';
+export { FullScreenStory } from './FullScreenStory';
+export { SwipeStoryViewer } from './SwipeStoryViewer';

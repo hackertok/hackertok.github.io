@@ -21,6 +21,19 @@
     </script>
   </head>
   <body class="bg-white dark:bg-gray-950">
+    <script>
+      // Prevent scrollbar flash on mobile (swipe mode hides body overflow)
+      // React will manage this class properly once hydrated
+      (function() {
+        var isMobile = window.innerWidth < 768;
+        var hash = window.location.hash || '#/';
+        // Swipe routes: /, /show, /ask, /best, /item/*
+        var isSwipeRoute = /^#\/(show|ask|best|item\/)?/.test(hash);
+        if (isMobile && isSwipeRoute) {
+          document.body.classList.add('swipe-mode');
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
