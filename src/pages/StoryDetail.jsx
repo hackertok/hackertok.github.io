@@ -4,10 +4,14 @@ import { useStoryWithComments } from '../hooks/useStoryWithComments';
 import { CommentTree, StoryDetailSkeleton, CommentSkeletonTree } from '../components';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 export function StoryDetail() {
   const { id } = useParams();
   const { story, comments, storyLoading, commentsLoading, error } = useStoryWithComments(id);
+  
+  // Set document title to story title
+  useDocumentTitle(story?.title);
   
   // Scroll to top on navigation
   useEffect(() => {

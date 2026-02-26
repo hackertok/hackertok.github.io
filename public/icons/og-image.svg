@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="og-title og-desc">
+  <title id="og-title">HackerTok</title>
+  <desc id="og-desc">Your daily dose of Hacker News</desc>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#1c1917"/>
+
+  <!-- Centered content group -->
+  <g transform="translate(600, 315) scale(0.90)">
+    <!-- Logo icon -->
+    <g transform="translate(-615, -120)">
+      <rect fill="#ff6600" width="240" height="240" rx="36"/>
+      <g fill="#ffffff" transform="translate(15, 15) scale(3.28)">
+        <rect x="12" y="14" width="10" height="36" rx="2"/>
+        <rect x="42" y="14" width="10" height="36" rx="2"/>
+        <rect x="12" y="27" width="40" height="10" rx="2"/>
+        <rect x="27" y="27" width="10" height="23" rx="2"/>
+      </g>
+    </g>
+
+    <!-- HackerTok text -->
+    <text x="135" y="5" font-family="Verdana, Geneva, sans-serif" font-size="160" font-weight="bold" text-anchor="middle">
+      <tspan fill="#ff6600">Hacker</tspan><tspan fill="#888888">Tok</tspan>
+    </text>
+
+    <!-- Tagline with Glitch/RGB Split effect -->
+    <g>
+      <!-- Red layer (offset left) -->
+      <text x="139" y="115" font-family="Verdana, Geneva, sans-serif" font-size="59" fill="#ff6666" fill-opacity="0.6" text-anchor="middle">
+        Your daily dose of Hacker News
+      </text>
+      <!-- Cyan layer (offset right) -->
+      <text x="145" y="115" font-family="Verdana, Geneva, sans-serif" font-size="59" fill="#66ffff" fill-opacity="0.6" text-anchor="middle">
+        Your daily dose of Hacker News
+      </text>
+      <!-- Main layer -->
+      <text x="142" y="115" font-family="Verdana, Geneva, sans-serif" font-size="59" fill="#ffb280" text-anchor="middle">
+        Your daily dose of Hacker News
+      </text>
+    </g>
+  </g>
+</svg>
