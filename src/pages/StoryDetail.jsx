@@ -1,20 +1,9 @@
 import { useParams, Link } from 'react-router-dom';
 import { useMemo, useEffect } from 'react';
 import { useStoryWithComments } from '../hooks/useStoryWithComments';
-import { CommentTree, StoryDetailSkeleton, CommentSkeleton } from '../components';
+import { CommentTree, StoryDetailSkeleton, CommentSkeletonTree } from '../components';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
-
-// Skeleton for just the comments section
-function CommentsSkeleton() {
-  return (
-    <div className="space-y-4">
-      {[...Array(5)].map((_, i) => (
-        <CommentSkeleton key={i} />
-      ))}
-    </div>
-  );
-}
 
 export function StoryDetail() {
   const { id } = useParams();
@@ -77,8 +66,6 @@ export function StoryDetail() {
           {story.url ? (
             <a
               href={story.url}
-              target="_blank"
-              rel="noopener noreferrer"
               className="hover:text-hn-orange transition-colors"
             >
               {story.title}
@@ -129,7 +116,7 @@ export function StoryDetail() {
       {/* Comments section - progressive loading */}
       <section>
         {commentsLoading && !comments ? (
-          <CommentsSkeleton />
+          <CommentSkeletonTree count={12} />
         ) : (
           <CommentTree comments={comments || []} />
         )}

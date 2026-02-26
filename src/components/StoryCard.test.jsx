@@ -73,8 +73,8 @@ describe('StoryCard', () => {
       
       const titleLink = screen.getByRole('link', { name: 'Test Story Title' });
       expect(titleLink).toHaveAttribute('href', 'https://example.com/article');
-      expect(titleLink).toHaveAttribute('target', '_blank');
-      expect(titleLink).toHaveAttribute('rel', 'noopener noreferrer');
+      // Links navigate away from app (like original HN)
+      expect(titleLink).not.toHaveAttribute('target', '_blank');
     });
 
     it('renders internal link for text stories (no URL)', () => {

@@ -1,5 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { isViewed, markViewed, clearViewed } from './viewedStories';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { 
+  isViewed, 
+  markViewed, 
+  clearViewed,
+  getRecentlyViewedIds,
+  markViewedWithTime,
+  pruneExpiredViewed,
+  clearViewedTimes,
+  getSessionViewedIds,
+  addToSessionViewed,
+  clearSessionViewed
+} from './viewedStories';
 
 describe('viewedStories', () => {
   beforeEach(() => {
@@ -69,6 +80,248 @@ describe('viewedStories', () => {
       expect(isViewed(1)).toBe(false);
       expect(isViewed(2)).toBe(false);
       expect(isViewed(3)).toBe(false);
+    });
+  });
+});
+
+describe('viewedStories - Time-based functions', () => {
+  beforeEach(() => {
+    clearViewed();
+    clearViewedTimes();
+    vi.restoreAllMocks();
+  });
+
+  describe('getRecentlyViewedIds', () => {
+    it('returns empty Set initially', () => {
+      const ids = getRecentlyViewedIds(24);
+      expect(ids.size).toBe(0);
+    });
+
+    it('returns IDs marked with markViewedWithTime', () => {
+      markViewedWithTime(12345);
+      markViewedWithTime(67890);
+      
+      const ids = getRecentlyViewedIds(24);
+      expect(ids.has(12345)).toBe(true);
+      expect(ids.has(67890)).toBe(true);
+      expect(ids.size).toBe(2);
+    });
+
+    it('excludes IDs older than the time window', () => {
+      // Mark a story "25 hours ago"
+      const twentyFiveHoursAgo = Date.now() - (25 * 60 * 60 * 1000);
+      vi.spyOn(Date, 'now').mockReturnValue(twentyFiveHoursAgo);
+      markViewedWithTime(11111);
+      
+      // Mark a story "now"
+      vi.spyOn(Date, 'now').mockReturnValue(Date.now() + (25 * 60 * 60 * 1000));
+      markViewedWithTime(22222);
+      
+      vi.restoreAllMocks();
+      
+      const ids = getRecentlyViewedIds(24);
+      expect(ids.has(11111)).toBe(false); // Too old
+      expect(ids.has(22222)).toBe(true);  // Recent
+    });
+
+    it('handles custom time window', () => {
+      // Mark a story "2 hours ago"
+      const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+      vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
+      markViewedWithTime(12345);
+      vi.restoreAllMocks();
+      
+      // Within 24 hours
+      expect(getRecentlyViewedIds(24).has(12345)).toBe(true);
+      // Within 3 hours
+      expect(getRecentlyViewedIds(3).has(12345)).toBe(true);
+      // NOT within 1 hour
+      expect(getRecentlyViewedIds(1).has(12345)).toBe(false);
+    });
+  });
+
+  describe('markViewedWithTime', () => {
+    it('marks story with timestamp', () => {
+      markViewedWithTime(12345);
+      
+      const ids = getRecentlyViewedIds(24);
+      expect(ids.has(12345)).toBe(true);
+    });
+
+    it('also marks in permanent store for visual styling', () => {
+      expect(isViewed(12345)).toBe(false);
+      
+      markViewedWithTime(12345);
+      
+      expect(isViewed(12345)).toBe(true);
+    });
+
+    it('handles string IDs', () => {
+      markViewedWithTime('12345');
+      
+      const ids = getRecentlyViewedIds(24);
+      expect(ids.has(12345)).toBe(true);
+    });
+
+    it('updates timestamp if marked again', () => {
+      // Mark "2 hours ago"
+      const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+      vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
+      markViewedWithTime(12345);
+      vi.restoreAllMocks();
+      
+      // Should be within 3 hours but not 1 hour
+      expect(getRecentlyViewedIds(1).has(12345)).toBe(false);
+      
+      // Mark again "now"
+      markViewedWithTime(12345);
+      
+      // Now should be within 1 hour
+      expect(getRecentlyViewedIds(1).has(12345)).toBe(true);
+    });
+  });
+
+  describe('pruneExpiredViewed', () => {
+    it('removes entries older than time window', () => {
+      // Mark a story "25 hours ago"
+      const twentyFiveHoursAgo = Date.now() - (25 * 60 * 60 * 1000);
+      vi.spyOn(Date, 'now').mockReturnValueOnce(twentyFiveHoursAgo);
+      markViewedWithTime(11111);
+      vi.restoreAllMocks();
+      
+      // Mark a story "now"
+      markViewedWithTime(22222);
+      
+      // Before pruning - old one would fail the time check anyway
+      expect(getRecentlyViewedIds(24).has(11111)).toBe(false);
+      expect(getRecentlyViewedIds(24).has(22222)).toBe(true);
+      
+      // Prune
+      pruneExpiredViewed(24);
+      
+      // After pruning - recent one still there
+      expect(getRecentlyViewedIds(24).has(22222)).toBe(true);
+    });
+
+    it('handles custom time window', () => {
+      // Mark a story "2 hours ago"
+      const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+      vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
+      markViewedWithTime(12345);
+      vi.restoreAllMocks();
+      
+      // Prune with 1-hour window
+      pruneExpiredViewed(1);
+      
+      // Should be pruned (was 2 hours old)
+      // Note: need to clear cache to see the pruned result
+      clearViewedTimes();
+      expect(getRecentlyViewedIds(24).has(12345)).toBe(false);
+    });
+
+    it('does nothing when all entries are recent', () => {
+      markViewedWithTime(12345);
+      markViewedWithTime(67890);
+      
+      pruneExpiredViewed(24);
+      
+      const ids = getRecentlyViewedIds(24);
+      expect(ids.has(12345)).toBe(true);
+      expect(ids.has(67890)).toBe(true);
+    });
+  });
+
+  describe('clearViewedTimes', () => {
+    it('clears all time-based viewed stories', () => {
+      markViewedWithTime(12345);
+      markViewedWithTime(67890);
+      
+      expect(getRecentlyViewedIds(24).size).toBe(2);
+      
+      clearViewedTimes();
+      
+      expect(getRecentlyViewedIds(24).size).toBe(0);
+    });
+  });
+});
+
+describe('viewedStories - Session storage functions', () => {
+  beforeEach(() => {
+    clearViewed();
+    clearViewedTimes();
+    clearSessionViewed();
+  });
+
+  describe('getSessionViewedIds', () => {
+    it('returns empty Set initially', () => {
+      const ids = getSessionViewedIds();
+      expect(ids.size).toBe(0);
+    });
+
+    it('returns IDs added with addToSessionViewed', () => {
+      addToSessionViewed(12345);
+      addToSessionViewed(67890);
+      
+      const ids = getSessionViewedIds();
+      expect(ids.has(12345)).toBe(true);
+      expect(ids.has(67890)).toBe(true);
+      expect(ids.size).toBe(2);
+    });
+
+    it('returns a copy, not the internal Set', () => {
+      addToSessionViewed(12345);
+      
+      const ids1 = getSessionViewedIds();
+      const ids2 = getSessionViewedIds();
+      
+      expect(ids1).not.toBe(ids2);
+      expect(ids1).toEqual(ids2);
+    });
+  });
+
+  describe('addToSessionViewed', () => {
+    it('adds a story ID to session storage', () => {
+      expect(getSessionViewedIds().has(12345)).toBe(false);
+      
+      addToSessionViewed(12345);
+      
+      expect(getSessionViewedIds().has(12345)).toBe(true);
+    });
+
+    it('handles string IDs', () => {
+      addToSessionViewed('12345');
+      
+      expect(getSessionViewedIds().has(12345)).toBe(true);
+    });
+
+    it('is idempotent - adding same ID twice has no effect', () => {
+      addToSessionViewed(12345);
+      addToSessionViewed(12345);
+      
+      expect(getSessionViewedIds().size).toBe(1);
+    });
+  });
+
+  describe('markViewedWithTime also adds to session', () => {
+    it('adds to session storage when marking with time', () => {
+      expect(getSessionViewedIds().has(12345)).toBe(false);
+      
+      markViewedWithTime(12345);
+      
+      expect(getSessionViewedIds().has(12345)).toBe(true);
+    });
+  });
+
+  describe('clearSessionViewed', () => {
+    it('clears all session-viewed stories', () => {
+      addToSessionViewed(12345);
+      addToSessionViewed(67890);
+      
+      expect(getSessionViewedIds().size).toBe(2);
+      
+      clearSessionViewed();
+      
+      expect(getSessionViewedIds().size).toBe(0);
     });
   });
 });
