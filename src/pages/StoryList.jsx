@@ -84,7 +84,7 @@ export function StoryList({ type }) {
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
       {stories.length === 0 && loading ? (
-        <StoryCardSkeletonList count={8} />
+        <StoryCardSkeletonList count={12} />
       ) : (
         <>
           <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800/50">

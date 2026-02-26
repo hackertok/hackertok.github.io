@@ -95,8 +95,6 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
           {story.url ? (
             <a
               href={story.url}
-              target="_blank"
-              rel="noopener noreferrer"
               className="story-link"
             >
               {story.title}
