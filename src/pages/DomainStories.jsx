@@ -3,11 +3,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
 import { ALGOLIA_API } from '../config/api';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 export function DomainStories() {
   // Use wildcard param to capture paths like github.com/foo
   const params = useParams();
   const domain = params['*'] || '';
+  
+  // Set document title to show which domain
+  useDocumentTitle(domain ? `Stories from ${domain}` : 'Domain Stories');
   const [stories, setStories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

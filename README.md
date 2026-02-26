@@ -1,47 +1,50 @@
-# HackerTok
+<div id="banner" align="center">
 
-A TikTok-style Hacker News reader with infinite scroll and dark mode.
+<img src="public/icons/og-image.svg" alt="HackerTok" />
 
-## Features
+</div>
 
-- **Infinite Scroll** - Endlessly scroll through stories, TikTok-style
-- **Dark/Light Mode** - Toggle between themes or use system preference
-- **Top Stories** - Live front page stories from Firebase API
-- **Best Stories** - High-scoring stories with infinite scroll
-- **Show HN** - Community projects you can try, ranked by HN's gravity algorithm
-- **Ask HN** - Community discussions and questions, ranked by HN's gravity algorithm
-- **Domain Stories** - Click on any hostname to see all stories from that domain
-- **Threaded Comments** - Collapsible comment threads with proper nesting
-- **Mobile-First Design** - Responsive and touch-friendly with auto-hiding header
+## Overview
 
-## Development
+HackerTok reimagines Hacker News with a modern, fluid interface. Swipe or scroll through stories, read comments,
+and discover content — all in a snappy, installable PWA.
 
-```bash
-# Install dependencies
-npm install
+## ✨ Features
 
-# Start dev server
-npm run dev
+| Feature                | Description                              |
+|------------------------|------------------------------------------|
+| ♾️ **Endless Stories** | Swipe on mobile, scroll on desktop       |
+| 🌙 **Dark/Light Mode** | Toggle themes or use system preference   |
+| 📱 **Responsive**      | Works beautifully on any device          |
+| 🔒 **Privacy First**   | No ads, no tracking                      |
+| 🎯 **Focused Feed**    | Filters out job posts and hiring threads |
+| ⚖️ **Open Source**     | Free as in freedom                       |
 
-# Build for production
-npm run build
+## 📦 Scripts
 
-# Preview production build
-npm run preview
-```
+| Command                 | Description                         |
+|-------------------------|-------------------------------------|
+| `npm run dev`           | Start development server with HMR   |
+| `npm run build`         | Build for production                |
+| `npm run preview`       | Preview production build locally    |
+| `npm run test`          | Run tests in watch mode             |
+| `npm run test:coverage` | Run tests with coverage report      |
+| `npm run icons`         | Generate PNG icons from SVG sources |
+| `npm run lint`          | Lint code with ESLint               |
 
-## Testing
+## 📜 License
 
-```bash
-# Run tests in watch mode
-npm test
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).
 
-# Run tests once (CI mode)
-npm run test:run
+You are free to use, modify, and distribute this software under the terms of the AGPL-3.0. If you run a modified version
+of this software as a network service, you must make the complete source code available to users of that service.
 
-# Run tests with UI
-npm run test:ui
+---
 
-# Run tests with coverage
-npm run test:coverage
-```
+<div align="center">
+
+**[⬆ Back to Top](#banner)**
+
+Made with ❤️ for the HN community
+
+</div>

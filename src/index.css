@@ -84,7 +84,7 @@
   height: 100%;
   scroll-snap-align: start;
   /* scroll-snap-stop: always prevents "passing over" panels on fast swipe,
-     ensuring TikTok-style one-story-at-a-time navigation */
+     ensuring one-story-at-a-time navigation */
   scroll-snap-stop: always;
   overflow-y: auto;
   overflow-x: hidden;
