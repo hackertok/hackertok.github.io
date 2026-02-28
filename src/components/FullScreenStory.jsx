@@ -34,12 +34,16 @@ export function FullScreenStorySkeleton() {
  * Full-screen story component for swipe viewer
  * Displays story details and comments
  * @param {object} story - Optional pre-loaded story data (avoids redundant fetch)
+ * @param {boolean} isPriority - If true (current story), fetch immediately; if false, wait for priority to complete
+ * @param {boolean} deferComments - If true, skip comment fetch (for far panels)
  */
-export function FullScreenStory({ storyId, story: initialStory }) {
+export function FullScreenStory({ storyId, story: initialStory, isPriority = true, deferComments = false }) {
   // Skip ordering completion on mobile - users swipe fast, deep comment order doesn't matter
   const { story, comments, storyLoading, commentsLoading, error } = useStoryWithComments(storyId, {
     initialStory,
     skipOrderingCompletion: true,
+    isPriority,
+    deferComments,
   });
 
   // Sanitize story text

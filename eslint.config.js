@@ -44,6 +44,9 @@ export default defineConfig([
         ignoreRestSiblings: true,
       }],
       'react/prop-types': 'off', // Using modern React without PropTypes (TypeScript is the modern alternative)
+      // Disable React Compiler rule - not using React Compiler in this project.
+      // useLayoutEffect + setState is a valid pattern per React docs (e.g., tooltip positioning).
+      'react-hooks/set-state-in-effect': 'off',
     },
   },
 ])

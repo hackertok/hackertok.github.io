@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { fetchTopStoriesAlgolia, fetchBestStories, fetchShowStories, fetchAskStories, prefetchStoryComments } from '../api/hn';
 import { getCachedStories, setCachedStories } from '../utils/storiesCache';
-import { setCachedStory } from '../utils/storyCache';
+import { setCachedStory, getCachedStory } from '../utils/storyCache';
 import { waitForPriorityFetch } from '../utils/fetchPriority';
 
 const ALL_SECTIONS = ['top', 'best', 'show', 'ask'];
@@ -9,13 +9,25 @@ const STAGGER_DELAY = 500; // ms between requests to be API-friendly
 const CACHE_FRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes - match storiesCache.js
 
 /**
- * Check if cache for a section is fresh (not expired)
+ * Get cached stories for a section (or null if not cached/stale)
  */
-function isCacheFresh(type) {
+function getCachedStoriesIfFresh(type) {
   const cached = getCachedStories(type);
-  if (!cached) return false;
+  if (!cached) return null;
   const age = Date.now() - cached.timestamp;
-  return age < CACHE_FRESH_THRESHOLD;
+  if (age >= CACHE_FRESH_THRESHOLD) return null;
+  return cached.stories;
+}
+
+/**
+ * Check if the first story's comments are cached and fresh
+ */
+function isFirstStoryCommentsCached(stories) {
+  if (!stories || stories.length === 0) return true; // Nothing to prefetch
+  const firstStory = stories[0];
+  if (!firstStory?.id) return true;
+  const cached = getCachedStory(firstStory.id);
+  return cached?.isFresh && cached?.comments;
 }
 
 /**
@@ -66,10 +78,14 @@ export function usePrefetchSections(currentType) {
     // Determine which sections to prefetch (all except current)
     const sectionsToFetch = ALL_SECTIONS.filter(type => type !== currentType);
     
-    // Filter out sections that already have fresh cache
-    const sectionsNeedingFetch = sectionsToFetch.filter(type => !isCacheFresh(type));
+    // Check which sections need work (either story list fetch OR first story comments prefetch)
+    const sectionsNeedingWork = sectionsToFetch.filter(type => {
+      const cachedStories = getCachedStoriesIfFresh(type);
+      // Need work if: no story list cache OR first story comments not cached
+      return !cachedStories || !isFirstStoryCommentsCached(cachedStories);
+    });
     
-    if (sectionsNeedingFetch.length === 0) {
+    if (sectionsNeedingWork.length === 0) {
       hasPrefetchedRef.current = true;
       return;
     }
@@ -88,36 +104,47 @@ export function usePrefetchSections(currentType) {
       
       if (cancelled) return;
       
-      for (let i = 0; i < sectionsNeedingFetch.length; i++) {
+      for (let i = 0; i < sectionsNeedingWork.length; i++) {
         if (cancelled) break;
         
-        const type = sectionsNeedingFetch[i];
+        const type = sectionsNeedingWork[i];
         
         // Skip if this is now the current section (user switched)
         if (type === currentTypeRef.current) continue;
         
-        // Skip if cache became fresh (another component loaded it)
-        if (isCacheFresh(type)) continue;
-        
         try {
-          const stories = await fetchFirstPage(type);
+          // Check if we have cached stories or need to fetch
+          let stories = getCachedStoriesIfFresh(type);
+          
+          if (!stories) {
+            // Need to fetch story list
+            stories = await fetchFirstPage(type);
+            
+            if (cancelled) break;
+            
+            // Cache the stories list
+            if (stories.length > 0 && type !== currentTypeRef.current) {
+              setCachedStories(type, stories);
+            }
+          }
           
           if (cancelled) break;
           
-          // Only cache if we got stories and type isn't current
+          // Prefetch first story's comments (even if list was cached)
           if (stories.length > 0 && type !== currentTypeRef.current) {
-            setCachedStories(type, stories);
-            
-            // Also prefetch the first story's comments for instant loading
             const firstStory = stories[0];
             if (firstStory?.id) {
-              try {
-                const result = await prefetchStoryComments(firstStory.id, null, 1);
-                if (result && !cancelled && type !== currentTypeRef.current) {
-                  setCachedStory(firstStory.id, result.story, result.comments, 1);
+              // Check if comments already cached
+              const cachedComments = getCachedStory(firstStory.id);
+              if (!cachedComments?.isFresh || !cachedComments?.comments) {
+                try {
+                  const result = await prefetchStoryComments(firstStory.id, null, 1);
+                  if (result && !cancelled && type !== currentTypeRef.current) {
+                    setCachedStory(firstStory.id, result.story, result.comments, 1);
+                  }
+                } catch {
+                  // Silently fail - comments prefetch is best-effort
                 }
-              } catch {
-                // Silently fail - comments prefetch is best-effort
               }
             }
           }
@@ -127,7 +154,7 @@ export function usePrefetchSections(currentType) {
         }
         
         // Stagger requests (but not after the last one)
-        if (i < sectionsNeedingFetch.length - 1 && !cancelled) {
+        if (i < sectionsNeedingWork.length - 1 && !cancelled) {
           await new Promise(resolve => setTimeout(resolve, STAGGER_DELAY));
         }
       }
