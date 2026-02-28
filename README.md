@@ -11,14 +11,15 @@ and discover content — all in a snappy, installable PWA.
 
 ## ✨ Features
 
-| Feature                | Description                              |
-|------------------------|------------------------------------------|
-| ♾️ **Endless Stories** | Swipe on mobile, scroll on desktop       |
-| 🌙 **Dark/Light Mode** | Toggle themes or use system preference   |
-| 📱 **Responsive**      | Works beautifully on any device          |
-| 🔒 **Privacy First**   | No ads, no tracking                      |
-| 🎯 **Focused Feed**    | Filters out job posts and hiring threads |
-| ⚖️ **Open Source**     | Free as in freedom                       |
+| Feature                | Description                                     |
+|------------------------|-------------------------------------------------|
+| ♾️ **Endless Stories** | Swipe on mobile, scroll on desktop              |
+| 🌙 **Dark/Light Mode** | Toggle themes or use system preference          |
+| 📱 **Responsive**      | Works beautifully on any device                 |
+| 🔒 **Privacy First**   | No ads, no tracking                             |
+| 🎯 **Focused Feed**    | Filters out job posts and hiring threads        |
+| ⚡ **Blazingly Fast**   | Stories and comments load before you even click |
+| ⚖️ **Open Source**     | Free as in freedom                              |
 
 ## 📦 Scripts
 
