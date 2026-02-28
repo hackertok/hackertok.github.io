@@ -2,14 +2,47 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📰</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="HackerTok - A mobile-friendly Hacker News reader with dark mode and infinite scroll" />
-    <meta name="theme-color" content="#ff6600" />
-    <!-- Preconnect to Firebase API for faster first request -->
+    
+    <!-- Primary Meta Tags -->
+    <title>HackerTok</title>
+    <meta name="title" content="HackerTok - Your daily dose of Hacker News" />
+    <meta name="description" content="A modern Hacker News client. Swipe or scroll through stories, read comments, and enjoy dark mode. Works beautifully on any device." />
+    
+    <!-- Theme Colors (with dark mode support) -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#030712" media="(prefers-color-scheme: dark)" />
+    
+    <!-- Favicons -->
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://hackertok.github.io/" />
+    <meta property="og:title" content="HackerTok - Your daily dose of Hacker News" />
+    <meta property="og:description" content="A modern Hacker News client. Swipe or scroll through stories, read comments, and enjoy dark mode. Works beautifully on any device." />
+    <meta property="og:image" content="https://hackertok.github.io/icons/og-image.png" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://hackertok.github.io/" />
+    <meta name="twitter:title" content="HackerTok - Your daily dose of Hacker News" />
+    <meta name="twitter:description" content="A modern Hacker News client. Swipe or scroll through stories, read comments, and enjoy dark mode. Works beautifully on any device." />
+    <meta name="twitter:image" content="https://hackertok.github.io/icons/og-image.png" />
+    
+    <!-- Preconnect to APIs for faster first request -->
+    <!-- Algolia first: homepage uses it for initial stories -->
+    <link rel="preconnect" href="https://hn.algolia.com" />
+    <link rel="dns-prefetch" href="https://hn.algolia.com" />
+    <!-- Firebase: used for comments and other sections -->
     <link rel="preconnect" href="https://hacker-news.firebaseio.com" />
     <link rel="dns-prefetch" href="https://hacker-news.firebaseio.com" />
-    <title>HackerTok</title>
+    
     <script>
       // Prevent flash of wrong theme
       (function() {

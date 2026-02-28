@@ -2,8 +2,13 @@ import { useEffect, useRef, useLayoutEffect } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { STORY_TYPE_TITLES } from '../config/storyTypes';
 
 export function StoryList({ type }) {
+  // Set document title based on section type
+  useDocumentTitle(STORY_TYPE_TITLES[type]);
+  
   const { 
     stories, 
     loading, 
