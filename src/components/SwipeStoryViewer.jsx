@@ -4,14 +4,16 @@ import { useInfiniteStories } from '../hooks/useInfiniteStories';
 import { useScrollContainer } from '../context/ScrollContainerContext';
 import { usePrefetchStories } from '../hooks/usePrefetchStory';
 import { usePrefetchSections } from '../hooks/usePrefetchSections';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { fetchStoryOnly } from '../api/hn';
 import { getRecentlyViewedIds, getSessionViewedIds, markViewedWithTime } from '../utils/viewedStories';
+import { STORY_TYPE_TITLES } from '../config/storyTypes';
 import { FullScreenStory, FullScreenStorySkeleton } from './FullScreenStory';
 import { Spinner } from './Spinner';
 
 /**
- * TikTok-style horizontal swipe story viewer for mobile
- * Uses CSS Scroll Snap for native, smooth horizontal swiping (industry standard)
+ * Full-screen horizontal swipe story viewer for mobile
+ * Uses CSS Scroll Snap for native, smooth horizontal swiping
  * - Horizontal swipe: CSS Scroll Snap handles navigation natively
  * - Vertical scroll: Each story panel scrolls independently
  * - URL updates on each story change
@@ -78,6 +80,10 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
     // Fallback: if all filtered out, show everything
     return filtered.length > 0 ? filtered : result;
   }, [injectedStory, stories, initialStoryId, sessionViewedOnMount, recentlyViewedOnMount]);
+  
+  // Get current story for document title (updates as user swipes)
+  const currentStory = mergedStories[currentIndex];
+  useDocumentTitle(currentStory?.title || STORY_TYPE_TITLES[type]);
   
   // Keep refs in sync for scroll handler (avoids recreating listener on state changes)
   // useLayoutEffect ensures refs are updated synchronously before any scroll events fire

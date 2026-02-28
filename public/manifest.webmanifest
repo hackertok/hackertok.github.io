@@ -1,0 +1,56 @@
+{
+  "name": "HackerTok - Your daily dose of Hacker News",
+  "short_name": "HackerTok",
+  "description": "A modern Hacker News client. Swipe or scroll through stories, read comments, and enjoy dark mode. Works beautifully on any device.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#030712",
+  "background_color": "#ff6600",
+  "categories": ["news", "social"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Best Stories",
+      "short_name": "Best",
+      "description": "View the highest-scored stories",
+      "url": "/#/best",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Ask HN",
+      "short_name": "Ask",
+      "description": "Community questions and discussions",
+      "url": "/#/ask",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Show HN",
+      "short_name": "Show",
+      "description": "Community projects and demos",
+      "url": "/#/show",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
