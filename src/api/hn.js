@@ -555,13 +555,19 @@ export async function prefetchStoryComments(id, signal, maxOrderingDepth = Infin
 }
 
 // Fetch comments for a story (separate from story fetch)
-export async function fetchCommentsForStory(id, maxDepth = 3) {
+// Accepts optional AbortSignal for cancellation
+export async function fetchCommentsForStory(id, maxDepth = 3, signal = null) {
   const storyId = parseInt(id, 10);
+  
+  // Check abort before starting
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
   
   // Fetch story (for kids order) and comments in parallel
   const [story, comments] = await Promise.all([
-    fetchItem(storyId),
-    fetchAllCommentsAlgolia(storyId),
+    fetchItem(storyId, signal),
+    fetchAllCommentsAlgolia(storyId, signal),
   ]);
   
   // Start with story's kids order for top-level comments
@@ -583,8 +589,13 @@ export async function fetchCommentsForStory(id, maxDepth = 3) {
     .filter(([parentId, count]) => count > 1 && parentId !== storyId)
     .map(([parentId]) => parentId);
   
+  // Check abort before expensive ordering operation
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+  
   // Fetch kids ordering for all parents that need it
-  const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder);
+  const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder, signal);
   nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
   
   return buildCommentTree(comments, storyId, maxDepth, kidsOrder);

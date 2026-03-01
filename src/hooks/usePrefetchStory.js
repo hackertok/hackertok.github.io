@@ -4,7 +4,7 @@ import { getCachedStory, setCachedStory } from '../utils/storyCache';
 import { isPriorityFetchActive, onPriorityFetchChange } from '../utils/fetchPriority';
 
 // Maximum concurrent prefetches
-const MAX_CONCURRENT = 2;
+const MAX_CONCURRENT = 3;
 
 // Priority queue for prefetching - lower index = higher priority (top of list)
 const prefetchQueue = new Map(); // storyId -> { index }
