@@ -8,6 +8,7 @@ export function ThemeToggle() {
       onClick={toggleTheme}
       className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+      data-testid="theme-toggle"
     >
       {theme === 'dark' ? (
         // Sun icon

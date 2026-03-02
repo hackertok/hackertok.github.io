@@ -26,7 +26,10 @@ function MobileStoryDetailWrapper() {
     // On mobile, show swipe viewer starting at this story
     // Use the type from navigation state, or default to 'top'
     const type = location.state?.from || 'top';
-    return <SwipeStoryViewer type={type} initialStoryId={id} />;
+    // key={type} forces a full remount when the section changes (e.g. browser back
+    // from best → top). Without it, React reuses the same SwipeStoryViewer instance
+    // since both URLs match /item/:id, leaving stale stories from the old section.
+    return <SwipeStoryViewer key={type} type={type} initialStoryId={id} />;
   }
   
   return <StoryDetail key={id} />;
