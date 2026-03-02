@@ -45,6 +45,29 @@ export const mockAlgoliaStory = {
   _tags: ['story', 'front_page'],
 };
 
+// Additional front page stories (Algolia format)
+export const mockAlgoliaStory2 = {
+  objectID: '12346',
+  title: 'Second Test Story',
+  url: 'https://example.com/article2',
+  author: 'testuser2',
+  points: 85,
+  created_at_i: Math.floor(Date.now() / 1000) - 7200,
+  num_comments: 8,
+  _tags: ['story', 'front_page'],
+};
+
+export const mockAlgoliaStory3 = {
+  objectID: '12347',
+  title: 'Third Test Story',
+  url: 'https://example.com/article3',
+  author: 'testuser3',
+  points: 72,
+  created_at_i: Math.floor(Date.now() / 1000) - 10800,
+  num_comments: 5,
+  _tags: ['story', 'front_page'],
+};
+
 // Show HN story (Algolia format)
 export const mockShowHNStory = {
   objectID: '99999',
@@ -170,8 +193,8 @@ export const handlers = [
     
     if (tags?.includes('front_page')) {
       return HttpResponse.json({
-        hits: [mockAlgoliaStory],
-        nbHits: 1,
+        hits: [mockAlgoliaStory, mockAlgoliaStory2, mockAlgoliaStory3],
+        nbHits: 3,
         page: 0,
         nbPages: 1,
         hitsPerPage: 20,

@@ -10,8 +10,9 @@ export function StoryDetail() {
   const { id } = useParams();
   const { story, comments, storyLoading, commentsLoading, error } = useStoryWithComments(id);
   
-  // Set document title to story title
-  useDocumentTitle(story?.title);
+  // Set document title to story title, or 'Story not found' on error/missing
+  const documentTitle = (error || (!storyLoading && !story)) ? 'Story not found' : story?.title;
+  useDocumentTitle(documentTitle);
   
   // Scroll to top on navigation
   useEffect(() => {
