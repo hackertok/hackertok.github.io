@@ -88,7 +88,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
   }, [stopPrefetch]);
 
   return (
-    <article ref={setRefs} className="py-3 first:pt-0">
+    <article ref={setRefs} className="py-3 first:pt-0" data-testid="story-card" data-story-id={story.id} data-viewed={viewed}>
       <div className="space-y-1">
         {/* Title with hostname */}
         <h2 className="text-[15px] leading-snug font-semibold">

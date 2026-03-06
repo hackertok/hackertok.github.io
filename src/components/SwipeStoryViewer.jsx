@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 import { useScrollContainer } from '../context/ScrollContainerContext';
 import { usePrefetchStories } from '../hooks/usePrefetchStory';
@@ -34,6 +34,7 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [injectedStory, setInjectedStory] = useState(null);
   const [injectedLoading, setInjectedLoading] = useState(false);
+  const [injectedError, setInjectedError] = useState(null); // Error when direct-linked story not found
   // anchorStoryId: The story that should be at index 0.
   // Only set on FRESH direct links (shared/bookmarked URLs with no location.state).
   // When returning from external URL, location.state is preserved from our earlier navigation,
@@ -52,6 +53,7 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
   // Tracks whether WE caused the URL change (vs browser back/forward).
   // When true, sync effect should skip re-initialization since we're already at correct position.
   const isOurNavigationRef = useRef(false);
+
   // Refs for scroll handler to avoid recreating listener on state changes
   const currentIndexRef = useRef(currentIndex);
   const storiesLengthRef = useRef(0);
@@ -110,7 +112,8 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
   
   // Get current story for document title (updates as user swipes)
   const currentStory = mergedStories[currentIndex];
-  useDocumentTitle(currentStory?.title || STORY_TYPE_TITLES[type]);
+  const documentTitle = injectedError ? 'Story not found' : (currentStory?.title || STORY_TYPE_TITLES[type]);
+  useDocumentTitle(documentTitle);
   
   // Keep refs in sync for scroll handler (avoids recreating listener on state changes)
   // useLayoutEffect ensures refs are updated synchronously before any scroll events fire
@@ -150,14 +153,19 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
   
   // Fetch story if initialStoryId is not in the feed list
   useEffect(() => {
-    if (!initialStoryId || stories.length === 0) return;
+    if (!initialStoryId) return;
     
+    // Don't wait for stories to load - fetch immediately if this is a direct navigation
     const storyInList = stories.some(s => String(s.id) === String(initialStoryId));
     if (storyInList) {
       // Story found in feed, clear any injected story (use rAF to avoid sync setState)
       if (injectedStory && String(injectedStory.id) === String(initialStoryId)) {
         requestAnimationFrame(() => setInjectedStory(null));
       }
+      // Clear stale state from a previous failed navigation (e.g. back from /item/99999999).
+      // Reset fetchedStoryIdRef so navigating forward to the failed story re-fetches it.
+      if (injectedError) setInjectedError(null);
+      fetchedStoryIdRef.current = null;
       return;
     }
     
@@ -168,7 +176,10 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
     // Mark that we're fetching this story
     fetchedStoryIdRef.current = String(initialStoryId);
     // Use queueMicrotask to avoid sync setState in effect (per eslint rule)
-    queueMicrotask(() => setInjectedLoading(true));
+    queueMicrotask(() => {
+      setInjectedLoading(true);
+      setInjectedError(null); // Clear stale error from previous fetch
+    });
     
     fetchStoryOnly(initialStoryId)
       .then(story => {
@@ -177,17 +188,18 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
         if (String(story.id) === fetchedStoryIdRef.current) {
           setInjectedStory(story);
           setInjectedLoading(false);
+          setInjectedError(null);
         }
       })
       .catch(err => {
         console.error('Failed to fetch story:', err);
-        // Only clear loading if this is still the story we want
+        // Only update state if this is still the story we want
         if (String(initialStoryId) === fetchedStoryIdRef.current) {
           setInjectedLoading(false);
+          setInjectedError(err.message || 'Story not found');
         }
-        // Story doesn't exist - continue with feed normally
       });
-  }, [initialStoryId, stories, injectedStory]);
+  }, [initialStoryId, stories, injectedStory, injectedError]);
   
   // Scroll to index 0 when injected story arrives and is anchored
   // This handles: user navigates to out-of-feed story, we fetch it, then scroll to it
@@ -285,6 +297,72 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
   const hasInitializedScrollRef = useRef(false);
   const pendingScrollToStoryIdRef = useRef(null);
   
+  // Handle navigation changes (browser back/forward, direct URL entry)
+  // IMPORTANT: This must be declared BEFORE the scroll-init effect below.
+  // useLayoutEffects run in declaration order. On browser back/forward, this handler
+  // scrolls directly when the target story is in the list. Only defers to scroll-init
+  // when stories haven't loaded yet.
+  useLayoutEffect(() => {
+    // Check if initialStoryId changed
+    if (lastInitialStoryIdRef.current !== initialStoryId) {
+      // Check if WE caused this navigation (via URL update effect)
+      if (isOurNavigationRef.current) {
+        // We're already at the correct position - just update tracking ref
+        isOurNavigationRef.current = false;
+        lastInitialStoryIdRef.current = initialStoryId;
+        return;
+      }
+      
+      lastInitialStoryIdRef.current = initialStoryId;
+      
+      if (initialStoryId) {
+        // Check if this is a fresh direct link (no location.state) or history navigation
+        const isHistoryNavigation = !!location.state?.from;
+        
+        if (isHistoryNavigation) {
+          // History navigation (browser back/forward, return from external)
+          // Clear stale anchor so scroll-init isn't blocked if we defer
+          if (anchorStoryId) setAnchorStoryId(null);
+          // Clear stale error (e.g. back from "story not found" page) so the
+          // scroll container renders on the next paint instead of the error div.
+          if (injectedError) setInjectedError(null);
+          
+          // Try to scroll directly to the story's position
+          const idx = mergedStories.findIndex(s => String(s.id) === String(initialStoryId));
+          if (idx >= 0 && containerRef.current) {
+            // Container is available — scroll directly
+            isScrollingProgrammatically.current = true;
+            setCurrentIndex(idx);
+            hasInitializedScrollRef.current = true;
+            containerRef.current.scrollTo({ left: idx * window.innerWidth, behavior: 'instant' });
+            // Clear flag after browser has processed the synchronous scroll
+            setTimeout(() => {
+              isScrollingProgrammatically.current = false;
+            }, 100);
+          } else {
+            // Story not in list yet OR container not available (e.g. error state clearing)
+            // — defer to scroll-init effect
+            pendingScrollToStoryIdRef.current = initialStoryId;
+            hasInitializedScrollRef.current = false;
+          }
+        } else {
+          // Fresh direct link (share/bookmark) - anchor so story is at index 0
+          setAnchorStoryId(initialStoryId);
+          isScrollingProgrammatically.current = true;
+          setCurrentIndex(0);
+          if (containerRef.current) {
+            containerRef.current.scrollTo({ left: 0, behavior: 'instant' });
+          }
+          setTimeout(() => {
+            isScrollingProgrammatically.current = false;
+          }, 100);
+        }
+      }
+    }
+  }, [initialStoryId, location.state, anchorStoryId, mergedStories, injectedError]);
+  
+  // Scroll-init: restore scroll position to the target story.
+  // Runs after the navigation handler above has set pendingScrollToStoryIdRef.
   useLayoutEffect(() => {
     // Skip if already initialized for this story, or if we're anchoring (story at index 0)
     if (hasInitializedScrollRef.current || anchorStoryId) return;
@@ -309,79 +387,16 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
       // Synchronous setState is intentional here - URL effect must see correct index immediately
       setCurrentIndex(idx);
       
-      requestAnimationFrame(() => {
-        if (containerRef.current) {
-          containerRef.current.scrollTo({ left: idx * window.innerWidth, behavior: 'instant' });
-        }
-        // Clear flag after scroll settles
-        setTimeout(() => {
-          isScrollingProgrammatically.current = false;
-        }, 100);
-      });
+      // Scroll synchronously in layout effect — DOM is committed, container is sized
+      if (containerRef.current) {
+        containerRef.current.scrollTo({ left: idx * window.innerWidth, behavior: 'instant' });
+      }
+      // Clear flag after browser has processed the synchronous scroll
+      setTimeout(() => {
+        isScrollingProgrammatically.current = false;
+      }, 100);
     }
   }, [mergedStories, initialStoryId, anchorStoryId]);
-  
-  // Handle navigation changes (browser back/forward, direct URL entry)
-  // When user swipes, WE update the URL (isOurNavigationRef=true) and skip this.
-  // When browser navigates, we either anchor (fresh link) or scroll to position (history nav).
-  useLayoutEffect(() => {
-    // Check if initialStoryId changed
-    if (lastInitialStoryIdRef.current !== initialStoryId) {
-      // Check if WE caused this navigation (via URL update effect)
-      if (isOurNavigationRef.current) {
-        // We're already at the correct position - just update tracking ref
-        isOurNavigationRef.current = false;
-        lastInitialStoryIdRef.current = initialStoryId;
-        return;
-      }
-      
-      lastInitialStoryIdRef.current = initialStoryId;
-      
-      if (initialStoryId) {
-        // Check if this is a fresh direct link (no location.state) or history navigation
-        const isHistoryNavigation = !!location.state?.from;
-        
-        if (isHistoryNavigation) {
-          // History navigation (browser back/forward, return from external)
-          // Check if navigating to the anchored story (it's already at index 0)
-          if (anchorStoryId && String(initialStoryId) === String(anchorStoryId)) {
-            // Anchored story is at index 0 - just scroll there
-            // Set flag BEFORE setCurrentIndex to block scroll events
-            isScrollingProgrammatically.current = true;
-            // Synchronous setState is intentional - URL effect must see correct index immediately
-            setCurrentIndex(0);
-            requestAnimationFrame(() => {
-              if (containerRef.current) {
-                containerRef.current.scrollTo({ left: 0, behavior: 'instant' });
-              }
-              setTimeout(() => {
-                isScrollingProgrammatically.current = false;
-              }, 100);
-            });
-          } else {
-            // Don't reorder - scroll to story's natural position
-            // Set pending scroll target for the scroll effect to pick up
-            pendingScrollToStoryIdRef.current = initialStoryId;
-            hasInitializedScrollRef.current = false; // Allow scroll effect to run
-          }
-        } else {
-          // Fresh direct link (share/bookmark) - anchor so story is at index 0
-          setAnchorStoryId(initialStoryId);
-          // Set flag BEFORE setCurrentIndex to block scroll events
-          isScrollingProgrammatically.current = true;
-          setCurrentIndex(0);
-          requestAnimationFrame(() => {
-            if (containerRef.current) {
-              containerRef.current.scrollTo({ left: 0, behavior: 'instant' });
-            }
-            setTimeout(() => {
-              isScrollingProgrammatically.current = false;
-            }, 100);
-          });
-        }
-      }
-    }
-  }, [initialStoryId, location.state, anchorStoryId]);
   
   // Handle scroll events to detect current story (CSS Scroll Snap handles the snapping)
   useEffect(() => {
@@ -468,6 +483,25 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
   
   // Update URL when currentIndex changes
   useEffect(() => {
+    // Don't update URL if we have an error (story not found)
+    if (injectedError) return;
+    
+    // Don't update URL while a programmatic scroll is in progress (e.g. scroll-init on
+    // refresh). currentIndex may not yet reflect the target position — writing the URL
+    // now would cause a brief flicker to the wrong story ID.
+    if (isScrollingProgrammatically.current) return;
+    
+    // If we have an initialStoryId from the URL, don't overwrite it until:
+    // 1. The story is found in the feed (user can swipe from it)
+    // 2. OR the story is resolved via fetch (injectedStory)
+    // This prevents the URL from reverting when navigating to a story not yet loaded
+    if (initialStoryId) {
+      const storyInFeed = mergedStories.some(s => String(s.id) === String(initialStoryId));
+      const storyInjected = injectedStory && String(injectedStory.id) === String(initialStoryId);
+      // If the target story isn't resolved yet, don't update URL
+      if (!storyInFeed && !storyInjected) return;
+    }
+    
     if (mergedStories.length > 0 && mergedStories[currentIndex]) {
       const storyId = mergedStories[currentIndex].id;
       const newPath = `/item/${storyId}`;
@@ -475,32 +509,63 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
       if (location.pathname !== newPath) {
         // Mark that WE are causing this navigation, so sync effect won't re-initialize
         isOurNavigationRef.current = true;
+        // Always replace: swipe-driven URL changes keep the URL in sync for
+        // sharing/bookmarking, but don't create history entries. Without this,
+        // Chrome's History Manipulation Intervention marks non-interaction pushState
+        // calls as skippable (scrollend → useEffect → navigate is too indirect),
+        // which breaks the back button entirely. Back navigates to the previous
+        // section instead.
         navigate(newPath, { 
           replace: true, 
           state: { from: type }
         });
       }
     }
-  }, [currentIndex, mergedStories, navigate, location.pathname, type]);
+  }, [currentIndex, mergedStories, navigate, location.pathname, type, injectedError, initialStoryId, injectedStory]);
   
-  // If we have an initialStoryId but stories haven't loaded yet, show that story directly
-  if (mergedStories.length === 0 && initialStoryId) {
+  // Story not found error (direct navigation to non-existent story)
+  if (injectedError) {
     return (
-      <div className="swipe-snap-container">
-        <div className="swipe-snap-panel">
-          <FullScreenStory
-            storyId={initialStoryId}
-          />
+      <div className="swipe-snap-container flex items-center justify-center min-h-screen" data-testid="swipe-container">
+        <div className="text-center px-4">
+          <p className="text-gray-500 dark:text-gray-400 mb-4">Story not found</p>
+          <Link
+            to="/"
+            className="text-hn-orange hover:underline"
+          >
+            Back to stories
+          </Link>
         </div>
       </div>
     );
   }
   
+  // Direct navigation to a specific story - wait until we resolve it
+  // This prevents falling through to showing first story in list while fetch is pending
+  // Only block if we're still trying to show the anchored story (initialStoryId matches).
+  // If the user navigated away (e.g. browser back), the anchor is stale — don't block.
+  if (anchorStoryId && String(initialStoryId) === String(anchorStoryId)) {
+    const anchorInFeed = mergedStories.some(s => String(s.id) === String(anchorStoryId));
+    const anchorIsInjected = injectedStory && String(injectedStory.id) === String(anchorStoryId);
+    
+    // If anchor story isn't resolved yet (not in feed, not injected), show loading skeleton
+    // This ensures we wait for fetchStoryOnly to complete before deciding what to show
+    if (!anchorInFeed && !anchorIsInjected) {
+      return (
+        <div className="swipe-snap-container" data-testid="swipe-container">
+          <div className="swipe-snap-panel" data-testid="swipe-panel">
+            <FullScreenStorySkeleton />
+          </div>
+        </div>
+      );
+    }
+  }
+  
   // Initial loading state (also show when fetching injected story)
   if (mergedStories.length === 0 && (loading || injectedLoading)) {
     return (
-      <div className="swipe-snap-container">
-        <div className="swipe-snap-panel">
+      <div className="swipe-snap-container" data-testid="swipe-container">
+        <div className="swipe-snap-panel" data-testid="swipe-panel">
           <FullScreenStorySkeleton />
         </div>
       </div>
@@ -510,7 +575,7 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
   // Error state
   if (error && mergedStories.length === 0) {
     return (
-      <div className="swipe-snap-container flex items-center justify-center">
+      <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
         <div className="text-center px-4">
           <p className="text-red-500 dark:text-red-400 mb-4">Failed to load stories</p>
           <button
@@ -533,6 +598,7 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
     <div 
       ref={containerRef}
       className="swipe-snap-container"
+      data-testid="swipe-container"
     >
       {mergedStories.map((story, index) => {
         // Only render FullScreenStory for panels within virtualization window
@@ -548,6 +614,8 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
           <div 
             key={story.id} 
             className="swipe-snap-panel"
+            data-testid="swipe-panel"
+            data-story-id={story.id}
           >
             {isWithinWindow ? (
               <FullScreenStory
@@ -566,7 +634,7 @@ export function SwipeStoryViewer({ type, initialStoryId }) {
       
       {/* Loading indicator at the end */}
       {loading && mergedStories.length > 0 && (
-        <div className="swipe-snap-panel flex items-center justify-center">
+        <div className="swipe-snap-panel flex items-center justify-center" data-testid="swipe-panel-loading">
           <Spinner />
         </div>
       )}
