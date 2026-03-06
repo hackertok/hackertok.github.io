@@ -4,7 +4,7 @@ import { useStoryWithComments } from '../hooks/useStoryWithComments';
 import { CommentTree, CommentSkeletonTree } from '../components';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
-import { markViewedWithTime } from '../utils/viewedStories';
+import { useIsViewed, markViewedWithTime } from '../utils/viewedStories';
 
 // Skeleton for the full story - fills viewport (mobile)
 export function FullScreenStorySkeleton() {
@@ -45,6 +45,9 @@ export function FullScreenStory({ storyId, story: initialStory, isPriority = tru
     isPriority,
     deferComments,
   });
+
+  // Reactive viewed status for title styling
+  const viewed = useIsViewed(storyId);
 
   // Sanitize story text
   const sanitizedText = useMemo(
@@ -92,7 +95,7 @@ export function FullScreenStory({ storyId, story: initialStory, isPriority = tru
       <div className="px-4 py-4">
         {/* Story header */}
         <article className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 leading-snug">
+          <h1 className={`text-lg font-semibold mb-2 leading-snug ${viewed ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100'}`}>
             {story.url ? (
               <a
                 href={story.url}

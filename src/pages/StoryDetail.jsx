@@ -5,9 +5,11 @@ import { CommentTree, StoryDetailSkeleton, CommentSkeletonTree } from '../compon
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useIsViewed, markViewedWithTime } from '../utils/viewedStories';
 
 export function StoryDetail() {
   const { id } = useParams();
+  const viewed = useIsViewed(id);
   const { story, comments, storyLoading, commentsLoading, error } = useStoryWithComments(id);
   
   // Set document title to story title, or 'Story not found' on error/missing
@@ -67,11 +69,12 @@ export function StoryDetail() {
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
       {/* Story header - shown immediately */}
       <article className="mb-6 pb-4 border-b border-gray-100 dark:border-gray-800">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 leading-snug">
+        <h1 className={`text-lg font-semibold mb-2 leading-snug ${viewed ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100'}`}>
           {story.url ? (
             <a
               href={story.url}
               className="hover:text-hn-orange transition-colors"
+              onClick={() => markViewedWithTime(story.id)}
             >
               {story.title}
             </a>
