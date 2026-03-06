@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react';
+
 /**
  * Track viewed stories in localStorage.
  * Simple append-only storage - story IDs are small (~8 bytes each).
@@ -13,6 +15,18 @@ let viewedSet = null;
 let viewedTimesCache = null;
 // Cache for session-viewed stories (current session only)
 let sessionViewedCache = null;
+
+// Listener set for useSyncExternalStore subscriptions
+const listeners = new Set();
+
+function subscribe(callback) {
+  listeners.add(callback);
+  return () => listeners.delete(callback);
+}
+
+function notifyListeners() {
+  listeners.forEach(cb => cb());
+}
 
 /**
  * Load viewed stories from localStorage into memory cache.
@@ -55,6 +69,7 @@ export function markViewed(storyId) {
   } catch {
     // localStorage full - silently fail
   }
+  notifyListeners();
 }
 
 /**
@@ -67,6 +82,17 @@ export function clearViewed() {
   } catch {
     // Silently fail
   }
+  notifyListeners();
+}
+
+/**
+ * React hook — reactively returns whether a story has been viewed.
+ * All components using this hook re-render when any story's viewed state changes.
+ * @param {number|string} storyId
+ * @returns {boolean}
+ */
+export function useIsViewed(storyId) {
+  return useSyncExternalStore(subscribe, () => isViewed(storyId));
 }
 
 // ============================================================================
