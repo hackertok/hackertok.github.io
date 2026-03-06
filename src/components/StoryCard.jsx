@@ -1,9 +1,9 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { usePrefetchStory, cancelAllPrefetches } from '../hooks/usePrefetchStory';
-import { isViewed, markViewed } from '../utils/viewedStories';
+import { useIsViewed, markViewed } from '../utils/viewedStories';
 
 export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate }) {
   const hostname = getHostname(story.url);
@@ -27,13 +27,12 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
     exitRef(node);
   }, [enterRef, exitRef]);
   
-  // Track viewed status locally for internal links only (initialized from localStorage)
-  const [viewed, setViewed] = useState(() => isViewed(story.id));
+  // Reactive viewed status from localStorage store
+  const viewed = useIsViewed(story.id);
   
   // Handle internal title click: mark as viewed, save session state and cancel prefetches
   const handleTitleClick = () => {
     markViewed(story.id);
-    setViewed(true);
     cancelAllPrefetches();
     if (onBeforeNavigate) {
       onBeforeNavigate();
@@ -45,7 +44,6 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
   const handleCommentsClick = () => {
     if (!story.url) {
       markViewed(story.id);
-      setViewed(true);
     }
     cancelAllPrefetches();
     if (onBeforeNavigate) {
@@ -95,7 +93,12 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
           {story.url ? (
             <a
               href={story.url}
-              className="story-link"
+              className={`hover:text-hn-orange transition-colors ${
+                viewed
+                  ? 'text-gray-500 dark:text-gray-500'
+                  : 'text-gray-900 dark:text-gray-100'
+              }`}
+              onClick={() => markViewed(story.id)}
             >
               {story.title}
             </a>

@@ -138,11 +138,11 @@ describe('StoryCard', () => {
       const commentsLink = screen.getByRole('link', { name: /42 comments/i });
       fireEvent.click(commentsLink);
       
-      // Re-render - external link titles don't have viewed state styling
+      // Re-render - external link titles now use viewed state styling too
       rerender(<StoryCard story={mockStory} />);
-      // For external links, title is an <a> not a Link, so no viewed styling applies
+      // External links use the same viewed-conditional classes
       const titleLink = screen.getByRole('link', { name: /Test Story/i });
-      expect(titleLink).toHaveClass('story-link');
+      expect(titleLink).toHaveClass('text-gray-900');
     });
   });
 
