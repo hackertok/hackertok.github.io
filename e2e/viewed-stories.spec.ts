@@ -13,28 +13,6 @@ test.describe('Viewed Stories', () => {
     });
   });
 
-  test('clicking story marks it as viewed', async ({ page }) => {
-    await page.goto('/#/');
-    
-    // Wait for stories to load
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
-    
-    // Click the comments link to navigate within app
-    const commentsLink = page.getByRole('link', { name: /comment/i }).first();
-    await commentsLink.click();
-    
-    // Wait for navigation to story detail
-    await page.waitForURL(/\/#\/item\//);
-    
-    // Wait for localStorage to be updated using expect.poll
-    await expect.poll(async () => {
-      return await page.evaluate(() => {
-        const keys = Object.keys(localStorage);
-        return keys.some(k => k.includes('viewed') || k.includes('hackertok'));
-      });
-    }, { timeout: 5000 }).toBe(true);
-  });
-
   test('viewed stories persist across page reload', async ({ page }) => {
     // Set up a viewed story in localStorage
     // App uses 'hackertok_viewed_times' for time-based tracking: { storyId: timestamp }

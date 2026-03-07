@@ -8,6 +8,7 @@ import { useSyncExternalStore } from 'react';
 const STORAGE_KEY = 'hackertok_viewed';
 const STORAGE_KEY_TIMES = 'hackertok_viewed_times';
 const SESSION_KEY = 'hackertok_session_viewed';
+const MAX_VIEWED_IDS = 50_000;
 
 // Cache the Set in memory for O(1) lookups during render
 let viewedSet = null;
@@ -64,6 +65,11 @@ export function markViewed(storyId) {
   
   set.add(id);
   
+  // Evict oldest entries if over limit (Set iterates in insertion order)
+  while (set.size > MAX_VIEWED_IDS) {
+    set.delete(set.values().next().value);
+  }
+  
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
   } catch {
@@ -76,7 +82,7 @@ export function markViewed(storyId) {
  * Clear all viewed stories (for testing/debugging).
  */
 export function clearViewed() {
-  viewedSet = new Set();
+  viewedSet = null;
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { StoryCard } from './StoryCard';
-import { clearViewed, markViewed } from '../utils/viewedStories';
+import { clearViewed, markViewedWithTime } from '../utils/viewedStories';
 
 describe('StoryCard', () => {
   const mockStory = {
@@ -101,7 +101,7 @@ describe('StoryCard', () => {
     });
 
     it('applies viewed styles when story was previously viewed', () => {
-      markViewed(mockTextStory.id);
+      markViewedWithTime(mockTextStory.id);
       render(<StoryCard story={mockTextStory} />);
       
       const titleLink = screen.getByRole('link', { name: /Ask HN/i });
