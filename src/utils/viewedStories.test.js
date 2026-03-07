@@ -65,6 +65,28 @@ describe('viewedStories', () => {
       markViewed(12345);
       expect(isViewed(12345)).toBe(true);
     });
+
+    it('evicts oldest entries when exceeding 50K cap', () => {
+      // Seed 50K IDs via localStorage, then let clearViewed invalidate the cache
+      const ids = Array.from({ length: 50_000 }, (_, i) => i + 1);
+      clearViewed(); // invalidates in-memory cache + clears localStorage
+      localStorage.setItem('hackertok_viewed', JSON.stringify(ids));
+      // clearViewed set viewedSet = null, so next access reloads from localStorage
+      
+      expect(isViewed(1)).toBe(true);
+      expect(isViewed(50_000)).toBe(true);
+
+      // Add one more — should evict ID 1 (oldest, first in Set iteration order)
+      markViewed(50_001);
+      
+      expect(isViewed(1)).toBe(false); // evicted
+      expect(isViewed(50_000)).toBe(true); // still there
+      expect(isViewed(50_001)).toBe(true); // newly added
+      
+      // Verify localStorage is also bounded
+      const stored = JSON.parse(localStorage.getItem('hackertok_viewed'));
+      expect(stored.length).toBe(50_000);
+    });
   });
 
   describe('clearViewed', () => {
