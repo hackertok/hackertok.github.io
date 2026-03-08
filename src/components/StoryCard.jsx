@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { usePrefetchStory, cancelAllPrefetches } from '../hooks/usePrefetchStory';
-import { useIsViewed, markViewed } from '../utils/viewedStories';
+import { useIsViewed, markViewedWithTime } from '../utils/viewedStories';
 
 export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate }) {
   const hostname = getHostname(story.url);
@@ -32,7 +32,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
   
   // Handle internal title click: mark as viewed, save session state and cancel prefetches
   const handleTitleClick = () => {
-    markViewed(story.id);
+    markViewedWithTime(story.id);
     cancelAllPrefetches();
     if (onBeforeNavigate) {
       onBeforeNavigate();
@@ -43,7 +43,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
   // For text posts (Ask HN), also mark as viewed since comments IS the content
   const handleCommentsClick = () => {
     if (!story.url) {
-      markViewed(story.id);
+      markViewedWithTime(story.id);
     }
     cancelAllPrefetches();
     if (onBeforeNavigate) {
@@ -98,7 +98,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
                   ? 'text-gray-500 dark:text-gray-500'
                   : 'text-gray-900 dark:text-gray-100'
               }`}
-              onClick={() => markViewed(story.id)}
+              onClick={() => markViewedWithTime(story.id)}
             >
               {story.title}
             </a>

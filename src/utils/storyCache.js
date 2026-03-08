@@ -6,7 +6,7 @@
 const CACHE_KEY_PREFIX = 'hackertok_story_';
 const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes - consider data "fresh"
 const CACHE_STALE_AGE = 24 * 60 * 60 * 1000; // 24 hours - max age before discarding
-const MAX_CACHED_STORIES = 50; // Limit to prevent localStorage bloat
+const MAX_CACHED_STORIES = 60; // Limit to prevent localStorage bloat
 
 /**
  * Get cached story with comments
