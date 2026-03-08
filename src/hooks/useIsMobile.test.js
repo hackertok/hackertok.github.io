@@ -1,92 +1,68 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useIsMobile } from './useIsMobile';
+
+// Mock matchMedia at module level BEFORE useIsMobile is imported,
+// since the hook reads matchMedia at module scope (not inside the hook).
+let currentMatches = false;
+const listeners = [];
+
+const matchMediaMock = vi.fn(() => ({
+  get matches() { return currentMatches; },
+  addEventListener: (event, callback) => {
+    listeners.push({ event, callback });
+  },
+  removeEventListener: (event, callback) => {
+    const idx = listeners.findIndex(l => l.callback === callback);
+    if (idx !== -1) listeners.splice(idx, 1);
+  },
+}));
+
+// Must be set before module import
+window.matchMedia = matchMediaMock;
+
+// Now import — module-level matchMedia() call will use our mock
+const { useIsMobile } = await import('./useIsMobile');
 
 describe('useIsMobile', () => {
-  let matchMediaMock;
-  let listeners = [];
-
   beforeEach(() => {
-    listeners = [];
-    matchMediaMock = vi.fn((query) => ({
-      matches: window.innerWidth <= 640,
-      media: query,
-      addEventListener: (event, callback) => {
-        listeners.push({ event, callback });
-      },
-      removeEventListener: (event, callback) => {
-        listeners = listeners.filter(l => l.callback !== callback);
-      },
-    }));
-    window.matchMedia = matchMediaMock;
+    listeners.length = 0;
+    currentMatches = false;
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('returns isMobile true when viewport is <= 640px', () => {
-    Object.defineProperty(window, 'innerWidth', { value: 640, writable: true });
-    
+  it('returns false when viewport is > 640px', () => {
+    currentMatches = false;
     const { result } = renderHook(() => useIsMobile());
-    
+    expect(result.current).toBe(false);
+  });
+
+  it('returns true when viewport is <= 640px', () => {
+    currentMatches = true;
+    const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(true);
   });
 
-  it('returns isMobile false when viewport is > 640px', () => {
-    Object.defineProperty(window, 'innerWidth', { value: 1024, writable: true });
-    matchMediaMock = vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    }));
-    window.matchMedia = matchMediaMock;
-    
-    const { result } = renderHook(() => useIsMobile());
-    
-    expect(result.current).toBe(false);
-  });
-
   it('updates when media query changes', () => {
-    Object.defineProperty(window, 'innerWidth', { value: 1024, writable: true });
-    matchMediaMock = vi.fn(() => ({
-      matches: false,
-      addEventListener: (event, callback) => {
-        listeners.push({ event, callback });
-      },
-      removeEventListener: vi.fn(),
-    }));
-    window.matchMedia = matchMediaMock;
-    
+    currentMatches = false;
     const { result } = renderHook(() => useIsMobile());
-    
     expect(result.current).toBe(false);
-    
+
     // Simulate viewport change to mobile
     act(() => {
+      currentMatches = true;
       listeners.forEach(l => {
-        if (l.event === 'change') {
-          l.callback({ matches: true });
-        }
+        if (l.event === 'change') l.callback();
       });
     });
-    
+
     expect(result.current).toBe(true);
   });
 
   it('cleans up listener on unmount', () => {
-    const removeEventListenerMock = vi.fn();
-    matchMediaMock = vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: removeEventListenerMock,
-    }));
-    window.matchMedia = matchMediaMock;
-    
     const { unmount } = renderHook(() => useIsMobile());
-    
+    const listenerCount = listeners.length;
+    expect(listenerCount).toBeGreaterThan(0);
+
     unmount();
-    
-    expect(removeEventListenerMock).toHaveBeenCalledWith('change', expect.any(Function));
+    expect(listeners.length).toBe(listenerCount - 1);
   });
 });

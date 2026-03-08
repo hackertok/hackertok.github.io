@@ -170,9 +170,9 @@ describe('storyCache', () => {
       expect(getCachedStory(123).orderedDepth).toBe(3);
     });
 
-    it('prunes old entries when exceeding MAX_CACHED_STORIES (50)', () => {
-      // Add 55 stories
-      for (let i = 0; i < 55; i++) {
+    it('prunes old entries when exceeding MAX_CACHED_STORIES (60)', () => {
+      // Add 65 stories
+      for (let i = 0; i < 65; i++) {
         setCachedStory(i, { id: i }, []);
         // Advance time slightly so each has different timestamp
         vi.advanceTimersByTime(100);
@@ -186,8 +186,8 @@ describe('storyCache', () => {
         }
       }
       
-      // Should have pruned down to ~50
-      expect(count).toBeLessThanOrEqual(51); // Allow some slack for timing
+      // Should have pruned down to ~60
+      expect(count).toBeLessThanOrEqual(61); // Allow some slack for timing
     });
 
     it('removes corrupted entries during pruning', () => {
