@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* global process */
 
 /**
  * Icon Generation Script
