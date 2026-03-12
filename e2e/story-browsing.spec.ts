@@ -6,32 +6,32 @@ import { setupApiMocks, setupApiMocksWithDelay } from './fixtures/api-mocks';
 // Use base test for most tests
 const test = baseTest;
 
-test.describe('Story Browsing', () => {
+test.describe('Item Browsing', () => {
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
   });
 
-  test('loads homepage with top stories and metadata', async ({ page }) => {
+  test('loads homepage with top items and metadata', async ({ page }) => {
     await page.goto('/#/');
     
-    // Stories are visible
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
-    await expect(page.getByText('Second Test Story')).toBeVisible();
+    // Items are visible
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default')).toBeVisible();
 
-    // Story metadata: points and author
-    await expect(page.getByText(/100 points/i)).toBeVisible();
-    await expect(page.getByText('testuser').first()).toBeVisible();
+    // Item metadata: points and author
+    await expect(page.getByText(/284 points/i)).toBeVisible();
+    await expect(page.getByText('leerob').first()).toBeVisible();
 
-    // Story links to external URL
-    const storyLink = page.getByRole('link', { name: 'Test Story Title' });
-    await expect(storyLink).toHaveAttribute('href', 'https://example.com/article');
+    // Item links to external URL
+    const itemLink = page.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
+    await expect(itemLink).toHaveAttribute('href', 'https://example.com/blog/rust');
 
     // Comment count
-    await expect(page.getByText(/10.*comments?/i).first()).toBeVisible();
+    await expect(page.getByText(/137.*comments?/i).first()).toBeVisible();
   });
 });
 
-test.describe('Story Browsing - Loading State', () => {
+test.describe('Item Browsing - Loading State', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
   test('shows loading skeletons before content loads', async ({ page }, testInfo) => {
@@ -52,14 +52,14 @@ test.describe('Story Browsing - Loading State', () => {
     await expect(skeleton).toBeVisible({ timeout: 2000 });
     
     // Wait for actual content to load
-    await expect(page.getByText('Test Story Title').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible({ timeout: 5000 });
     
     // Skeletons should be gone (check count is 0)
     await expect(page.locator('.animate-pulse')).toHaveCount(0);
   });
 });
 
-test.describe('Story Browsing - Desktop', () => {
+test.describe('Item Browsing - Desktop', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
   test.beforeEach(async ({ page }) => {
@@ -79,11 +79,11 @@ test.describe('Story Browsing - Desktop', () => {
     const swipeContainer = page.getByTestId('swipe-container');
     await expect(swipeContainer).not.toBeVisible();
     
-    // Should show regular story list
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
+    // Should show regular item list
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
   });
 
-  test('infinite scroll loads more stories at bottom', async ({ page }, testInfo) => {
+  test('infinite scroll loads more items at bottom', async ({ page }, testInfo) => {
     // Desktop only
     if (testInfo.project.name === 'mobile') {
       test.skip();
@@ -92,8 +92,8 @@ test.describe('Story Browsing - Desktop', () => {
     
     await page.goto('/#/');
     
-    // Wait for initial stories to load
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
+    // Wait for initial items to load
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
     // Scroll to the bottom to trigger infinite scroll
     // The StoryList component has a trigger element at the bottom
@@ -108,9 +108,9 @@ test.describe('Story Browsing - Desktop', () => {
     // Trigger another scroll to ensure we hit the intersection observer
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     
-    // Look for pagination stories that should load
-    // These come from the tags=story mock (day-based pagination)
-    await expect(page.getByText('Pagination Story One')).toBeVisible({ timeout: 5000 });
+    // Look for pagination items that should load
+    // These come from the tags=item mock (day-based pagination)
+    await expect(page.getByText('WebAssembly 2.0 Reaches W3C Recommendation')).toBeVisible({ timeout: 5000 });
   });
 });
 
@@ -119,7 +119,7 @@ test.describe('Story Browsing - Desktop', () => {
  * This fixture sets up routes on browserContext BEFORE page creation,
  * avoiding the race condition with page.route() + page.goto().
  */
-fixtureTest.describe('Story Browsing - Error Handling', () => {
+fixtureTest.describe('Item Browsing - Error Handling', () => {
   fixtureTest.use({ viewport: { width: 1280, height: 720 } });
 
   fixtureTest('shows error state with retry button', async ({ errorMockedPage }, testInfo) => {

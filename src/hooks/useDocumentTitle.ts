@@ -7,8 +7,8 @@ import { useEffect } from 'react';
  * @param {string} title - The page-specific title (without suffix)
  * 
  * @example
- * // Sets title to "Best Stories | HackerTok"
- * useDocumentTitle('Best Stories');
+ * // Sets title to "Best | HackerTok"
+ * useDocumentTitle('Best');
  * 
  * @example
  * // Sets title to just "HackerTok" when no title provided

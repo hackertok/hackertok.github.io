@@ -3,12 +3,12 @@ import { useInView } from 'react-intersection-observer';
 import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { STORY_TYPE_TITLES } from '../config/storyTypes';
-import type { StoryType } from '../types';
+import { FEED_TYPE_TITLES } from '../config/feedTypes';
+import type { FeedType } from '../types';
 
-export function StoryList({ type }: { type: StoryType }) {
+export function StoryList({ type }: { type: FeedType }) {
   // Set document title based on section type
-  useDocumentTitle(STORY_TYPE_TITLES[type]);
+  useDocumentTitle(FEED_TYPE_TITLES[type]);
   
   const { 
     stories, 
@@ -55,12 +55,12 @@ export function StoryList({ type }: { type: StoryType }) {
     }
   }, [isFromSession, initialScrollY, stories.length]);
 
-  // Load initial stories (or revalidate if showing cached data)
+  // Load initial items (or revalidate if showing cached data)
   // Skip if we restored from session - user is coming back, don't refetch
   useEffect(() => {
     if (isFromSession) return; // Don't refetch on back navigation
     
-    // Trigger load if no stories, OR if we have cached data that needs revalidation
+    // Trigger load if no items, OR if we have cached data that needs revalidation
     if ((stories.length === 0 || isFromCache) && !loading) {
       void loadMore();
     }

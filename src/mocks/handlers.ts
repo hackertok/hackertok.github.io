@@ -1,23 +1,23 @@
 import { http, HttpResponse } from 'msw';
 import { ALGOLIA_API, FIREBASE_API } from '../config/api';
 
-// Sample story data
-export const mockStory = {
+// Sample item data
+export const mockItem = {
   id: 12345,
-  title: 'Test Story Title',
-  url: 'https://example.com/article',
-  by: 'testuser',
-  score: 100,
+  title: 'Rust Is the Future of JavaScript Infrastructure',
+  url: 'https://leerob.io/blog/rust',
+  by: 'leerob',
+  score: 284,
   time: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
-  descendants: 10,
+  descendants: 137,
   kids: [1001, 1002, 1003],
   type: 'story',
 };
 
 export const mockComment = {
   id: 1001,
-  by: 'commenter1',
-  text: 'This is a test comment with <code>code</code> in it.',
+  by: 'patio11',
+  text: 'The wasm-bindgen approach is really interesting. It essentially lets you write Rust that compiles to WebAssembly and then generates <code>JS bindings</code> automatically.',
   time: Math.floor(Date.now() / 1000) - 1800,
   parent: 12345,
   kids: [2001],
@@ -26,106 +26,127 @@ export const mockComment = {
 
 export const mockNestedComment = {
   id: 2001,
-  by: 'commenter2',
-  text: 'This is a nested reply.',
+  by: 'tptacek',
+  text: 'Agreed. The DX improvements in the latest release are substantial.',
   time: Math.floor(Date.now() / 1000) - 900,
   parent: 1001,
   type: 'comment',
 };
 
-// Normalized story (Algolia format)
-export const mockAlgoliaStory = {
+// Algolia /items/{id} format for comment with children tree
+export const mockAlgoliaCommentItem = {
+  id: 1001,
+  type: 'comment',
+  author: 'patio11',
+  text: 'The wasm-bindgen approach is really interesting. It essentially lets you write Rust that compiles to WebAssembly and then generates <code>JS bindings</code> automatically.',
+  created_at_i: Math.floor(Date.now() / 1000) - 1800,
+  parent_id: 12345,
+  story_id: 12345,
+  children: [
+    {
+      id: 2001,
+      author: 'tptacek',
+      text: 'Agreed. The DX improvements in the latest release are substantial.',
+      created_at_i: Math.floor(Date.now() / 1000) - 900,
+      parent_id: 1001,
+      children: [],
+    },
+  ],
+};
+
+// Normalized item (Algolia format)
+export const mockAlgoliaItem1 = {
   objectID: '12345',
-  title: 'Test Story Title',
-  url: 'https://example.com/article',
-  author: 'testuser',
-  points: 100,
+  title: 'Rust Is the Future of JavaScript Infrastructure',
+  url: 'https://leerob.io/blog/rust',
+  author: 'leerob',
+  points: 284,
   created_at_i: Math.floor(Date.now() / 1000) - 3600,
-  num_comments: 10,
+  num_comments: 137,
   _tags: ['story', 'front_page'],
 };
 
-// Additional front page stories (Algolia format)
-export const mockAlgoliaStory2 = {
+// Additional front page items (Algolia format)
+export const mockAlgoliaItem2 = {
   objectID: '12346',
-  title: 'Second Test Story',
-  url: 'https://example.com/article2',
-  author: 'testuser2',
-  points: 85,
+  title: 'SQLite Does Not Do Full FSYNC by Default',
+  url: 'https://sqlite.org/draft/wal.html',
+  author: 'ingve',
+  points: 198,
   created_at_i: Math.floor(Date.now() / 1000) - 7200,
-  num_comments: 8,
+  num_comments: 73,
   _tags: ['story', 'front_page'],
 };
 
-export const mockAlgoliaStory3 = {
+export const mockAlgoliaItem3 = {
   objectID: '12347',
-  title: 'Third Test Story',
-  url: 'https://example.com/article3',
-  author: 'testuser3',
-  points: 72,
+  title: 'Why We Moved from React to htmx',
+  url: 'https://htmx.org/essays/react-to-htmx/',
+  author: 'carsongross',
+  points: 156,
   created_at_i: Math.floor(Date.now() / 1000) - 10800,
-  num_comments: 5,
+  num_comments: 241,
   _tags: ['story', 'front_page'],
 };
 
-// Show HN story (Algolia format)
-export const mockShowHNStory = {
+// Show HN item (Algolia format)
+export const mockShowHNItem1 = {
   objectID: '99999',
   title: 'Show HN: My Awesome Project',
-  url: 'https://example.com/show-hn-project',
-  author: 'showhnuser',
-  points: 150,
+  url: 'https://github.com/andydunstall/piko',
+  author: 'andydunstall',
+  points: 312,
   created_at_i: Math.floor(Date.now() / 1000) - 7200, // 2 hours ago
-  num_comments: 25,
+  num_comments: 89,
   _tags: ['story', 'show_hn'],
 };
 
-export const mockShowHNStory2 = {
+export const mockShowHNItem2 = {
   objectID: '99998',
   title: 'Show HN: Another Cool Demo',
-  url: 'https://example.com/show-hn-demo',
-  author: 'demouser',
-  points: 75,
+  url: 'https://github.com/opticdev/optic',
+  author: 'aidan_cully',
+  points: 143,
   created_at_i: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
-  num_comments: 12,
+  num_comments: 47,
   _tags: ['story', 'show_hn'],
 };
 
-// Ask HN story (Algolia format) - note: no URL (text posts)
-export const mockAskHNStory = {
+// Ask HN item (Algolia format) - note: no URL (text posts)
+export const mockAskHNItem1 = {
   objectID: '88888',
   title: 'Ask HN: What are you working on?',
   url: null, // Ask HN posts typically have no external URL
-  author: 'askhnuser',
-  points: 120,
+  author: 'whoishiring',
+  points: 245,
   created_at_i: Math.floor(Date.now() / 1000) - 7200, // 2 hours ago
-  num_comments: 89,
+  num_comments: 312,
   _tags: ['story', 'ask_hn'],
 };
 
-export const mockAskHNStory2 = {
+export const mockAskHNItem2 = {
   objectID: '88887',
   title: 'Ask HN: Best resources to learn Rust?',
   url: null,
   author: 'rustlearner',
-  points: 65,
+  points: 178,
   created_at_i: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
-  num_comments: 42,
+  num_comments: 95,
   _tags: ['story', 'ask_hn'],
 };
 
-// Top story IDs
-export const mockTopStoryIds = [12345, 12346, 12347, 12348, 12349];
+// Top item IDs
+export const mockTopItemIds = [12345, 12346, 12347, 12348, 12349];
 
 export const handlers = [
-  // Firebase: Get top stories
+  // Firebase: Get top items
   http.get(`${FIREBASE_API}/topstories.json`, () => {
-    return HttpResponse.json(mockTopStoryIds);
+    return HttpResponse.json(mockTopItemIds);
   }),
 
-  // Firebase: Get best stories
+  // Firebase: Get best items
   http.get(`${FIREBASE_API}/beststories.json`, () => {
-    return HttpResponse.json(mockTopStoryIds);
+    return HttpResponse.json(mockTopItemIds);
   }),
 
   // Firebase: Get individual item
@@ -133,7 +154,7 @@ export const handlers = [
     const id = parseInt(params.id as string, 10);
     
     if (id === 12345) {
-      return HttpResponse.json(mockStory);
+      return HttpResponse.json(mockItem);
     }
     if (id === 1001) {
       return HttpResponse.json(mockComment);
@@ -144,19 +165,21 @@ export const handlers = [
     if (id === 1002 || id === 1003) {
       return HttpResponse.json({
         id,
-        by: `commenter${id}`,
-        text: `Comment ${id}`,
+        by: id === 1002 ? 'jgrahamc' : 'dang',
+        text: id === 1002
+          ? 'This is a great point. The performance characteristics of the new compiler are impressive — especially the cold-start times.'
+          : 'We discussed this on HN a while back. The context from the original thread is worth reading.',
         time: Math.floor(Date.now() / 1000) - 600,
         parent: 12345,
         type: 'comment',
       });
     }
     
-    // Return a generic story for other IDs
+    // Return a generic item for other IDs
     return HttpResponse.json({
       id,
-      title: `Story ${id}`,
-      url: `https://example.com/story/${id}`,
+      title: `Item ${id}`,
+      url: `https://example.com/item/${id}`,
       by: 'testuser',
       score: 50,
       time: Math.floor(Date.now() / 1000) - 7200,
@@ -165,7 +188,7 @@ export const handlers = [
     });
   }),
 
-  // Algolia: Search (used for front page stories and show stories)
+  // Algolia: Search (used for front page items and show items)
   http.get(`${ALGOLIA_API}/search`, ({ request }) => {
     const url = new URL(request.url);
     const tags = url.searchParams.get('tags');
@@ -173,7 +196,7 @@ export const handlers = [
     
     if (tags?.includes('show_hn')) {
       return HttpResponse.json({
-        hits: [mockShowHNStory, mockShowHNStory2],
+        hits: [mockShowHNItem1, mockShowHNItem2],
         nbHits: 2,
         page: page,
         nbPages: 1,
@@ -183,7 +206,7 @@ export const handlers = [
     
     if (tags?.includes('ask_hn')) {
       return HttpResponse.json({
-        hits: [mockAskHNStory, mockAskHNStory2],
+        hits: [mockAskHNItem1, mockAskHNItem2],
         nbHits: 2,
         page: page,
         nbPages: 1,
@@ -193,7 +216,7 @@ export const handlers = [
     
     if (tags?.includes('front_page')) {
       return HttpResponse.json({
-        hits: [mockAlgoliaStory, mockAlgoliaStory2, mockAlgoliaStory3],
+        hits: [mockAlgoliaItem1, mockAlgoliaItem2, mockAlgoliaItem3],
         nbHits: 3,
         page: 0,
         nbPages: 1,
@@ -210,18 +233,33 @@ export const handlers = [
     });
   }),
 
-  // Algolia: Search by date (used for historical stories)
+  // Algolia: Search by date (used for historical items)
   http.get(`${ALGOLIA_API}/search_by_date`, ({ request }) => {
     const url = new URL(request.url);
     const query = url.searchParams.get('query') ?? '';
     
     return HttpResponse.json({
-      hits: query ? [mockAlgoliaStory] : [],
+      hits: query ? [mockAlgoliaItem1] : [],
       nbHits: query ? 1 : 0,
       page: 0,
       nbPages: query ? 1 : 0,
       hitsPerPage: 20,
     });
+  }),
+
+  // Algolia: Items endpoint (used for comment detail)
+  http.get(`${ALGOLIA_API}/items/:id`, ({ params }) => {
+    const id = parseInt(params.id as string, 10);
+
+    if (id === 1001) {
+      return HttpResponse.json(mockAlgoliaCommentItem);
+    }
+
+    // Return 404 for unknown items
+    return HttpResponse.json(
+      { status: 404, error: 'Item not found' },
+      { status: 404 }
+    );
   }),
 ];
 
@@ -230,7 +268,7 @@ export const handlers = [
  * Use server.use(...errorHandlers.notFound) in tests to override default handlers.
  */
 export const errorHandlers = {
-  // 404 Not Found for story
+  // 404 Not Found for item
   notFound: http.get(`${FIREBASE_API}/item/:id.json`, () => {
     return HttpResponse.json(null);
   }),
@@ -248,8 +286,8 @@ export const errorHandlers = {
     return HttpResponse.error();
   }),
   
-  // Empty stories list
-  emptyStories: http.get(`${FIREBASE_API}/topstories.json`, () => {
+  // Empty items list
+  emptyItems: http.get(`${FIREBASE_API}/topstories.json`, () => {
     return HttpResponse.json([]);
   }),
   

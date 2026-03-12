@@ -15,12 +15,11 @@ test.describe('Navigation', () => {
     // URL should update - on mobile may go to /#/item/... for swipe view
     await expect(page).toHaveURL(/\/#\/(show|item\/\d+)/);
     
-    // Should display Show HN stories
-    await expect(page.getByText('Show HN: My Awesome Project')).toBeVisible();
+    // Should display Show HN items
+    await expect(page.getByText('Show HN: Piko – Open-Source Ngrok Alternative in Go')).toBeVisible();
     
     // Document title should reflect section (desktop only — mobile navigates to item)
-    // Show HN maps to STORY_TYPE_TITLES.show = 'Show HN'
-    await expect(page).toHaveTitle(/Show HN.*HackerTok|HackerTok/);
+    await expect(page).toHaveTitle(/Show.*HackerTok|HackerTok/);
 
     // "show" nav link should be highlighted as active
     await expect(page.getByRole('link', { name: 'show', exact: true })).toHaveClass(/bg-hn-orange/);
@@ -37,11 +36,11 @@ test.describe('Navigation', () => {
     // URL should update - on mobile may go to /#/item/... for swipe view
     await expect(page).toHaveURL(/\/#\/(ask|item\/\d+)/);
     
-    // Should display Ask HN stories
+    // Should display Ask HN items
     await expect(page.getByText('Ask HN: What are you working on?')).toBeVisible();
     
     // Document title should reflect section
-    await expect(page).toHaveTitle(/Ask HN.*HackerTok|HackerTok/);
+    await expect(page).toHaveTitle(/Ask.*HackerTok|HackerTok/);
 
     // "ask" nav link should be highlighted as active
     await expect(page.getByRole('link', { name: 'ask', exact: true })).toHaveClass(/bg-hn-orange/);
@@ -55,7 +54,7 @@ test.describe('Navigation', () => {
     // Wait for header to be visible
     await expect(page.locator('header')).toBeVisible();
     
-    // Click Best link in header - force to ensure we hit the link not story behind it
+    // Click Best link in header - force to ensure we hit the link not item behind it
     const bestLink = page.getByRole('link', { name: /best/i });
     await bestLink.scrollIntoViewIfNeeded();
     await bestLink.click({ force: true });
@@ -64,7 +63,7 @@ test.describe('Navigation', () => {
     await expect(page).toHaveURL(/\/#\/(best|item\/)/);
     
     // Document title should reflect section
-    await expect(page).toHaveTitle(/Best Stories.*HackerTok|HackerTok/);
+    await expect(page).toHaveTitle(/Best.*HackerTok|HackerTok/);
 
     // "best" nav link should be highlighted as active
     await expect(page.getByRole('link', { name: 'best', exact: true })).toHaveClass(/bg-hn-orange/);
@@ -82,8 +81,8 @@ test.describe('Navigation', () => {
     // On desktop, should be at /#/
     await expect(page).toHaveURL(/\/#\/(item\/\d+)?$/);
     
-    // Should display top stories
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
+    // Should display top items
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
   });
 
   test('logo click returns to homepage', async ({ page }) => {
@@ -102,7 +101,7 @@ test.describe('Navigation', () => {
 
   test('browser back button works', async ({ page }) => {
     await page.goto('/#/');
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
     // Navigate to Best link with force click to ensure header click
     const bestLink = page.getByRole('link', { name: /best/i });
@@ -123,7 +122,7 @@ test.describe('Navigation', () => {
     // Navigate directly to a specific route
     await page.goto('/#/ask');
     
-    // Should show Ask HN stories (wait for them to load)
+    // Should show Ask HN items (wait for them to load)
     await expect(page.getByText('Ask HN:', { exact: false }).first()).toBeVisible({ timeout: 10000 });
   });
 });

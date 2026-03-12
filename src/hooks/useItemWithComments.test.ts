@@ -1,17 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { useStoryWithComments } from './useStoryWithComments';
-import { setCachedStory, getCachedStory } from '../utils/storyCache';
+import { useItemWithComments } from './useItemWithComments';
+import { setCachedItem, getCachedItem, ITEM_CACHE_KEY_PREFIX } from '../utils/itemCache';
 import { _resetForTesting, isPriorityFetchActive } from '../utils/fetchPriority';
 import { server } from '../mocks/server';
 import { FIREBASE_API, ALGOLIA_API } from '../config/api';
 import type { Comment } from '../types';
-import { createStory, createComment } from '../test/factories';
+import { createStoryItem, createComment } from '../test/factories';
 
-const testStory = createStory({
+const testItem = createStoryItem({
   id: 12345,
-  title: 'Test Story',
+  title: 'Sample HN Post',
   url: 'https://example.com',
   author: 'testuser',
   points: 100,
@@ -25,7 +25,7 @@ const testComments = [
   createComment({ id: 1002, text: 'Comment 2', author: 'user2' }),
 ];
 
-describe('useStoryWithComments', () => {
+describe('useItemWithComments', () => {
   beforeEach(() => {
     localStorage.clear();
     _resetForTesting();
@@ -36,44 +36,44 @@ describe('useStoryWithComments', () => {
   });
 
   describe('basic fetching', () => {
-    it('fetches story and comments when cache is empty', async () => {
-      const { result } = renderHook(() => useStoryWithComments(12345));
+    it('fetches item and comments when cache is empty', async () => {
+      const { result } = renderHook(() => useItemWithComments(12345));
 
       // Initially loading
-      expect(result.current.storyLoading).toBe(true);
+      expect(result.current.itemLoading).toBe(true);
       expect(result.current.commentsLoading).toBe(true);
 
       // Wait for fetch to complete
       await waitFor(() => {
-        expect(result.current.storyLoading).toBe(false);
+        expect(result.current.itemLoading).toBe(false);
       });
 
-      // Should have story data
-      expect(result.current.story).toBeTruthy();
-      expect(result.current.story!.id).toBe(12345);
+      // Should have item data
+      expect(result.current.item).toBeTruthy();
+      expect(result.current.item!.id).toBe(12345);
     });
 
     it('returns cached data without fetching', async () => {
       // Pre-populate cache
-      setCachedStory(12345, testStory, testComments, 3);
+      setCachedItem(12345, testItem, testComments, 3);
 
-      const { result } = renderHook(() => useStoryWithComments(12345));
+      const { result } = renderHook(() => useItemWithComments(12345));
 
       // Should immediately have data (no loading)
-      expect(result.current.storyLoading).toBe(false);
+      expect(result.current.itemLoading).toBe(false);
       expect(result.current.commentsLoading).toBe(false);
-      expect(result.current.story).toEqual(testStory);
+      expect(result.current.item).toEqual(testItem);
       expect(result.current.comments).toEqual(testComments);
     });
 
-    it('accepts initialStory prop to skip story fetch', async () => {
+    it('accepts initialItem prop to skip item fetch', async () => {
       const { result } = renderHook(() =>
-        useStoryWithComments(12345, { initialStory: testStory })
+        useItemWithComments(12345, { initialItem: testItem })
       );
 
-      // Story should not be loading
-      expect(result.current.storyLoading).toBe(false);
-      expect(result.current.story).toEqual(testStory);
+      // Item should not be loading
+      expect(result.current.itemLoading).toBe(false);
+      expect(result.current.item).toEqual(testItem);
 
       // Comments should still load
       await waitFor(() => {
@@ -85,14 +85,14 @@ describe('useStoryWithComments', () => {
   describe('deferComments option', () => {
     it('skips comment fetch when deferComments is true', async () => {
       const { result } = renderHook(() =>
-        useStoryWithComments(12345, {
-          initialStory: testStory,
+        useItemWithComments(12345, {
+          initialItem: testItem,
           deferComments: true
         })
       );
 
-      // Story should be available
-      expect(result.current.story).toEqual(testStory);
+      // Item should be available
+      expect(result.current.item).toEqual(testItem);
 
       // Comments should remain null (not loading state)
       expect(result.current.comments).toBeNull();
@@ -108,8 +108,8 @@ describe('useStoryWithComments', () => {
 
     it('loads comments when deferComments changes to false', async () => {
       const { result, rerender } = renderHook(
-        ({ deferComments }) => useStoryWithComments(12345, {
-          initialStory: testStory,
+        ({ deferComments }) => useItemWithComments(12345, {
+          initialItem: testItem,
           deferComments
         }),
         { initialProps: { deferComments: true } }
@@ -134,8 +134,8 @@ describe('useStoryWithComments', () => {
   describe('cache sync after prefetch', () => {
     it('syncs comments from cache when prefetch completes after mount', async () => {
       const { result } = renderHook(() =>
-        useStoryWithComments(12345, {
-          initialStory: testStory,
+        useItemWithComments(12345, {
+          initialItem: testItem,
           deferComments: true
         })
       );
@@ -145,20 +145,20 @@ describe('useStoryWithComments', () => {
 
       // Simulate prefetch populating cache
       await act(async () => {
-        setCachedStory(12345, testStory, testComments, 1);
+        setCachedItem(12345, testItem, testComments, 1);
       });
 
       // Now change deferComments to false
       const { result: result2, rerender } = renderHook(
-        ({ deferComments }) => useStoryWithComments(12345, {
-          initialStory: testStory,
+        ({ deferComments }) => useItemWithComments(12345, {
+          initialItem: testItem,
           deferComments
         }),
         { initialProps: { deferComments: true } }
       );
 
       // Cache is populated
-      expect(getCachedStory(12345)?.comments).toEqual(testComments);
+      expect(getCachedItem(12345)?.comments).toEqual(testComments);
 
       // Change to not deferred - should sync from cache
       rerender({ deferComments: false });
@@ -174,7 +174,7 @@ describe('useStoryWithComments', () => {
       expect(isPriorityFetchActive()).toBe(false);
 
       const { result } = renderHook(() =>
-        useStoryWithComments(12345, { isPriority: true })
+        useItemWithComments(12345, { isPriority: true })
       );
 
       // Should register priority during fetch
@@ -190,7 +190,7 @@ describe('useStoryWithComments', () => {
       expect(isPriorityFetchActive()).toBe(false);
     });
 
-    it('unregisters priority on story fetch failure', async () => {
+    it('unregisters priority on item fetch failure', async () => {
       // Override handler to return error
       server.use(
         http.get(`${FIREBASE_API}/item/:id.json`, () => {
@@ -201,7 +201,7 @@ describe('useStoryWithComments', () => {
       expect(isPriorityFetchActive()).toBe(false);
 
       const { result } = renderHook(() =>
-        useStoryWithComments(99999, { isPriority: true })
+        useItemWithComments(99999, { isPriority: true })
       );
 
       // Wait for error
@@ -224,8 +224,8 @@ describe('useStoryWithComments', () => {
       expect(isPriorityFetchActive()).toBe(false);
 
       const { result } = renderHook(() =>
-        useStoryWithComments(12345, {
-          initialStory: testStory,
+        useItemWithComments(12345, {
+          initialItem: testItem,
           isPriority: true
         })
       );
@@ -243,7 +243,7 @@ describe('useStoryWithComments', () => {
       expect(isPriorityFetchActive()).toBe(false);
 
       const { unmount } = renderHook(() =>
-        useStoryWithComments(12345, { isPriority: true })
+        useItemWithComments(12345, { isPriority: true })
       );
 
       // Priority registered
@@ -258,12 +258,12 @@ describe('useStoryWithComments', () => {
 
     it('does not register priority when cache has comments', async () => {
       // Pre-populate cache with comments
-      setCachedStory(12345, testStory, testComments, 3);
+      setCachedItem(12345, testItem, testComments, 3);
 
       expect(isPriorityFetchActive()).toBe(false);
 
       renderHook(() =>
-        useStoryWithComments(12345, { isPriority: true })
+        useItemWithComments(12345, { isPriority: true })
       );
 
       // Should NOT register priority (cache hit)
@@ -280,7 +280,7 @@ describe('useStoryWithComments', () => {
         return originalAbort.call(this);
       };
 
-      const { unmount } = renderHook(() => useStoryWithComments(12345));
+      const { unmount } = renderHook(() => useItemWithComments(12345));
 
       // Unmount during fetch
       unmount();
@@ -292,7 +292,7 @@ describe('useStoryWithComments', () => {
       AbortController.prototype.abort = originalAbort;
     });
 
-    it('aborts fetch when storyId changes', async () => {
+    it('aborts fetch when itemId changes', async () => {
       const abortSpy = vi.fn();
       const originalAbort = AbortController.prototype.abort;
       AbortController.prototype.abort = function() {
@@ -301,12 +301,12 @@ describe('useStoryWithComments', () => {
       };
 
       const { rerender } = renderHook(
-        ({ storyId }) => useStoryWithComments(storyId),
-        { initialProps: { storyId: 12345 } }
+        ({ itemId }) => useItemWithComments(itemId),
+        { initialProps: { itemId: 12345 } }
       );
 
-      // Change story ID
-      rerender({ storyId: 99999 });
+      // Change item ID
+      rerender({ itemId: 99999 });
 
       // Should have called abort for previous fetch
       expect(abortSpy).toHaveBeenCalled();
@@ -315,10 +315,10 @@ describe('useStoryWithComments', () => {
       AbortController.prototype.abort = originalAbort;
     });
 
-    it('does NOT abort when deferComments changes to true (same storyId)', async () => {
+    it('does NOT abort when deferComments changes to true (same itemId)', async () => {
       // This tests the mobile swipe scenario:
-      // - Story starts fetching at index 0 (deferComments=false)
-      // - currentIndex changes, story at index 0 becomes deferred (deferComments=true)
+      // - Item starts fetching at index 0 (deferComments=false)
+      // - currentIndex changes, item at index 0 becomes deferred (deferComments=true)
       // - The fetch should NOT be aborted - it should complete in the background
 
       const abortSpy = vi.fn();
@@ -329,8 +329,8 @@ describe('useStoryWithComments', () => {
       };
 
       const { result, rerender } = renderHook(
-        ({ deferComments }) => useStoryWithComments(12345, {
-          initialStory: testStory,
+        ({ deferComments }) => useItemWithComments(12345, {
+          initialItem: testItem,
           deferComments
         }),
         { initialProps: { deferComments: false } }
@@ -342,7 +342,7 @@ describe('useStoryWithComments', () => {
       // Change to deferred (simulating swipe away)
       rerender({ deferComments: true });
 
-      // Should NOT abort - same story, just became deferred
+      // Should NOT abort - same item, just became deferred
       expect(abortSpy).not.toHaveBeenCalled();
 
       // Restore
@@ -357,9 +357,9 @@ describe('useStoryWithComments', () => {
       expect(result.current.comments).toBeTruthy();
     });
 
-    it('DOES abort when storyId changes even if new story has deferComments=true', async () => {
-      // This tests that we don't incorrectly skip abort when storyId changes
-      // If we only check deferComments.current, we'd skip abort even on storyId change
+    it('DOES abort when itemId changes even if new item has deferComments=true', async () => {
+      // This tests that we don't incorrectly skip abort when itemId changes
+      // If we only check deferComments.current, we'd skip abort even on itemId change
 
       const abortSpy = vi.fn();
       const originalAbort = AbortController.prototype.abort;
@@ -369,17 +369,17 @@ describe('useStoryWithComments', () => {
       };
 
       const { rerender } = renderHook(
-        ({ storyId, deferComments }) => useStoryWithComments(storyId, {
-          initialStory: testStory,
+        ({ itemId, deferComments }) => useItemWithComments(itemId, {
+          initialItem: testItem,
           deferComments
         }),
-        { initialProps: { storyId: 12345, deferComments: false } }
+        { initialProps: { itemId: 12345, deferComments: false } }
       );
 
-      // Change BOTH storyId AND deferComments
-      rerender({ storyId: 99999, deferComments: true });
+      // Change BOTH itemId AND deferComments
+      rerender({ itemId: 99999, deferComments: true });
 
-      // Should abort because storyId changed (even though new deferComments is true)
+      // Should abort because itemId changed (even though new deferComments is true)
       expect(abortSpy).toHaveBeenCalled();
 
       // Restore
@@ -388,25 +388,25 @@ describe('useStoryWithComments', () => {
   });
 
   describe('error handling', () => {
-    it('sets error state on story fetch failure', async () => {
+    it('sets error state on item fetch failure', async () => {
       server.use(
         http.get(`${FIREBASE_API}/item/:id.json`, () => {
           return HttpResponse.error();
         })
       );
 
-      const { result } = renderHook(() => useStoryWithComments(12345));
+      const { result } = renderHook(() => useItemWithComments(12345));
 
       await waitFor(() => {
         expect(result.current.error).toBeTruthy();
       });
 
-      expect(result.current.storyLoading).toBe(false);
+      expect(result.current.itemLoading).toBe(false);
       expect(result.current.commentsLoading).toBe(false);
     });
 
-    it('handles comment fetch failure gracefully (story still shows)', async () => {
-      // Story succeeds but comments fail
+    it('handles comment fetch failure gracefully (item still shows)', async () => {
+      // Item succeeds but comments fail
       server.use(
         http.get(`${ALGOLIA_API}/items/:id`, () => {
           return HttpResponse.error();
@@ -414,15 +414,15 @@ describe('useStoryWithComments', () => {
       );
 
       const { result } = renderHook(() =>
-        useStoryWithComments(12345, { initialStory: testStory })
+        useItemWithComments(12345, { initialItem: testItem })
       );
 
       await waitFor(() => {
         expect(result.current.commentsLoading).toBe(false);
       });
 
-      // Story should still be available
-      expect(result.current.story).toEqual(testStory);
+      // Item should still be available
+      expect(result.current.item).toEqual(testItem);
       // No error set (comments failure is non-fatal)
       expect(result.current.error).toBeNull();
     });
@@ -430,10 +430,10 @@ describe('useStoryWithComments', () => {
 
   describe('refresh function', () => {
     it('provides a refresh function that reloads data', async () => {
-      const { result } = renderHook(() => useStoryWithComments(12345));
+      const { result } = renderHook(() => useItemWithComments(12345));
 
       await waitFor(() => {
-        expect(result.current.story).toBeTruthy();
+        expect(result.current.item).toBeTruthy();
       });
 
       // Refresh
@@ -442,33 +442,33 @@ describe('useStoryWithComments', () => {
       });
 
       // Should still have data (may or may not have changed)
-      expect(result.current.story).toBeTruthy();
+      expect(result.current.item).toBeTruthy();
       expect(typeof result.current.refresh).toBe('function');
     });
   });
 
   describe('loading states', () => {
-    it('has separate loading states for story and comments', async () => {
-      const { result } = renderHook(() => useStoryWithComments(12345));
+    it('has separate loading states for item and comments', async () => {
+      const { result } = renderHook(() => useItemWithComments(12345));
 
       // Both start loading
-      expect(result.current.storyLoading).toBe(true);
+      expect(result.current.itemLoading).toBe(true);
       expect(result.current.commentsLoading).toBe(true);
 
       // Wait for completion
       await waitFor(() => {
-        expect(result.current.storyLoading).toBe(false);
+        expect(result.current.itemLoading).toBe(false);
         expect(result.current.commentsLoading).toBe(false);
       });
     });
 
     it('combined loading is true only when both are loading', async () => {
-      setCachedStory(12345, testStory, null as unknown as Comment[], 0); // Story cached, no comments
+      setCachedItem(12345, testItem, null as unknown as Comment[], 0); // Item cached, no comments
 
-      const { result } = renderHook(() => useStoryWithComments(12345));
+      const { result } = renderHook(() => useItemWithComments(12345));
 
-      // Story not loading (cached), comments loading
-      // Combined loading = storyLoading && commentsLoading
+      // Item not loading (cached), comments loading
+      // Combined loading = itemLoading && commentsLoading
       expect(result.current.loading).toBe(false); // One is false, so combined is false
     });
   });
@@ -476,19 +476,19 @@ describe('useStoryWithComments', () => {
   describe('stale cache revalidation', () => {
     it('revalidates when cache is stale', async () => {
       // Create stale cache entry by manipulating timestamp
-      const CACHE_KEY = 'hackertok_story_12345';
+      const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
       const staleData = {
-        story: testStory,
+        item: testItem,
         comments: testComments,
         timestamp: Date.now() - (10 * 60 * 1000), // 10 minutes ago (stale)
         orderedDepth: 3,
       };
       localStorage.setItem(CACHE_KEY, JSON.stringify(staleData));
 
-      const { result } = renderHook(() => useStoryWithComments(12345));
+      const { result } = renderHook(() => useItemWithComments(12345));
 
       // Should show stale data immediately
-      expect(result.current.story).toEqual(testStory);
+      expect(result.current.item).toEqual(testItem);
 
       // But should trigger a revalidation fetch
       await waitFor(() => {
@@ -496,25 +496,25 @@ describe('useStoryWithComments', () => {
       });
 
       // Should have fresh data after revalidation
-      expect(result.current.story).toBeTruthy();
+      expect(result.current.item).toBeTruthy();
     });
 
     it('fetches when cache has no comments', async () => {
-      // Cache story but no comments
-      const CACHE_KEY = 'hackertok_story_12345';
+      // Cache item but no comments
+      const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
       const partialData = {
-        story: testStory,
+        item: testItem,
         comments: null,
         timestamp: Date.now(),
         orderedDepth: 0,
       };
       localStorage.setItem(CACHE_KEY, JSON.stringify(partialData));
 
-      const { result } = renderHook(() => useStoryWithComments(12345));
+      const { result } = renderHook(() => useItemWithComments(12345));
 
-      // Should show story immediately
-      expect(result.current.story).toEqual(testStory);
-      expect(result.current.storyLoading).toBe(false);
+      // Should show item immediately
+      expect(result.current.item).toEqual(testItem);
+      expect(result.current.itemLoading).toBe(false);
 
       // Should fetch comments
       await waitFor(() => {
@@ -528,9 +528,9 @@ describe('useStoryWithComments', () => {
   describe('ordering completion', () => {
     it('completes ordering in background when orderedDepth < 3', async () => {
       // Cache with partial ordering (orderedDepth=1, like from prefetch)
-      const CACHE_KEY = 'hackertok_story_12345';
+      const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
       const partialOrderData = {
-        story: testStory,
+        item: testItem,
         comments: testComments,
         timestamp: Date.now(),
         orderedDepth: 1, // Only top-level ordered
@@ -538,13 +538,13 @@ describe('useStoryWithComments', () => {
       localStorage.setItem(CACHE_KEY, JSON.stringify(partialOrderData));
 
       const { result } = renderHook(() =>
-        useStoryWithComments(12345, { skipOrderingCompletion: false })
+        useItemWithComments(12345, { skipOrderingCompletion: false })
       );
 
       // Should show cached data immediately (no loading flash)
-      expect(result.current.story).toEqual(testStory);
+      expect(result.current.item).toEqual(testItem);
       expect(result.current.comments).toEqual(testComments);
-      expect(result.current.storyLoading).toBe(false);
+      expect(result.current.itemLoading).toBe(false);
 
       // Background reorder should complete
       await waitFor(() => {
@@ -554,9 +554,9 @@ describe('useStoryWithComments', () => {
 
     it('skips ordering completion when skipOrderingCompletion is true', async () => {
       // Cache with partial ordering
-      const CACHE_KEY = 'hackertok_story_12345';
+      const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
       const partialOrderData = {
-        story: testStory,
+        item: testItem,
         comments: testComments,
         timestamp: Date.now(),
         orderedDepth: 1,
@@ -571,11 +571,11 @@ describe('useStoryWithComments', () => {
       };
 
       const { result } = renderHook(() =>
-        useStoryWithComments(12345, { skipOrderingCompletion: true })
+        useItemWithComments(12345, { skipOrderingCompletion: true })
       );
 
       // Should show cached data
-      expect(result.current.story).toEqual(testStory);
+      expect(result.current.item).toEqual(testItem);
       expect(result.current.comments).toEqual(testComments);
 
       // Wait a tick to confirm no background fetch
@@ -592,9 +592,9 @@ describe('useStoryWithComments', () => {
 
     it('does not trigger ordering completion when orderedDepth >= 3', async () => {
       // Cache with full ordering
-      const CACHE_KEY = 'hackertok_story_12345';
+      const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
       const fullOrderData = {
-        story: testStory,
+        item: testItem,
         comments: testComments,
         timestamp: Date.now(),
         orderedDepth: 3, // Fully ordered
@@ -602,13 +602,13 @@ describe('useStoryWithComments', () => {
       localStorage.setItem(CACHE_KEY, JSON.stringify(fullOrderData));
 
       const { result } = renderHook(() =>
-        useStoryWithComments(12345, { skipOrderingCompletion: false })
+        useItemWithComments(12345, { skipOrderingCompletion: false })
       );
 
       // Should show cached data immediately
-      expect(result.current.story).toEqual(testStory);
+      expect(result.current.item).toEqual(testItem);
       expect(result.current.comments).toEqual(testComments);
-      expect(result.current.storyLoading).toBe(false);
+      expect(result.current.itemLoading).toBe(false);
       expect(result.current.commentsLoading).toBe(false);
 
       // Should NOT have triggered any fetch (early return)
@@ -621,88 +621,88 @@ describe('useStoryWithComments', () => {
     });
   });
 
-  describe('storyId type handling', () => {
-    it('handles string storyId', async () => {
-      const { result } = renderHook(() => useStoryWithComments('12345'));
+  describe('itemId type handling', () => {
+    it('handles string itemId', async () => {
+      const { result } = renderHook(() => useItemWithComments('12345'));
 
       await waitFor(() => {
-        expect(result.current.storyLoading).toBe(false);
+        expect(result.current.itemLoading).toBe(false);
       });
 
-      expect(result.current.story).toBeTruthy();
-      expect(result.current.story!.id).toBe(12345);
+      expect(result.current.item).toBeTruthy();
+      expect(result.current.item!.id).toBe(12345);
     });
 
-    it('shares cache between string and number storyId', async () => {
+    it('shares cache between string and number itemId', async () => {
       // Cache with number ID
-      setCachedStory(12345, testStory, testComments, 3);
+      setCachedItem(12345, testItem, testComments, 3);
 
       // Access with string ID
-      const { result } = renderHook(() => useStoryWithComments('12345'));
+      const { result } = renderHook(() => useItemWithComments('12345'));
 
       // Should get cached data (cache key uses string conversion)
-      expect(result.current.story).toEqual(testStory);
+      expect(result.current.item).toEqual(testItem);
       expect(result.current.comments).toEqual(testComments);
     });
   });
 
-  describe('storyId change to cached story', () => {
-    it('syncs state when storyId changes to a different fully-cached story', async () => {
+  describe('itemId change to cached item', () => {
+    it('syncs state when itemId changes to a different fully-cached item', async () => {
       // This tests a critical scenario:
-      // 1. User views story A (fully cached)
-      // 2. User navigates to story B (also fully cached)
+      // 1. User views item A (fully cached)
+      // 2. User navigates to item B (also fully cached)
       // 3. State should show B's data, not A's data
 
-      const storyA = createStory({ id: 11111, title: 'Story A', url: 'https://a.com', points: 10, author: 'userA', createdAt: Date.now(), commentCount: 1 });
-      const storyB = createStory({ id: 22222, title: 'Story B', url: 'https://b.com', points: 20, author: 'userB', createdAt: Date.now(), commentCount: 2 });
-      const commentsA = [createComment({ id: 1001, text: 'Comment for story A', author: 'commenterA' })];
-      const commentsB = [createComment({ id: 2001, text: 'Comment for story B', author: 'commenterB' })];
+      const itemA = createStoryItem({ id: 11111, title: 'Item A', url: 'https://a.com', points: 10, author: 'userA', createdAt: Date.now(), commentCount: 1 });
+      const itemB = createStoryItem({ id: 22222, title: 'Item B', url: 'https://b.com', points: 20, author: 'userB', createdAt: Date.now(), commentCount: 2 });
+      const commentsA = [createComment({ id: 1001, text: 'Comment for item A', author: 'commenterA' })];
+      const commentsB = [createComment({ id: 2001, text: 'Comment for item B', author: 'commenterB' })];
 
-      // Pre-populate cache for BOTH stories with full ordering (orderedDepth=3)
-      setCachedStory(11111, storyA, commentsA, 3);
-      setCachedStory(22222, storyB, commentsB, 3);
+      // Pre-populate cache for BOTH items with full ordering (orderedDepth=3)
+      setCachedItem(11111, itemA, commentsA, 3);
+      setCachedItem(22222, itemB, commentsB, 3);
 
-      // Render with story A
+      // Render with item A
       const { result, rerender } = renderHook(
-        ({ storyId }) => useStoryWithComments(storyId),
-        { initialProps: { storyId: 11111 } }
+        ({ itemId }) => useItemWithComments(itemId),
+        { initialProps: { itemId: 11111 } }
       );
 
-      // Should have story A's data
-      expect(result.current.story).toEqual(storyA);
+      // Should have item A's data
+      expect(result.current.item).toEqual(itemA);
       expect(result.current.comments).toEqual(commentsA);
-      expect(result.current.storyLoading).toBe(false);
+      expect(result.current.itemLoading).toBe(false);
       expect(result.current.commentsLoading).toBe(false);
 
-      // Change to story B (which is also fully cached)
-      rerender({ storyId: 22222 });
+      // Change to item B (which is also fully cached)
+      rerender({ itemId: 22222 });
 
-      // Should now have story B's data, NOT story A's data
-      expect(result.current.story).toEqual(storyB);
+      // Should now have item B's data, NOT item A's data
+      expect(result.current.item).toEqual(itemB);
       expect(result.current.comments).toEqual(commentsB);
-      expect(result.current.storyLoading).toBe(false);
+      expect(result.current.itemLoading).toBe(false);
       expect(result.current.commentsLoading).toBe(false);
     });
   });
 
-  describe('storyId change to UNCACHED story', () => {
-    it('resets state when storyId changes to an uncached story', async () => {
-      // Scenario: StoryDetail navigating from cached story A to uncached story B
+  describe('itemId change to UNCACHED item', () => {
+    it('resets state when itemId changes to an uncached item', async () => {
+      // Scenario: ItemDetail navigating from cached item A to uncached item B
 
-      const storyA = createStory({ id: 33333, title: 'Cached Story A', url: 'https://example1.com', points: 100, author: 'user1', createdAt: Date.now(), commentCount: 5 });
+      const itemA = createStoryItem({ id: 33333, title: 'Cached Item A', url: 'https://example1.com', points: 100, author: 'user1', createdAt: Date.now(), commentCount: 5 });
       const commentsA = [createComment({ id: 3001, text: 'Comment for cached A', author: 'commenter1' })];
 
-      // Only cache story A - story B (44444) is NOT in cache
-      setCachedStory(33333, storyA, commentsA, 3);
+      // Only cache item A - item B (44444) is NOT in cache
+      setCachedItem(33333, itemA, commentsA, 3);
 
-      // Mock API for story B fetch - add delay to simulate real network
+      // Mock API for item B fetch - add delay to simulate real network
       server.use(
         http.get('https://hacker-news.firebaseio.com/v0/item/44444.json', async () => {
           await new Promise(resolve => setTimeout(resolve, 50)); // 50ms delay
           return HttpResponse.json({
             id: 44444,
             type: 'story',
-            title: 'Fresh Story B',
+            title: 'Fresh Item B',
             url: 'https://example2.com',
             score: 200,
             by: 'user2',
@@ -713,20 +713,20 @@ describe('useStoryWithComments', () => {
       );
 
       const { result, rerender } = renderHook(
-        ({ storyId }) => useStoryWithComments(storyId),
-        { initialProps: { storyId: 33333 } }
+        ({ itemId }) => useItemWithComments(itemId),
+        { initialProps: { itemId: 33333 } }
       );
 
-      // Should have story A's data (from cache)
-      expect(result.current.story).toEqual(storyA);
+      // Should have item A's data (from cache)
+      expect(result.current.item).toEqual(itemA);
       expect(result.current.comments).toEqual(commentsA);
 
-      // Navigate to UNCACHED story B
-      rerender({ storyId: 44444 });
+      // Navigate to UNCACHED item B
+      rerender({ itemId: 44444 });
 
-      // The story should either be null (loading) or be story B
-      // NOT story A
-      expect(result.current.story?.id).not.toBe(33333);
+      // The item should either be null (loading) or be item B
+      // NOT item A
+      expect(result.current.item?.id).not.toBe(33333);
     });
   });
 });

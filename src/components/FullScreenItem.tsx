@@ -1,14 +1,14 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useStoryWithComments } from '../hooks/useStoryWithComments';
+import { useItemWithComments } from '../hooks/useItemWithComments';
 import { CommentTree, CommentSkeletonTree } from '../components';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
-import { useIsViewed, markViewedWithTime } from '../utils/viewedStories';
-import type { Story } from '../types';
+import { useIsViewed, markViewedWithTime } from '../utils/viewedItems';
+import type { StoryItem } from '../types';
 
-// Skeleton for the full story - fills viewport (mobile)
-export function FullScreenStorySkeleton() {
+// Skeleton for the full-screen item — fills viewport (mobile)
+export function FullScreenItemSkeleton() {
   return (
     <div className="animate-pulse px-4 py-4 min-h-screen">
       {/* Title skeleton */}
@@ -31,90 +31,79 @@ export function FullScreenStorySkeleton() {
   );
 }
 
-/**
- * Full-screen story component for swipe viewer
- * Displays story details and comments
- * @param {object} story - Optional pre-loaded story data (avoids redundant fetch)
- * @param {boolean} isPriority - If true (current story), fetch immediately; if false, wait for priority to complete
- * @param {boolean} deferComments - If true, skip comment fetch (for far panels)
- */
-interface FullScreenStoryProps {
-  storyId: number;
-  story?: Story;
+/** Full-screen item component for swipe viewer. Renders stories and jobs (not comments). */
+interface FullScreenItemProps {
+  itemId: number;
+  initialItem?: StoryItem;
   isPriority?: boolean;
   deferComments?: boolean;
 }
 
-export function FullScreenStory({ storyId, story: initialStory, isPriority = true, deferComments = false }: FullScreenStoryProps) {
-  // Skip ordering completion on mobile - users swipe fast, deep comment order doesn't matter
-  const { story, comments, storyLoading, commentsLoading, error } = useStoryWithComments(storyId, {
-    initialStory: initialStory ?? null,
+export function FullScreenItem({ itemId, initialItem, isPriority = true, deferComments = false }: FullScreenItemProps) {
+  const { item, comments, itemLoading, commentsLoading, error } = useItemWithComments(itemId, {
+    initialItem: initialItem ?? null,
     skipOrderingCompletion: true,
     isPriority,
     deferComments,
   });
 
-  // Reactive viewed status for title styling
-  const viewed = useIsViewed(storyId);
+  const viewed = useIsViewed(itemId);
 
-  // Sanitize story text
-  const storyText = story?.text;
+  const itemText = item?.text;
   const sanitizedText = useMemo(
-    () => storyText ? sanitizeHtml(storyText) : '',
-    [storyText]
+    () => itemText ? sanitizeHtml(itemText) : '',
+    [itemText]
   );
 
-  // Show skeleton if loading
-  if (storyLoading && !story) {
+  if (itemLoading && !item) {
     return (
-      <div className="full-screen-story">
-        <FullScreenStorySkeleton />
+      <div className="full-screen-item">
+        <FullScreenItemSkeleton />
       </div>
     );
   }
 
-  // Error state
   if (error) {
     return (
-      <div className="full-screen-story flex items-center justify-center min-h-[50vh]">
+      <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
         <div className="text-center px-4">
-          <p className="text-red-500 dark:text-red-400 mb-4">Failed to load story</p>
+          <p className="text-red-500 dark:text-red-400 mb-4">Failed to load item</p>
           <p className="text-gray-500 dark:text-gray-400 text-sm">{error}</p>
         </div>
       </div>
     );
   }
 
-  // No story found
-  if (!story) {
+  if (!item || item.type === 'comment') {
     return (
-      <div className="full-screen-story flex items-center justify-center min-h-[50vh]">
-        <p className="text-gray-500 dark:text-gray-400">Story not found</p>
+      <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
+        <p className="text-gray-500 dark:text-gray-400">Item not found</p>
       </div>
     );
   }
 
-  const hostname = getHostname(story.url);
+  // item is now narrowed to StoryItem | JobItem (both have title, points, url)
+  const hostname = getHostname(item.url);
   
   // Build Algolia "past" search URL
-  const pastUrl = `https://hn.algolia.com/?query=${encodeURIComponent(story.title)}&type=story&dateRange=all&sort=byDate&storyText=false&prefix&page=0`;
+  const pastUrl = `https://hn.algolia.com/?query=${encodeURIComponent(item.title)}&type=story&dateRange=all&sort=byDate&storyText=false&prefix&page=0`;
 
   return (
-    <div className="full-screen-story">
+    <div className="full-screen-item">
       <div className="px-4 py-4">
-        {/* Story header */}
+        {/* Item header */}
         <article className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
           <h1 className={`text-lg font-semibold mb-2 leading-snug ${viewed ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100'}`}>
-            {story.url ? (
+            {item.url ? (
               <a
-                href={story.url}
+                href={item.url}
                 className="hover:text-hn-orange transition-colors"
-                onClick={() => markViewedWithTime(story.id)}
+                onClick={() => markViewedWithTime(item.id)}
               >
-                {story.title}
+                {item.title}
               </a>
             ) : (
-              story.title
+              item.title
             )}
             {hostname && (
               <span className="ml-1.5 text-[13px] text-gray-500 dark:text-gray-400 font-normal">
@@ -130,10 +119,10 @@ export function FullScreenStory({ storyId, story: initialStory, isPriority = tru
 
           {/* Meta info */}
           <div className="text-[13px] text-gray-600 dark:text-gray-400 mb-2">
-            <span>{story.points} points</span>
+            <span>{item.points} points</span>
             <span> by </span>
-            <span>{story.author}</span>
-            <span> {formatTimeAgo(story.createdAt)}</span>
+            <span>{item.author}</span>
+            <span> {formatTimeAgo(item.createdAt)}</span>
             <span className="mx-1.5">|</span>
             <a
               href={pastUrl}
@@ -144,10 +133,10 @@ export function FullScreenStory({ storyId, story: initialStory, isPriority = tru
               past
             </a>
             <span className="mx-1.5">|</span>
-            <span>{story.commentCount} comments</span>
+            <span>{item.type !== 'job' ? item.commentCount : 0} comments</span>
           </div>
 
-          {/* Story text (for Ask HN, etc.) */}
+          {/* Item text (for Ask HN, etc.) */}
           {sanitizedText && (
             <div
               className="mt-3 comment-content text-gray-800 dark:text-gray-200 text-[15px] leading-relaxed"

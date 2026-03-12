@@ -1,25 +1,27 @@
-import type { Story, Comment } from '../types';
+import { faker } from '@faker-js/faker';
+import type { StoryItem, Comment } from '../types';
 
-export function createStory(overrides: Partial<Story> = {}): Story {
+export function createStoryItem(overrides: Partial<StoryItem> = {}): StoryItem {
   return {
-    id: 1,
-    title: 'Test Story',
-    url: 'https://example.com',
-    points: 100,
-    author: 'testuser',
-    createdAt: Date.now(),
-    commentCount: 0,
+    id: faker.number.int({ min: 10000, max: 99999 }),
+    type: 'story',
+    title: faker.lorem.sentence(),
+    url: faker.internet.url(),
+    points: faker.number.int({ min: 1, max: 500 }),
+    author: faker.internet.username(),
+    createdAt: faker.date.recent().getTime(),
+    commentCount: faker.number.int({ min: 0, max: 300 }),
     ...overrides,
   };
 }
 
 export function createComment(overrides: Partial<Comment> = {}): Comment {
   return {
-    id: 1,
-    author: 'testuser',
-    text: '<p>Test comment</p>',
-    createdAt: Date.now(),
-    parentId: 0,
+    id: faker.number.int({ min: 1000, max: 9999 }),
+    author: faker.internet.username(),
+    text: `<p>${faker.lorem.sentence()}</p>`,
+    createdAt: faker.date.recent().getTime(),
+    parentId: faker.number.int({ min: 1, max: 99999 }),
     children: [],
     depth: 0,
     ...overrides,

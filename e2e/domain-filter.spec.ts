@@ -7,14 +7,14 @@ test.describe('Domain Filter', () => {
     await setupApiMocks(page);
   });
 
-  test('displays stories filtered by domain', async ({ page }) => {
+  test('displays items filtered by domain', async ({ page }) => {
     await page.goto('/#/from/example.com');
     
     // URL should contain domain
     await expect(page).toHaveURL(/\/#\/from\/example\.com/);
 
-    // Should show domain-filtered story
-    await expect(page.getByText('Article from Example Domain')).toBeVisible({ timeout: 10000 });
+    // Should show domain-filtered item
+    await expect(page.getByText('Google Announces Gemini 3.0 with Extended Context')).toBeVisible({ timeout: 10000 });
 
     // Should indicate which domain is being filtered
     await expect(page.getByText(/example\.com/i).first()).toBeVisible();
@@ -26,7 +26,7 @@ test.describe('Domain Filter - Edge Cases', () => {
     await setupApiMocks(page);
   });
 
-  test('handles domain with no stories', async ({ page }) => {
+  test('handles domain with no items', async ({ page }) => {
     // Mock empty response for unknown domain
     await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
       const url = new URL(route.request().url());
@@ -49,7 +49,7 @@ test.describe('Domain Filter - Edge Cases', () => {
     
     await page.goto('/#/from/unknown-domain.xyz');
     
-    // Should show the "No stories found" empty state message
+    // Should show the "No items found" empty state message
     await expect(page.getByText(/No stories found from unknown-domain\.xyz/i)).toBeVisible();
     
     // Document title should reflect the domain

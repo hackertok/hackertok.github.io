@@ -2,12 +2,12 @@ import { HashRouter, Routes, Route, useParams, useLocation } from 'react-router-
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider, useScrollContainer } from './context/ScrollContainerContext';
 import { Header, ErrorBoundary, SwipeStoryViewer } from './components';
-import { StoryList, StoryDetail, DomainStories } from './pages';
+import { StoryList, ItemDetail, DomainStories } from './pages';
 import { useIsMobile } from './hooks/useIsMobile';
-import type { StoryType, LocationState } from './types';
+import type { FeedType, LocationState } from './types';
 
 // Mobile wrapper that shows SwipeStoryViewer instead of StoryList
-function MobileStoryListWrapper({ type }: { type: StoryType }) {
+function MobileStoryListWrapper({ type }: { type: FeedType }) {
   const isMobile = useIsMobile();
   
   if (isMobile) {
@@ -17,24 +17,24 @@ function MobileStoryListWrapper({ type }: { type: StoryType }) {
   return <StoryList type={type} />;
 }
 
-// Mobile wrapper for story detail - shows SwipeStoryViewer with the story in context
-function MobileStoryDetailWrapper() {
+// Mobile wrapper for item detail - shows SwipeStoryViewer with the story in context
+function MobileItemDetailWrapper() {
   const { id } = useParams();
   const isMobile = useIsMobile();
   const location = useLocation();
   
   if (isMobile) {
-    // On mobile, show swipe viewer starting at this story
+    // On mobile, show swipe viewer starting at this item
     // Use the type from navigation state, or default to 'top'
     const state = location.state as LocationState | null;
     const type = state?.from ?? 'top';
     // key={type} forces a full remount when the section changes (e.g. browser back
     // from best → top). Without it, React reuses the same SwipeStoryViewer instance
     // since both URLs match /item/:id, leaving stale stories from the old section.
-    return <SwipeStoryViewer key={type} type={type} initialStoryId={id} />;
+    return <SwipeStoryViewer key={type} type={type} initialItemId={id} />;
   }
   
-  return <StoryDetail key={id} />;
+  return <ItemDetail key={id} />;
 }
 
 // Main content wrapper that conditionally applies padding
@@ -64,7 +64,7 @@ function App() {
                   <Route path="/show" element={<MobileStoryListWrapper type="show" />} />
                   <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
                   <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
-                  <Route path="/item/:id" element={<MobileStoryDetailWrapper />} />
+                  <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
                   <Route path="/from/*" element={<DomainStories />} />
                 </Routes>
               </MainContent>

@@ -83,7 +83,7 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.full-screen-story {
+.full-screen-item {
   width: 100%;
   min-height: calc(100dvh - 56px);
 }

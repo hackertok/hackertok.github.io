@@ -1,30 +1,30 @@
 import { useState, useCallback, useRef } from 'react';
-import { fetchTopStoriesAlgolia, fetchFrontPageForDay, fetchBestStories, fetchShowStories, fetchAskStories } from '../api/hn';
-import { getCachedStories, setCachedStories } from '../utils/storiesCache';
-import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/storyCache';
-import type { Story, StoryType, ListSessionState } from '../types';
+import { fetchTopStories, fetchFrontPageForDay, fetchBestStories, fetchShowStories, fetchAskStories } from '../api/hn';
+import { getCachedFeed, setCachedFeed } from '../utils/feedCache';
+import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/itemCache';
+import type { StoryItem, FeedType, ListSessionState } from '../types';
 
 interface InitialState {
-  stories: Story[];
+  stories: StoryItem[];
   isFromCache: boolean;
   isFromSession: boolean;
   sessionState: ListSessionState | null;
 }
 
 // Initialize state from session (instant back) or cache (persistent)
-function getInitialState(type: StoryType): InitialState {
+function getInitialState(type: FeedType): InitialState {
   // First check session state for instant back navigation
   const sessionState = getListSessionState(type);
   if (sessionState && sessionState.storyIds.length > 0) {
     // We have session state - reconstruct stories from LocalStorage cache
-    const cached = getCachedStories(type);
+    const cached = getCachedFeed(type);
     if (cached && cached.stories.length > 0) {
       // Create a map for fast lookup
       const storyMap = new Map(cached.stories.map(s => [s.id, s]));
       // Reconstruct stories in session order
       const stories = sessionState.storyIds
         .map((id: number) => storyMap.get(id))
-        .filter((s): s is Story => Boolean(s));
+        .filter((s): s is StoryItem => Boolean(s));
       
       // Only use session state if we could reconstruct most stories
       if (stories.length >= sessionState.storyIds.length * 0.8) {
@@ -39,7 +39,7 @@ function getInitialState(type: StoryType): InitialState {
   }
   
   // Fall back to cache
-  const cached = getCachedStories(type);
+  const cached = getCachedFeed(type);
   if (cached && cached.stories.length > 0) {
     return {
       stories: cached.stories,
@@ -56,7 +56,7 @@ function getInitialState(type: StoryType): InitialState {
   };
 }
 
-export function useInfiniteStories(type: StoryType = 'top') {
+export function useInfiniteStories(type: FeedType = 'top') {
   // Lazy initialization: sync read from localStorage on first render (called once)
   const [initialState] = useState(() => getInitialState(type));
   const [stories, setStories] = useState(initialState.stories);
@@ -93,12 +93,12 @@ export function useInfiniteStories(type: StoryType = 'top') {
 
     try {
       if (type === 'top') {
-        let newStories: Story[] = [];
+        let newStories: StoryItem[] = [];
         const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
         
         if (positionRef.current === 0) {
           // First load: fetch current front page from Algolia (single fast request)
-          const frontPage = await fetchTopStoriesAlgolia(20);
+          const frontPage = await fetchTopStories(20);
           
           // Check if we've been reset during the fetch
           if (versionRef.current !== currentVersion) return;
@@ -118,7 +118,7 @@ export function useInfiniteStories(type: StoryType = 'top') {
           
           // Cache fresh stories (only first page)
           if (newStories.length > 0) {
-            setCachedStories(type, newStories);
+            setCachedFeed(type, newStories);
             setIsFromCache(false);
             hasStaleCacheRef.current = false;
           }
@@ -187,7 +187,7 @@ export function useInfiniteStories(type: StoryType = 'top') {
 
         // Cache first page of best stories
         if (positionRef.current === 0 && uniqueStories.length > 0) {
-          setCachedStories(type, uniqueStories);
+          setCachedFeed(type, uniqueStories);
           setIsFromCache(false);
           hasStaleCacheRef.current = false;
         }
@@ -228,7 +228,7 @@ export function useInfiniteStories(type: StoryType = 'top') {
 
         // Cache first window of stories
         if (positionRef.current === 0 && uniqueStories.length > 0) {
-          setCachedStories(type, uniqueStories);
+          setCachedFeed(type, uniqueStories);
           setIsFromCache(false);
           hasStaleCacheRef.current = false;
         }
@@ -294,7 +294,7 @@ export function useInfiniteStories(type: StoryType = 'top') {
     
     // Also update the stories cache with current full list (for session reconstruction)
     if (stories.length > 0) {
-      setCachedStories(type, stories);
+      setCachedFeed(type, stories);
     }
   }, [type, stories, hasMore]);
 

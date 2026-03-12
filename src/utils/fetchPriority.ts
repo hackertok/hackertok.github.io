@@ -1,12 +1,12 @@
 /**
  * Fetch Priority Coordinator
  * 
- * Ensures user-visible content (current story's comments) loads with highest priority
+ * Ensures user-visible content (current item's comments) loads with highest priority
  * before background prefetching begins. Uses ref-counting to handle multiple mounted
  * components correctly.
  * 
  * Problem solved: On mobile with empty cache, prefetch hooks would compete with
- * the current story's comment fetch for network bandwidth, slowing the user's
+ * the current item's comment fetch for network bandwidth, slowing the user's
  * immediate experience.
  * 
  * Solution: Priority fetches "hold the line" - prefetchers wait until all priority

@@ -1,19 +1,19 @@
 import { useParams, Link } from 'react-router-dom';
 import { useMemo, useEffect } from 'react';
-import { useStoryWithComments } from '../hooks/useStoryWithComments';
-import { CommentTree, StoryDetailSkeleton, CommentSkeletonTree } from '../components';
+import { useItemWithComments } from '../hooks/useItemWithComments';
+import { CommentTree, ItemDetailSkeleton, CommentSkeletonTree, CommentDetail } from '../components';
 import { formatTimeAgo, getHostname } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { useIsViewed, markViewedWithTime } from '../utils/viewedStories';
+import { useIsViewed, markViewedWithTime } from '../utils/viewedItems';
 
-export function StoryDetail() {
+export function ItemDetail() {
   const { id } = useParams();
   const viewed = useIsViewed(id ?? '');
-  const { story, comments, storyLoading, commentsLoading, error } = useStoryWithComments(id ?? '');
+  const { item, comments, itemLoading, commentsLoading, error } = useItemWithComments(id ?? '');
   
-  // Set document title to story title, or 'Story not found' on error/missing
-  const documentTitle = (!id || error || (!storyLoading && !story)) ? 'Story not found' : story?.title;
+  // Set document title to item title, or 'Item not found' on error/missing
+  const documentTitle = (!id || error || (!itemLoading && !item)) ? 'Item not found' : (item && 'title' in item ? item.title : undefined);
   useDocumentTitle(documentTitle);
   
   // Scroll to top on navigation
@@ -22,75 +22,80 @@ export function StoryDetail() {
   }, [id]);
   
   // useMemo must be called unconditionally (before any returns)
-  const storyText = story?.text;
+  const itemText = item?.text;
   const sanitizedText = useMemo(
-    () => storyText ? sanitizeHtml(storyText) : '',
-    [storyText]
+    () => itemText ? sanitizeHtml(itemText) : '',
+    [itemText]
   );
 
-  // Invalid or missing story ID
+  // Invalid or missing item ID
   if (!id) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-8 text-center">
-        <p className="text-gray-500 dark:text-gray-400 mb-4">Story not found</p>
-        <Link to="/" className="text-hn-orange hover:underline">Back to stories</Link>
+        <p className="text-gray-500 dark:text-gray-400 mb-4">Item not found</p>
+        <Link to="/" className="text-hn-orange hover:underline">Back to feed</Link>
       </div>
     );
   }
 
-  // Show full skeleton only if story is loading
-  if (storyLoading && !story) {
-    return <StoryDetailSkeleton />;
+  // Show full skeleton only if item is loading
+  if (itemLoading && !item) {
+    return <ItemDetailSkeleton />;
   }
 
   if (error) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-8 text-center">
-        <p className="text-red-500 dark:text-red-400 mb-4">Failed to load story: {error}</p>
+        <p className="text-red-500 dark:text-red-400 mb-4">Failed to load item: {error}</p>
         <Link
           to="/"
           className="text-hn-orange hover:underline"
         >
-          Back to stories
+          Back to feed
         </Link>
       </div>
     );
   }
 
-  if (!story) {
+  if (!item) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-8 text-center">
-        <p className="text-gray-500 dark:text-gray-400 mb-4">Story not found</p>
+        <p className="text-gray-500 dark:text-gray-400 mb-4">Item not found</p>
         <Link
           to="/"
           className="text-hn-orange hover:underline"
         >
-          Back to stories
+          Back to feed
         </Link>
       </div>
     );
   }
 
-  const hostname = getHostname(story.url);
+  // Comment permalink: render dedicated comment detail page
+  if (item.type === 'comment') {
+    return <CommentDetail commentId={id} initialData={{ author: item.author, text: item.text, createdAt: item.createdAt, parentId: item.parent }} />;
+  }
+
+  const hostname = getHostname(item.url);
   
-  // Build Algolia "past" search URL for this story title
-  const pastUrl = `https://hn.algolia.com/?query=${encodeURIComponent(story.title)}&type=story&dateRange=all&sort=byDate&storyText=false&prefix&page=0`;
+  // Build Algolia "past" search URL for this item title
+  const pastUrl = `https://hn.algolia.com/?query=${encodeURIComponent(item.title)}&type=story&dateRange=all&sort=byDate&storyText=false&prefix&page=0`;
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-      {/* Story header - shown immediately */}
+      {/* Item header - shown immediately */}
       <article className="mb-6 pb-4 border-b border-gray-100 dark:border-gray-800">
         <h1 className={`text-lg font-semibold mb-2 leading-snug ${viewed ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100'}`}>
-          {story.url ? (
+          {item.url ? (
             <a
-              href={story.url}
+              href={item.url}
               className="hover:text-hn-orange transition-colors"
-              onClick={() => markViewedWithTime(story.id)}
+              onClick={() => markViewedWithTime(item.id)}
             >
-              {story.title}
+              {item.title}
             </a>
           ) : (
-            story.title
+            item.title
           )}
           {hostname && (
             <span className="ml-1.5 text-[13px] text-gray-500 dark:text-gray-400 font-normal">
@@ -106,10 +111,10 @@ export function StoryDetail() {
 
         {/* Meta: "16 points by idw 23 minutes ago | past | 52 comments" */}
         <div className="text-[13px] text-gray-600 dark:text-gray-400 mb-2">
-          <span>{story.points} points</span>
+          <span>{item.points} points</span>
           <span> by </span>
-          <span>{story.author}</span>
-          <span> {formatTimeAgo(story.createdAt)}</span>
+          <span>{item.author}</span>
+          <span> {formatTimeAgo(item.createdAt)}</span>
           <span className="mx-1.5">|</span>
           <a
             href={pastUrl}
@@ -120,10 +125,10 @@ export function StoryDetail() {
             past
           </a>
           <span className="mx-1.5">|</span>
-          <span>{story.commentCount} comments</span>
+          <span>{item.type !== 'job' ? item.commentCount : 0} comments</span>
         </div>
 
-        {/* Story text (for Ask HN, etc.) */}
+        {/* Item text (for Ask HN, etc.) */}
         {sanitizedText && (
           <div
             className="mt-3 comment-content text-gray-800 dark:text-gray-200 text-[15px] leading-relaxed"
