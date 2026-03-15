@@ -1,5 +1,5 @@
 import { ALGOLIA_API, FIREBASE_API } from '../config/api';
-import type { Story, Comment, AlgoliaHit, AlgoliaComment, AlgoliaSearchResponse, FirebaseItem, PrefetchResult } from '../types';
+import type { Item, StoryItem, Comment, AlgoliaHit, AlgoliaComment, AlgoliaSearchResponse, FirebaseItem, PrefetchResult, AlgoliaItemResponse, AlgoliaItemChild } from '../types';
 
 // Cache for best story IDs to avoid refetching on every pagination
 let bestStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
@@ -34,8 +34,8 @@ function getDayRange(daysAgo = 0) {
   };
 }
 
-// Normalize Algolia hit to our story format
-export function normalizeAlgoliaHit(hit: AlgoliaHit): Story {
+// Normalize Algolia hit → StoryItem (feed endpoints only return stories)
+export function normalizeAlgoliaHit(hit: AlgoliaHit): StoryItem {
   return {
     id: parseInt(hit.objectID, 10),
     title: hit.title,
@@ -48,27 +48,53 @@ export function normalizeAlgoliaHit(hit: AlgoliaHit): Story {
   };
 }
 
-// Normalize Firebase story to our format
-function normalizeFirebaseStory(story: FirebaseItem): Story {
+// Normalize Firebase item → discriminated Item union
+function normalizeFirebaseItem(fbItem: FirebaseItem): Item {
+  const base = {
+    id: fbItem.id,
+    author: fbItem.by ?? '',
+    createdAt: (fbItem.time ?? 0) * 1000,
+  };
+
+  if (fbItem.type === 'comment') {
+    return {
+      ...base,
+      type: 'comment' as const,
+      text: fbItem.text ?? '',
+      parent: fbItem.parent ?? 0,
+    };
+  }
+
+  if (fbItem.type === 'job') {
+    return {
+      ...base,
+      type: 'job' as const,
+      title: fbItem.title ?? '',
+      url: fbItem.url,
+      text: fbItem.text,
+      points: fbItem.score ?? 0,
+    };
+  }
+
+  // story, poll, pollopt, or undefined → StoryItem
+  // Note: Firebase doesn't distinguish ask/show — they're all type='story'.
+  // Only the Algolia path (via _tags) can set 'ask'/'show' sub-types.
   return {
-    id: story.id,
-    title: story.title ?? '',
-    url: story.url,
-    points: story.score ?? 0,
-    author: story.by ?? '',
-    createdAt: (story.time ?? 0) * 1000,
-    commentCount: story.descendants ?? 0,
-    type: story.type,
-    text: story.text,
+    ...base,
+    type: 'story' as const,
+    title: fbItem.title ?? '',
+    url: fbItem.url,
+    text: fbItem.text,
+    points: fbItem.score ?? 0,
+    commentCount: fbItem.descendants ?? 0,
   };
 }
 
 /**
  * Fetch current front page stories from Algolia (single request, fast)
  * Applies HN's gravity algorithm for approximate ranking
- * @param {number} limit - Number of stories to fetch (default 20)
  */
-export async function fetchTopStoriesAlgolia(limit = 20): Promise<Story[]> {
+export async function fetchTopStories(limit = 20): Promise<StoryItem[]> {
   const url = `${ALGOLIA_API}/search?tags=front_page&hitsPerPage=${limit}`;
   
   const response = await fetch(url);
@@ -89,9 +115,9 @@ export async function fetchTopStoriesAlgolia(limit = 20): Promise<Story[]> {
     .map(normalizeAlgoliaHit);
   
   // Sort by HN gravity score (approximate HN ranking)
-  stories.sort((a: Story, b: Story) => {
-    const scoreA = calculateHNScore(a.points || 0, a.createdAt);
-    const scoreB = calculateHNScore(b.points || 0, b.createdAt);
+  stories.sort((a, b) => {
+    const scoreA = calculateHNScore(a.points, a.createdAt);
+    const scoreB = calculateHNScore(b.points, b.createdAt);
     return scoreB - scoreA;
   });
   
@@ -101,7 +127,7 @@ export async function fetchTopStoriesAlgolia(limit = 20): Promise<Story[]> {
 // Fetch historical top stories for a specific day using Algolia
 // Note: Algolia's front_page tag only shows CURRENT front page, not historical.
 // So we fetch stories created on that day, sorted by points (best approximation).
-export async function fetchFrontPageForDay(daysAgo = 1): Promise<Story[]> {
+export async function fetchFrontPageForDay(daysAgo = 1): Promise<StoryItem[]> {
   const { start, end } = getDayRange(daysAgo);
   
   // Use story tag (excludes jobs, comments, polls) and filter by creation date
@@ -156,23 +182,38 @@ export async function fetchBestStories(offset = 0, limit = 30) {
   const pageIds = allIds.slice(offset, offset + limit);
   
   if (pageIds.length === 0) {
-    return { stories: [], hasMore: false, nextOffset: offset };
+    return { stories: [] as StoryItem[], hasMore: false, nextOffset: offset };
   }
   
-  // Fetch story details in parallel
-  const stories = await Promise.all(
-    pageIds.map((id: number) => fetchItem(id).catch(() => null))
+  // Fetch item details in parallel
+  const fetched = await Promise.all(
+    pageIds.map((id: number) => fetchFirebaseItem(id).catch(() => null))
   );
   
-  // Filter out failed fetches, deleted, dead, and job posts
-  const validStories = stories
-    .filter((story): story is FirebaseItem => story != null && !story.deleted && !story.dead && story.type !== 'job')
-    .map(normalizeFirebaseStory);
+  // Filter out failed fetches, deleted, dead, and job posts; normalize to StoryItem
+  const stories = fetched
+    .filter((fb): fb is FirebaseItem => fb != null && !fb.deleted && !fb.dead && fb.type !== 'job')
+    .map(fb => normalizeFirebaseToStoryItem(fb));
   
   return {
-    stories: validStories,
+    stories,
     hasMore: offset + limit < allIds.length,
     nextOffset: offset + limit,
+  };
+}
+
+// Convert a Firebase item that's known to be a story into StoryItem
+function normalizeFirebaseToStoryItem(fb: FirebaseItem): StoryItem {
+  return {
+    id: fb.id,
+    type: 'story',
+    title: fb.title ?? '',
+    url: fb.url,
+    text: fb.text,
+    points: fb.score ?? 0,
+    author: fb.by ?? '',
+    createdAt: (fb.time ?? 0) * 1000,
+    commentCount: fb.descendants ?? 0,
   };
 }
 
@@ -180,26 +221,18 @@ export async function fetchBestStories(offset = 0, limit = 30) {
  * Fetch tagged stories (Show HN or Ask HN) for a specific 24-hour window
  * Returns top 20 stories from that day sorted by HN gravity algorithm
  * Skips empty days automatically (up to 30 consecutive empty days)
- * @param {string} tag - Algolia tag ('show_hn' or 'ask_hn')
- * @param {number} windowIndex - Which day to start from (0 = today, 1 = yesterday, etc.)
  */
 async function fetchTaggedStories(tag: string, windowIndex = 0) {
   const now = Math.floor(Date.now() / 1000);
-  const maxEmptyDays = 30; // Stop after 30 consecutive empty days (likely reached HN's beginning)
+  const maxEmptyDays = 30;
   
   let currentWindow = windowIndex;
   let attempts = 0;
   
   while (attempts < maxEmptyDays) {
-    // Calculate the 24-hour window boundaries:
-    // - windowIndex=0: last 24 hours (now-86400 to now)
-    // - windowIndex=1: 24-48 hours ago, etc.
-    // Using (currentWindow + 1) for start ensures we get a full day's worth of stories
     const windowStart = now - ((currentWindow + 1) * 24 * 60 * 60);
     const windowEnd = now - (currentWindow * 24 * 60 * 60);
     
-    // Fetch up to 100 stories so we have enough to sort by gravity, then take top 20
-    // Using > for start and <= for end prevents stories from appearing in two windows
     const url = `${ALGOLIA_API}/search?tags=${tag}&numericFilters=created_at_i>${windowStart},created_at_i<=${windowEnd}&hitsPerPage=100`;
     
     const response = await fetch(url);
@@ -208,54 +241,46 @@ async function fetchTaggedStories(tag: string, windowIndex = 0) {
     }
     
     const data = await response.json() as AlgoliaSearchResponse;
-    
-    // Normalize all stories
-    const stories: Story[] = data.hits.map(normalizeAlgoliaHit);
+    const stories = data.hits.map(normalizeAlgoliaHit);
     
     if (stories.length > 0) {
-      // Sort by HN gravity score within this window
-      stories.sort((a: Story, b: Story) => {
-        const scoreA = calculateHNScore(a.points || 0, a.createdAt);
-        const scoreB = calculateHNScore(b.points || 0, b.createdAt);
+      stories.sort((a, b) => {
+        const scoreA = calculateHNScore(a.points, a.createdAt);
+        const scoreB = calculateHNScore(b.points, b.createdAt);
         return scoreB - scoreA;
       });
       
-      // Return only top 20 from this day (we fetched 100 to ensure good gravity sorting)
-      const topStories = stories.slice(0, 20);
-      
       return {
-        stories: topStories,
-        hasMore: true, // Always true since we found stories
+        stories: stories.slice(0, 20),
+        hasMore: true,
         nextWindow: currentWindow + 1,
       };
     }
     
-    // Empty day, try the next one
     currentWindow++;
     attempts++;
   }
   
-  // Reached max empty days - likely at HN's beginning or a gap
   return {
-    stories: [],
+    stories: [] as StoryItem[],
     hasMore: false,
     nextWindow: currentWindow,
   };
 }
 
-/** Fetch Show HN stories - wrapper around fetchTaggedStories */
+/** Fetch Show HN stories */
 export function fetchShowStories(windowIndex = 0) {
   return fetchTaggedStories('show_hn', windowIndex);
 }
 
-/** Fetch Ask HN stories - wrapper around fetchTaggedStories */
+/** Fetch Ask HN stories */
 export function fetchAskStories(windowIndex = 0) {
   return fetchTaggedStories('ask_hn', windowIndex);
 }
 
-// Fetch a single item from Firebase API (for story details)
+// Fetch a single item from Firebase API (for item details)
 // Optionally accepts AbortSignal for cancellation
-export async function fetchItem(id: number | string, signal?: AbortSignal): Promise<FirebaseItem> {
+export async function fetchFirebaseItem(id: number | string, signal?: AbortSignal): Promise<FirebaseItem> {
   const response = await fetch(`${FIREBASE_API}/item/${id}.json`, { signal });
   if (!response.ok) {
     throw new Error(`Failed to fetch item ${id}: ${response.status}`);
@@ -263,9 +288,9 @@ export async function fetchItem(id: number | string, signal?: AbortSignal): Prom
   return response.json() as Promise<FirebaseItem>;
 }
 
-// Fetch all comments for a story using Algolia (much faster - 1-2 requests instead of hundreds)
+// Fetch all comments for an item using Algolia (much faster - 1-2 requests instead of hundreds)
 // Accepts optional AbortSignal for cancellation
-async function fetchAllCommentsAlgolia(storyId: number, signal?: AbortSignal): Promise<AlgoliaComment[]> {
+async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Promise<AlgoliaComment[]> {
   const allComments: AlgoliaComment[] = [];
   let page = 0;
   const hitsPerPage = 200; // Algolia max
@@ -275,7 +300,7 @@ async function fetchAllCommentsAlgolia(storyId: number, signal?: AbortSignal): P
     // Check abort before each page
     if (signal?.aborted) return allComments;
     
-    const url = `${ALGOLIA_API}/search?tags=comment,story_${storyId}&hitsPerPage=${hitsPerPage}&page=${page}`;
+    const url = `${ALGOLIA_API}/search?tags=comment,story_${itemId}&hitsPerPage=${hitsPerPage}&page=${page}`;
     const response = await fetch(url, { signal });
     if (!response.ok) {
       throw new Error(`Failed to fetch comments: ${response.status}`);
@@ -300,7 +325,7 @@ async function fetchAllCommentsAlgolia(storyId: number, signal?: AbortSignal): P
 // Build comment tree from flat list of comments
 // If maxDepth is specified, children beyond that depth are collapsed
 // Uses kidsOrder map to maintain HN's ranking order (from Firebase kids arrays)
-function buildCommentTree(comments: AlgoliaComment[], storyId: number, maxDepth = Infinity, kidsOrder = new Map<number, number[]>()): Comment[] {
+function buildCommentTree(comments: AlgoliaComment[], itemId: number, maxDepth = Infinity, kidsOrder = new Map<number, number[]>()): Comment[] {
   // Create a map of all comments by ID
   const commentMap = new Map<number, Comment>();
   
@@ -322,7 +347,7 @@ function buildCommentTree(comments: AlgoliaComment[], storyId: number, maxDepth 
   const rootComments: Comment[] = [];
   
   commentMap.forEach(comment => {
-    if (comment.parentId === storyId) {
+    if (comment.parentId === itemId) {
       // This is a top-level comment
       comment.depth = 0;
       rootComments.push(comment);
@@ -374,7 +399,7 @@ function buildCommentTree(comments: AlgoliaComment[], storyId: number, maxDepth 
     });
   };
   
-  processTree(rootComments, storyId);
+  processTree(rootComments, itemId);
   
   return rootComments;
 }
@@ -388,16 +413,16 @@ function countAllChildren(comment: Comment): number {
   return count;
 }
 
-// Fetch just the story metadata (without comments)
-export async function fetchStoryOnly(id: number | string): Promise<Story> {
-  const storyId = Number(id);
-  const story = await fetchItem(storyId);
+// Fetch just the item metadata (without comments)
+export async function fetchItemOnly(id: number | string): Promise<Item> {
+  const itemId = Number(id);
+  const item = await fetchFirebaseItem(itemId);
   
-  if (!story) {
-    throw new Error(`Story ${id} not found`);
+  if (!item) {
+    throw new Error(`Item ${id} not found`);
   }
   
-  return normalizeFirebaseStory(story);
+  return normalizeFirebaseItem(item);
 }
 
 // Fetch kids ordering from Firebase for a set of comment IDs
@@ -418,7 +443,7 @@ async function fetchKidsOrdering(commentIds: number[], signal?: AbortSignal): Pr
     const results = await Promise.all(
       batch.map(async (id) => {
         try {
-          const item = await fetchItem(id, signal);
+          const item = await fetchFirebaseItem(id, signal);
           if (item?.kids) {
             return { id: item.id, kids: item.kids };
           }
@@ -439,31 +464,31 @@ async function fetchKidsOrdering(commentIds: number[], signal?: AbortSignal): Pr
   return kidsOrder;
 }
 
-// Prefetch comments for a story (with AbortController support)
-// Used for background prefetching - silent failures, returns { story, comments } or null
+// Prefetch comments for an item (with AbortController support)
+// Used for background prefetching - silent failures, returns { item, comments } or null
 // maxOrderingDepth: only fetch HN ordering for comments up to this depth (0=top-level, 1=replies, etc.)
-export async function prefetchStoryComments(id: number | string, signal?: AbortSignal, maxOrderingDepth = Infinity): Promise<PrefetchResult | null> {
+export async function prefetchItemComments(id: number | string, signal?: AbortSignal, maxOrderingDepth = Infinity): Promise<PrefetchResult | null> {
   try {
-    const storyId = Number(id);
+    const itemId = Number(id);
     
     // Check if aborted before starting
     if (signal?.aborted) return null;
     
-    // Fetch story and comments in parallel (pass signal for cancellation)
-    const [story, comments] = await Promise.all([
-      fetchItem(storyId, signal),
-      fetchAllCommentsAlgolia(storyId, signal),
+    // Fetch item and comments in parallel (pass signal for cancellation)
+    const [item, comments] = await Promise.all([
+      fetchFirebaseItem(itemId, signal),
+      fetchAllCommentsAlgolia(itemId, signal),
     ]);
     
     // Check if aborted after network calls
     if (signal?.aborted) return null;
     
-    if (!story) return null;
+    if (!item) return null;
     
-    // Build kids order map - always include story's kids (depth 0)
+    // Build kids order map - always include item's kids (depth 0)
     const kidsOrder = new Map<number, number[]>();
-    if (story.kids) {
-      kidsOrder.set(storyId, story.kids);
+    if (item.kids) {
+      kidsOrder.set(itemId, item.kids);
     }
     
     // Build a map of comment depths from the flat list
@@ -479,8 +504,8 @@ export async function prefetchStoryComments(id: number | string, signal?: AbortS
       if (commentDepths.has(commentId)) return commentDepths.get(commentId)!;
       const parentId = commentParents.get(commentId);
       
-      // If no parent info, or parent is the story, this is a root comment
-      if (parentId === undefined || parentId === storyId) {
+      // If no parent info, or parent is the item, this is a root comment
+      if (parentId === undefined || parentId === itemId) {
         commentDepths.set(commentId, 0);
         return 0;
       }
@@ -511,7 +536,7 @@ export async function prefetchStoryComments(id: number | string, signal?: AbortS
     // A parent at depth D has children at depth D+1, so we need ordering for parents at depth < maxOrderingDepth
     const parentsNeedingOrder = [...childrenCount.entries()]
       .filter(([parentId, count]: [number, number]) => {
-        if (count <= 1 || parentId === storyId) return false;
+        if (count <= 1 || parentId === itemId) return false;
         const parentDepth = commentDepths.get(parentId) ?? -1;
         return parentDepth >= 0 && parentDepth < maxOrderingDepth;
       })
@@ -526,10 +551,10 @@ export async function prefetchStoryComments(id: number | string, signal?: AbortS
     // Check final abort
     if (signal?.aborted) return null;
     
-    const commentTree = buildCommentTree(comments, storyId, 3, kidsOrder);
+    const commentTree = buildCommentTree(comments, itemId, 3, kidsOrder);
     
     return {
-      story: normalizeFirebaseStory(story),
+      item: normalizeFirebaseItem(item),
       comments: commentTree,
     };
   } catch {
@@ -538,26 +563,26 @@ export async function prefetchStoryComments(id: number | string, signal?: AbortS
   }
 }
 
-// Fetch comments for a story (separate from story fetch)
+// Fetch comments for an item (separate from item fetch)
 // Accepts optional AbortSignal for cancellation
-export async function fetchCommentsForStory(id: number | string, maxDepth = 3, signal: AbortSignal | null = null): Promise<Comment[]> {
-  const storyId = Number(id);
+export async function fetchCommentsForItem(id: number | string, maxDepth = 3, signal: AbortSignal | null = null): Promise<Comment[]> {
+  const itemId = Number(id);
   
   // Check abort before starting
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
   }
   
-  // Fetch story (for kids order) and comments in parallel
-  const [story, comments] = await Promise.all([
-    fetchItem(storyId, signal ?? undefined),
-    fetchAllCommentsAlgolia(storyId, signal ?? undefined),
+  // Fetch item (for kids order) and comments in parallel
+  const [item, comments] = await Promise.all([
+    fetchFirebaseItem(itemId, signal ?? undefined),
+    fetchAllCommentsAlgolia(itemId, signal ?? undefined),
   ]);
   
-  // Start with story's kids order for top-level comments
+  // Start with item's kids order for top-level comments
   const kidsOrder = new Map<number, number[]>();
-  if (story?.kids) {
-    kidsOrder.set(storyId, story.kids);
+  if (item?.kids) {
+    kidsOrder.set(itemId, item.kids);
   }
   
   // Count children per parent to identify which ones need ordering
@@ -570,7 +595,7 @@ export async function fetchCommentsForStory(id: number | string, maxDepth = 3, s
   // Only fetch kids for parents with multiple children (order matters)
   // Single-child parents don't need ordering
   const parentsNeedingOrder = [...childrenCount.entries()]
-    .filter(([parentId, count]: [number, number]) => count > 1 && parentId !== storyId)
+    .filter(([parentId, count]: [number, number]) => count > 1 && parentId !== itemId)
     .map(([parentId]) => parentId);
   
   // Check abort before expensive ordering operation
@@ -582,7 +607,33 @@ export async function fetchCommentsForStory(id: number | string, maxDepth = 3, s
   const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder, signal ?? undefined);
   nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
   
-  return buildCommentTree(comments, storyId, maxDepth, kidsOrder);
+  return buildCommentTree(comments, itemId, maxDepth, kidsOrder);
+}
+
+// Fetch a single item with its children tree from Algolia /items/{id} endpoint
+// Returns comment/item with full nested children in a single request
+export async function fetchAlgoliaItem(id: number | string, signal?: AbortSignal): Promise<AlgoliaItemResponse> {
+  const response = await fetch(`${ALGOLIA_API}/items/${id}`, { signal });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch item ${id}: ${response.status}`);
+  }
+  return response.json() as Promise<AlgoliaItemResponse>;
+}
+
+// Recursively convert Algolia item children to Comment[] tree
+export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[], depth = 0): Comment[] {
+  return children
+    .filter(child => child.author) // skip deleted comments (no author)
+    .map(child => ({
+      id: child.id,
+      author: child.author!,
+      text: child.text ?? '',
+      createdAt: child.created_at_i * 1000,
+      parentId: child.parent_id,
+      children: normalizeAlgoliaItemChildren(child.children ?? [], depth + 1),
+      depth,
+      childrenCollapsed: depth >= 3,
+    }));
 }
 
 // Format relative time

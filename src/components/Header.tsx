@@ -2,7 +2,7 @@ import { NavLink, Link, useLocation } from 'react-router-dom';
 import { ThemeToggle } from './ThemeToggle';
 import { useScrollDirection } from '../hooks/useScrollDirection';
 import { useScrollContainer } from '../context/ScrollContainerContext';
-import { clearListSessionState } from '../utils/storyCache';
+import { clearListSessionState } from '../utils/itemCache';
 import type { LocationState } from '../types';
 
 export function Header() {
@@ -13,19 +13,19 @@ export function Header() {
   
   // Determine if Show should be highlighted:
   // - On /show route, or
-  // - On story detail page when navigated from show list
+  // - On item detail page when navigated from show list
   const isShowActive = location.pathname === '/show' || 
     (location.pathname.startsWith('/item/') && locationState?.from === 'show');
   
   // Determine if Ask should be highlighted:
   // - On /ask route, or
-  // - On story detail page when navigated from ask list
+  // - On item detail page when navigated from ask list
   const isAskActive = location.pathname === '/ask' || 
     (location.pathname.startsWith('/item/') && locationState?.from === 'ask');
   
   // Determine if Best should be highlighted:
   // - On /best route, or
-  // - On story detail page when navigated from best list
+  // - On item detail page when navigated from best list
   const isBestActive = location.pathname === '/best' || 
     (location.pathname.startsWith('/item/') && locationState?.from === 'best');
   

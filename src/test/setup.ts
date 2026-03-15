@@ -2,8 +2,8 @@ import { afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { server } from '../mocks/server';
-import { cancelAllPrefetches } from '../hooks/usePrefetchStory';
-import { clearViewed } from '../utils/viewedStories';
+import { cancelAllPrefetches } from '../hooks/usePrefetchItem';
+import { clearViewed } from '../utils/viewedItems';
 
 // Create a proper localStorage mock (Node 23 has a broken localStorage)
 // Uses a Proxy to properly handle Object.keys() returning only stored keys

@@ -1,15 +1,17 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
-  getCachedStory,
-  setCachedStory,
+  getCachedItem,
+  setCachedItem,
   saveListSessionState,
   getListSessionState,
   clearListSessionState,
-} from './storyCache';
-import type { Comment } from '../types';
-import { createStory, createComment } from '../test/factories';
+  ITEM_CACHE_KEY_PREFIX,
+  FEED_SESSION_KEY_PREFIX,
+} from './itemCache';
+import type { Comment, StoryItem } from '../types';
+import { createStoryItem, createComment } from '../test/factories';
 
-describe('storyCache', () => {
+describe('itemCache', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -21,169 +23,169 @@ describe('storyCache', () => {
     vi.useRealTimers();
   });
 
-  const mockStory = createStory({ id: 123, title: 'Test Story', points: 100 });
+  const mockItem = createStoryItem({ id: 123, title: 'Sample HN Post', points: 100 });
   const mockComments = [
     createComment({ id: 1, text: 'Comment 1', author: 'user1' }),
     createComment({ id: 2, text: 'Comment 2', author: 'user2' }),
   ];
 
-  describe('getCachedStory', () => {
-    it('returns null for non-existent story', () => {
-      expect(getCachedStory(999)).toBeNull();
+  describe('getCachedItem', () => {
+    it('returns null for non-existent item', () => {
+      expect(getCachedItem(999)).toBeNull();
     });
 
-    it('returns cached story with comments', () => {
-      setCachedStory(123, mockStory, mockComments);
+    it('returns cached item with comments', () => {
+      setCachedItem(123, mockItem, mockComments);
       
-      const result = getCachedStory(123)!;
+      const result = getCachedItem(123)!;
       
       expect(result).not.toBeNull();
-      expect(result.story).toEqual(mockStory);
+      expect(result.item).toEqual(mockItem);
       expect(result.comments).toEqual(mockComments);
     });
 
     it('marks cache as fresh when recently created', () => {
-      setCachedStory(123, mockStory, mockComments);
+      setCachedItem(123, mockItem, mockComments);
       
-      const result = getCachedStory(123)!;
+      const result = getCachedItem(123)!;
       
       expect(result.isFresh).toBe(true);
     });
 
     it('marks cache as stale after CACHE_MAX_AGE (5 minutes)', () => {
-      setCachedStory(123, mockStory, mockComments);
+      setCachedItem(123, mockItem, mockComments);
       
       // Advance time by 6 minutes
       vi.advanceTimersByTime(6 * 60 * 1000);
       
-      const result = getCachedStory(123)!;
+      const result = getCachedItem(123)!;
       
       expect(result).not.toBeNull();
       expect(result.isFresh).toBe(false);
     });
 
     it('discards cache after CACHE_STALE_AGE (24 hours) and removes from storage', () => {
-      setCachedStory(123, mockStory, mockComments);
+      setCachedItem(123, mockItem, mockComments);
       
       // Advance time by 25 hours
       vi.advanceTimersByTime(25 * 60 * 60 * 1000);
       
-      const result = getCachedStory(123);
+      const result = getCachedItem(123);
       
       expect(result).toBeNull();
       // Verify it was removed from localStorage
-      expect(localStorage.getItem('hackertok_story_123')).toBeNull();
+      expect(localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}123`)).toBeNull();
     });
 
     it('returns orderedDepth from cache', () => {
-      setCachedStory(123, mockStory, mockComments, 1);
+      setCachedItem(123, mockItem, mockComments, 1);
       
-      const result = getCachedStory(123)!;
+      const result = getCachedItem(123)!;
       
       expect(result.orderedDepth).toBe(1);
     });
 
     it('defaults orderedDepth to 3 for old cache entries missing the field', () => {
       // Manually set cache without orderedDepth (simulating old cache format)
-      localStorage.setItem('hackertok_story_123', JSON.stringify({
-        story: mockStory,
+      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}123`, JSON.stringify({
+        item: mockItem,
         comments: mockComments,
         timestamp: Date.now(),
         // orderedDepth intentionally omitted
       }));
       
-      const result = getCachedStory(123)!;
+      const result = getCachedItem(123)!;
       
       expect(result.orderedDepth).toBe(3);
     });
 
     it('returns null for corrupted JSON', () => {
-      localStorage.setItem('hackertok_story_123', 'not valid json');
+      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}123`, 'not valid json');
       
-      const result = getCachedStory(123);
+      const result = getCachedItem(123);
       
       expect(result).toBeNull();
     });
 
-    it('handles string and number storyId', () => {
-      setCachedStory('123', mockStory, mockComments);
+    it('handles string and number itemId', () => {
+      setCachedItem('123', mockItem, mockComments);
       
-      expect(getCachedStory(123)).not.toBeNull();
-      expect(getCachedStory('123')).not.toBeNull();
+      expect(getCachedItem(123)).not.toBeNull();
+      expect(getCachedItem('123')).not.toBeNull();
     });
 
-    it('returns null for null/undefined storyId', () => {
-      expect(getCachedStory(null as unknown as string)).toBeNull();
-      expect(getCachedStory(undefined as unknown as string)).toBeNull();
+    it('returns null for null/undefined itemId', () => {
+      expect(getCachedItem(null as unknown as string)).toBeNull();
+      expect(getCachedItem(undefined as unknown as string)).toBeNull();
     });
 
     it('handles cache entry with missing timestamp', () => {
-      localStorage.setItem('hackertok_story_123', JSON.stringify({
-        story: mockStory,
+      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}123`, JSON.stringify({
+        item: mockItem,
         comments: mockComments,
         // timestamp intentionally omitted
       }));
       
       // Missing timestamp results in NaN age, treated as not fresh but still returned
-      const result = getCachedStory(123)!;
+      const result = getCachedItem(123)!;
       expect(result).not.toBeNull();
       expect(result.isFresh).toBe(false);
     });
   });
 
-  describe('setCachedStory', () => {
-    it('stores story that can be retrieved', () => {
-      setCachedStory(123, mockStory, mockComments);
+  describe('setCachedItem', () => {
+    it('stores item that can be retrieved', () => {
+      setCachedItem(123, mockItem, mockComments);
       
-      const result = getCachedStory(123)!;
-      expect(result.story).toEqual(mockStory);
+      const result = getCachedItem(123)!;
+      expect(result.item).toEqual(mockItem);
       expect(result.comments).toEqual(mockComments);
     });
 
-    it('stores different stories separately', () => {
-      const story1 = createStory({ id: 1, title: 'Story 1' });
-      const story2 = createStory({ id: 2, title: 'Story 2' });
+    it('stores different items separately', () => {
+      const item1 = createStoryItem({ id: 1, title: 'Item 1' });
+      const item2 = createStoryItem({ id: 2, title: 'Item 2' });
       
-      setCachedStory(1, story1, [] as Comment[]);
-      setCachedStory(2, story2, [] as Comment[]);
+      setCachedItem(1, item1, [] as Comment[]);
+      setCachedItem(2, item2, [] as Comment[]);
       
-      expect(getCachedStory(1)!.story.title).toBe('Story 1');
-      expect(getCachedStory(2)!.story.title).toBe('Story 2');
+      expect((getCachedItem(1)!.item as StoryItem).title).toBe('Item 1');
+      expect((getCachedItem(2)!.item as StoryItem).title).toBe('Item 2');
     });
 
-    it('overwrites existing cache for same storyId', () => {
-      setCachedStory(123, createStory({ title: 'Old' }), [] as Comment[]);
-      setCachedStory(123, createStory({ title: 'New' }), [] as Comment[]);
+    it('overwrites existing cache for same itemId', () => {
+      setCachedItem(123, createStoryItem({ title: 'Old' }), [] as Comment[]);
+      setCachedItem(123, createStoryItem({ title: 'New' }), [] as Comment[]);
       
-      expect(getCachedStory(123)!.story.title).toBe('New');
+      expect((getCachedItem(123)!.item as StoryItem).title).toBe('New');
     });
 
     it('stores orderedDepth correctly', () => {
-      setCachedStory(123, mockStory, mockComments, 1);
-      expect(getCachedStory(123)!.orderedDepth).toBe(1);
+      setCachedItem(123, mockItem, mockComments, 1);
+      expect(getCachedItem(123)!.orderedDepth).toBe(1);
       
-      setCachedStory(123, mockStory, mockComments, 3);
-      expect(getCachedStory(123)!.orderedDepth).toBe(3);
+      setCachedItem(123, mockItem, mockComments, 3);
+      expect(getCachedItem(123)!.orderedDepth).toBe(3);
     });
 
     it('defaults orderedDepth to 3', () => {
-      setCachedStory(123, mockStory, mockComments);
+      setCachedItem(123, mockItem, mockComments);
       
-      expect(getCachedStory(123)!.orderedDepth).toBe(3);
+      expect(getCachedItem(123)!.orderedDepth).toBe(3);
     });
 
-    it('prunes old entries when exceeding MAX_CACHED_STORIES (60)', () => {
-      // Add 65 stories
+    it('prunes old entries when exceeding MAX_CACHED_ITEMS (60)', () => {
+      // Add 65 items
       for (let i = 0; i < 65; i++) {
-        setCachedStory(i, createStory({ id: i }), [] as Comment[]);
+        setCachedItem(i, createStoryItem({ id: i }), [] as Comment[]);
         // Advance time slightly so each has different timestamp
         vi.advanceTimersByTime(100);
       }
       
-      // Count remaining story cache entries
+      // Count remaining item cache entries
       let count = 0;
       for (let i = 0; i < localStorage.length; i++) {
-        if (localStorage.key(i)?.startsWith('hackertok_story_')) {
+        if (localStorage.key(i)?.startsWith(ITEM_CACHE_KEY_PREFIX)) {
           count++;
         }
       }
@@ -194,15 +196,15 @@ describe('storyCache', () => {
 
     it('removes corrupted entries during pruning', () => {
       // Add corrupted entry
-      localStorage.setItem('hackertok_story_corrupted', 'not valid json');
+      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}corrupted`, 'not valid json');
       
       // Add valid entry (triggers prune)
-      setCachedStory(123, mockStory, mockComments);
+      setCachedItem(123, mockItem, mockComments);
       
       // Corrupted entry should be removed
-      expect(localStorage.getItem('hackertok_story_corrupted')).toBeNull();
+      expect(localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}corrupted`)).toBeNull();
       // Valid entry should exist
-      expect(getCachedStory(123)).not.toBeNull();
+      expect(getCachedItem(123)).not.toBeNull();
     });
   });
 
@@ -241,7 +243,7 @@ describe('sessionStorage - List Session State', () => {
       expect(result.hasMore).toBe(true);
     });
 
-    it('saves different story types separately', () => {
+    it('saves different item types separately', () => {
       saveListSessionState('top', { ...mockState, position: 1 });
       saveListSessionState('best', { ...mockState, position: 2 });
       
@@ -252,7 +254,7 @@ describe('sessionStorage - List Session State', () => {
     it('converts Set to Array for storage', () => {
       saveListSessionState('top', mockState);
       
-      const stored = JSON.parse(sessionStorage.getItem('hackertok_session_top')!) as { seenIds?: unknown };
+      const stored = JSON.parse(sessionStorage.getItem(`${FEED_SESSION_KEY_PREFIX}top`)!) as { seenIds?: unknown };
       expect(Array.isArray(stored.seenIds)).toBe(true);
     });
   });
@@ -283,7 +285,7 @@ describe('sessionStorage - List Session State', () => {
       expect(result).toBeNull();
        
       // Verify it was removed from sessionStorage
-      expect(sessionStorage.getItem('hackertok_session_top')).toBeNull();
+      expect(sessionStorage.getItem(`${FEED_SESSION_KEY_PREFIX}top`)).toBeNull();
     });
 
     it('returns session within 30 minutes', () => {
@@ -299,7 +301,7 @@ describe('sessionStorage - List Session State', () => {
 
     it('provides default values for missing fields', () => {
       // Manually set minimal session data
-      sessionStorage.setItem('hackertok_session_top', JSON.stringify({
+      sessionStorage.setItem(`${FEED_SESSION_KEY_PREFIX}top`, JSON.stringify({
         timestamp: Date.now(),
         // Missing most fields
       }));
@@ -314,7 +316,7 @@ describe('sessionStorage - List Session State', () => {
     });
 
     it('returns null for corrupted JSON', () => {
-      sessionStorage.setItem('hackertok_session_top', 'not valid json');
+      sessionStorage.setItem(`${FEED_SESSION_KEY_PREFIX}top`, 'not valid json');
       
       const result = getListSessionState('top');
       
@@ -345,7 +347,7 @@ describe('sessionStorage - List Session State', () => {
       expect(result.seenIds.size).toBe(0);
     });
 
-    it('handles special characters in storyType', () => {
+    it('handles special characters in feedType', () => {
       saveListSessionState('top/special' as never, mockState);
       
       const result = getListSessionState('top/special' as never)!;

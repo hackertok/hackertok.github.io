@@ -1,15 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { FIREBASE_API, ALGOLIA_API, mockTopStoryIds, mockAlgoliaStory, mockAlgoliaStory2, mockAlgoliaStory3 } from './fixtures/mock-data';
+import { FIREBASE_API, ALGOLIA_API, mockTopItemIds, mockAlgoliaItem1, mockAlgoliaItem2, mockAlgoliaItem3 } from './fixtures/mock-data';
 
 test.describe('Error Boundary', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
   test('displays error UI when a component crashes', async ({ page }) => {
-    // Set up mocks that return a malformed story to trigger a React render crash.
+    // Set up mocks that return a malformed item to trigger a React render crash.
     // Making "title" an object causes "Objects are not valid as a React child"
-    // when React tries to render {story.title} in the JSX.
+    // when React tries to render {item.title} in the JSX.
     await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
-      await route.fulfill({ json: mockTopStoryIds });
+      await route.fulfill({ json: mockTopItemIds });
     });
     await page.route(`${FIREBASE_API}/beststories.json`, async (route) => {
       await route.fulfill({ json: [12345] });
@@ -19,7 +19,7 @@ test.describe('Error Boundary', () => {
       const match = url.match(/\/item\/(\d+)\.json/);
       const id = match ? parseInt(match[1], 10) : 0;
 
-      // Return a story with title as an object — React will throw during render
+      // Return an item with title as an object — React will throw during render
       await route.fulfill({
         json: {
           id,
@@ -36,7 +36,7 @@ test.describe('Error Boundary', () => {
     await page.route(`${ALGOLIA_API}/search*`, async (route) => {
       await route.fulfill({
         json: {
-          hits: [mockAlgoliaStory, mockAlgoliaStory2, mockAlgoliaStory3],
+          hits: [mockAlgoliaItem1, mockAlgoliaItem2, mockAlgoliaItem3],
           nbHits: 3,
           page: 0,
           nbPages: 1,
@@ -50,7 +50,7 @@ test.describe('Error Boundary', () => {
       });
     });
 
-    // Navigate to a story detail page — the malformed title triggers a crash
+    // Navigate to an item detail page — the malformed title triggers a crash
     await page.goto('/#/item/12345');
 
     // ErrorBoundary should render its fallback UI

@@ -35,7 +35,7 @@ describe('Header', () => {
       expect(bestLink).not.toHaveClass('bg-hn-orange');
     });
 
-    it('highlights best button on story detail when navigated from best list', () => {
+    it('highlights best button on item detail when navigated from best list', () => {
       // Simulate navigation state from best list
       render(<Header />, { 
         initialEntries: [
@@ -47,7 +47,7 @@ describe('Header', () => {
       expect(bestLink).toHaveClass('bg-hn-orange');
     });
 
-    it('does not highlight best button on story detail when navigated from top list', () => {
+    it('does not highlight best button on item detail when navigated from top list', () => {
       render(<Header />, { 
         initialEntries: [
           { pathname: '/item/12345', state: { from: 'top' } }
@@ -58,7 +58,7 @@ describe('Header', () => {
       expect(bestLink).not.toHaveClass('bg-hn-orange');
     });
 
-    it('does not highlight best button on story detail without navigation state', () => {
+    it('does not highlight best button on item detail without navigation state', () => {
       render(<Header />, { 
         initialEntries: ['/item/12345']
       });
@@ -89,7 +89,7 @@ describe('Header', () => {
       expect(showLink).not.toHaveClass('bg-hn-orange');
     });
 
-    it('highlights show button on story detail when navigated from show list', () => {
+    it('highlights show button on item detail when navigated from show list', () => {
       render(<Header />, { 
         initialEntries: [
           { pathname: '/item/12345', state: { from: 'show' } }
@@ -100,7 +100,7 @@ describe('Header', () => {
       expect(showLink).toHaveClass('bg-hn-orange');
     });
 
-    it('does not highlight show button on story detail when navigated from top list', () => {
+    it('does not highlight show button on item detail when navigated from top list', () => {
       render(<Header />, { 
         initialEntries: [
           { pathname: '/item/12345', state: { from: 'top' } }
@@ -133,7 +133,7 @@ describe('Header', () => {
       expect(askLink).not.toHaveClass('bg-hn-orange');
     });
 
-    it('highlights ask button on story detail when navigated from ask list', () => {
+    it('highlights ask button on item detail when navigated from ask list', () => {
       render(<Header />, { 
         initialEntries: [
           { pathname: '/item/12345', state: { from: 'ask' } }
@@ -144,7 +144,7 @@ describe('Header', () => {
       expect(askLink).toHaveClass('bg-hn-orange');
     });
 
-    it('does not highlight ask button on story detail when navigated from top list', () => {
+    it('does not highlight ask button on item detail when navigated from top list', () => {
       render(<Header />, { 
         initialEntries: [
           { pathname: '/item/12345', state: { from: 'top' } }

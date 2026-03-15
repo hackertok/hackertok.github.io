@@ -1,3 +1,3 @@
 export { StoryList } from './StoryList';
-export { StoryDetail } from './StoryDetail';
+export { ItemDetail } from './ItemDetail';
 export { DomainStories } from './DomainStories';

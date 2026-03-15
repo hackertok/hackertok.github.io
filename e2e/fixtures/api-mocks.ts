@@ -2,27 +2,28 @@ import { Page } from '@playwright/test';
 import {
   ALGOLIA_API,
   FIREBASE_API,
-  mockStory,
-  mockStory2,
-  mockStory3,
+  mockItem1,
+  mockItem2,
+  mockItem3,
   mockComment,
   mockNestedComment,
-  mockAlgoliaStory,
-  mockAlgoliaStory2,
-  mockAlgoliaStory3,
-  mockShowHNStory,
-  mockShowHNStory2,
-  mockAskHNStory,
-  mockAskHNStory2,
-  mockTopStoryIds,
-  mockBestStoryIds,
-  mockBestStory1,
-  mockBestStory2,
-  mockBestStory3,
-  mockDomainStory,
-  mockPaginationStory1,
-  mockPaginationStory2,
-  mockPaginationStory3,
+  mockAlgoliaItem1,
+  mockAlgoliaItem2,
+  mockAlgoliaItem3,
+  mockShowHNItem1,
+  mockShowHNItem2,
+  mockAskHNItem1,
+  mockAskHNItem2,
+  mockTopItemIds,
+  mockBestItemIds,
+  mockBestItem1,
+  mockBestItem2,
+  mockBestItem3,
+  mockDomainItem,
+  mockPaginationItem1,
+  mockPaginationItem2,
+  mockPaginationItem3,
+  mockAlgoliaCommentItem,
 } from './mock-data';
 
 /**
@@ -30,17 +31,17 @@ import {
  * Intercepts both Algolia and Firebase HN API calls
  */
 export async function setupApiMocks(page: Page) {
-  // Firebase: Top stories
+  // Firebase: Top items
   await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
-    await route.fulfill({ json: mockTopStoryIds });
+    await route.fulfill({ json: mockTopItemIds });
   });
 
-  // Firebase: Best stories
+  // Firebase: Best items
   await page.route(`${FIREBASE_API}/beststories.json`, async (route) => {
-    await route.fulfill({ json: mockBestStoryIds });
+    await route.fulfill({ json: mockBestItemIds });
   });
 
-  // Firebase: Individual items (stories and comments)
+  // Firebase: Individual items
   await page.route(`${FIREBASE_API}/item/*.json`, async (route) => {
     const url = route.request().url();
     const match = url.match(/\/item\/(\d+)\.json/);
@@ -53,67 +54,67 @@ export async function setupApiMocks(page: Page) {
     }
 
     const items: Record<number, object> = {
-      12345: mockStory,
-      12346: mockStory2,
-      12347: mockStory3,
+      12345: mockItem1,
+      12346: mockItem2,
+      12347: mockItem3,
       1001: mockComment,
       2001: mockNestedComment,
-      // Best stories (distinct from top stories)
-      33001: mockBestStory1,
-      33002: mockBestStory2,
-      33003: mockBestStory3,
-      // Show HN stories in Firebase format
+      // Best items (distinct from top items)
+      33001: mockBestItem1,
+      33002: mockBestItem2,
+      33003: mockBestItem3,
+      // Show HN items in Firebase format
       99999: {
         id: 99999,
-        title: mockShowHNStory.title,
-        url: mockShowHNStory.url,
-        by: mockShowHNStory.author,
-        score: mockShowHNStory.points,
-        time: mockShowHNStory.created_at_i,
-        descendants: mockShowHNStory.num_comments,
+        title: mockShowHNItem1.title,
+        url: mockShowHNItem1.url,
+        by: mockShowHNItem1.author,
+        score: mockShowHNItem1.points,
+        time: mockShowHNItem1.created_at_i,
+        descendants: mockShowHNItem1.num_comments,
         type: 'story',
       },
       99998: {
         id: 99998,
-        title: mockShowHNStory2.title,
-        url: mockShowHNStory2.url,
-        by: mockShowHNStory2.author,
-        score: mockShowHNStory2.points,
-        time: mockShowHNStory2.created_at_i,
-        descendants: mockShowHNStory2.num_comments,
+        title: mockShowHNItem2.title,
+        url: mockShowHNItem2.url,
+        by: mockShowHNItem2.author,
+        score: mockShowHNItem2.points,
+        time: mockShowHNItem2.created_at_i,
+        descendants: mockShowHNItem2.num_comments,
         type: 'story',
       },
-      // Ask HN stories in Firebase format (includes text for text posts)
+      // Ask HN items in Firebase format (includes text for text posts)
       88888: {
         id: 88888,
-        title: mockAskHNStory.title,
-        url: mockAskHNStory.url,
-        by: mockAskHNStory.author,
-        score: mockAskHNStory.points,
-        time: mockAskHNStory.created_at_i,
-        descendants: mockAskHNStory.num_comments,
-        text: mockAskHNStory.story_text,
+        title: mockAskHNItem1.title,
+        url: mockAskHNItem1.url,
+        by: mockAskHNItem1.author,
+        score: mockAskHNItem1.points,
+        time: mockAskHNItem1.created_at_i,
+        descendants: mockAskHNItem1.num_comments,
+        text: mockAskHNItem1.story_text,
         type: 'story',
       },
       88887: {
         id: 88887,
-        title: mockAskHNStory2.title,
-        url: mockAskHNStory2.url,
-        by: mockAskHNStory2.author,
-        score: mockAskHNStory2.points,
-        time: mockAskHNStory2.created_at_i,
-        descendants: mockAskHNStory2.num_comments,
+        title: mockAskHNItem2.title,
+        url: mockAskHNItem2.url,
+        by: mockAskHNItem2.author,
+        score: mockAskHNItem2.points,
+        time: mockAskHNItem2.created_at_i,
+        descendants: mockAskHNItem2.num_comments,
         type: 'story',
       },
-      // Domain story
+      // Domain item
       77777: {
         id: 77777,
-        title: mockDomainStory.title,
-        url: mockDomainStory.url,
-        by: mockDomainStory.author,
-        score: mockDomainStory.points,
-        time: mockDomainStory.created_at_i,
-        descendants: mockDomainStory.num_comments,
+        title: mockDomainItem.title,
+        url: mockDomainItem.url,
+        by: mockDomainItem.author,
+        score: mockDomainItem.points,
+        time: mockDomainItem.created_at_i,
+        descendants: mockDomainItem.num_comments,
         type: 'story',
       },
     };
@@ -125,7 +126,7 @@ export async function setupApiMocks(page: Page) {
       await route.fulfill({
         json: {
           id,
-          by: `commenter${id}`,
+          by: `user${id}`,
           text: `Comment ${id}`,
           time: Math.floor(Date.now() / 1000) - 600,
           parent: 12345,
@@ -133,12 +134,12 @@ export async function setupApiMocks(page: Page) {
         },
       });
     } else {
-      // Generic story for unknown IDs
+      // Generic item for unknown IDs
       await route.fulfill({
         json: {
           id,
-          title: `Story ${id}`,
-          url: `https://example.com/story/${id}`,
+          title: `Item ${id}`,
+          url: `https://example.com/item/${id}`,
           by: 'testuser',
           score: 50,
           time: Math.floor(Date.now() / 1000) - 7200,
@@ -159,29 +160,29 @@ export async function setupApiMocks(page: Page) {
     let hits: object[] = [];
     let nbHits = 0;
 
-    // Comments for story detail page (tags=comment,story_12345)
+    // Comments for item detail page (tags=comment,story_12345)
     if (tags.includes('comment') && tags.includes('story_')) {
       // Return mock comments in Algolia format
       hits = [
         {
           objectID: '1001',
-          author: 'commenter1',
-          comment_text: 'This is a test comment with <code>code</code> in it.',
+          author: 'patio11',
+          comment_text: 'The wasm-bindgen approach is really interesting. It essentially lets you write Rust that compiles to WebAssembly and then generates <code>JS bindings</code> automatically.',
           created_at_i: Math.floor(Date.now() / 1000) - 1800,
           parent_id: 12345,
           story_id: 12345,
         },
         {
           objectID: '2001',
-          author: 'commenter2',
-          comment_text: 'This is a nested reply.',
+          author: 'tptacek',
+          comment_text: 'Agreed. The DX improvements in the latest release are substantial.',
           created_at_i: Math.floor(Date.now() / 1000) - 900,
           parent_id: 1001,
           story_id: 12345,
         },
         {
           objectID: '1002',
-          author: 'commenter1002',
+          author: 'jgrahamc',
           comment_text: 'Comment 1002',
           created_at_i: Math.floor(Date.now() / 1000) - 600,
           parent_id: 12345,
@@ -190,21 +191,21 @@ export async function setupApiMocks(page: Page) {
       ];
       nbHits = 3;
     } else if (tags.includes('show_hn')) {
-      hits = [mockShowHNStory, mockShowHNStory2];
+      hits = [mockShowHNItem1, mockShowHNItem2];
       nbHits = 2;
     } else if (tags.includes('ask_hn')) {
-      hits = [mockAskHNStory, mockAskHNStory2];
+      hits = [mockAskHNItem1, mockAskHNItem2];
       nbHits = 2;
     } else if (tags.includes('front_page')) {
-      hits = [mockAlgoliaStory, mockAlgoliaStory2, mockAlgoliaStory3];
+      hits = [mockAlgoliaItem1, mockAlgoliaItem2, mockAlgoliaItem3];
       nbHits = 3;
     } else if (tags === 'story') {
-      // Day-based pagination (tags=story with numericFilters) - return different stories
-      hits = [mockPaginationStory1, mockPaginationStory2, mockPaginationStory3];
+      // Day-based pagination (tags=story with numericFilters) - return different items
+      hits = [mockPaginationItem1, mockPaginationItem2, mockPaginationItem3];
       nbHits = 3;
     } else if (query.includes('example.com')) {
       // Domain filter
-      hits = [mockDomainStory];
+      hits = [mockDomainItem];
       nbHits = 1;
     }
 
@@ -219,7 +220,21 @@ export async function setupApiMocks(page: Page) {
     });
   });
 
-  // Algolia: Search by date endpoint (used by DomainStories page for domain-filtered results)
+  // Algolia: Items endpoint (used for comment detail)
+  await page.route(`${ALGOLIA_API}/items/*`, async (route) => {
+    const url = route.request().url();
+    const match = url.match(/\/items\/(\d+)/);
+    const id = match ? parseInt(match[1], 10) : 0;
+
+    if (id === 1001) {
+      await route.fulfill({ json: mockAlgoliaCommentItem });
+      return;
+    }
+
+    await route.fulfill({ status: 404, json: { status: 404, error: 'Item not found' } });
+  });
+
+  // Algolia: Search by date endpoint (used by DomainItems page for domain-filtered results)
   await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get('query') || '';
@@ -227,7 +242,7 @@ export async function setupApiMocks(page: Page) {
     let hits: object[] = [];
     if (query) {
       // Domain filter query (e.g. query=example.com)
-      hits = [mockDomainStory];
+      hits = [mockDomainItem];
     }
 
     await route.fulfill({
@@ -243,9 +258,9 @@ export async function setupApiMocks(page: Page) {
 }
 
 /**
- * Mock an empty stories response
+ * Mock an empty items response
  */
-export async function mockEmptyStories(page: Page) {
+export async function mockEmptyItems(page: Page) {
   await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
     await route.fulfill({ json: [] });
   });
@@ -280,19 +295,19 @@ export async function mockApiError(page: Page) {
  * Set up API mocks with artificial delay (for testing loading states)
  */
 export async function setupApiMocksWithDelay(page: Page, delayMs: number = 1500) {
-  // Firebase: Top stories with delay
+  // Firebase: Top items with delay
   await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
     await new Promise((r) => setTimeout(r, delayMs));
-    await route.fulfill({ json: mockTopStoryIds });
+    await route.fulfill({ json: mockTopItemIds });
   });
 
-  // Firebase: Best stories with delay
+  // Firebase: Best items with delay
   await page.route(`${FIREBASE_API}/beststories.json`, async (route) => {
     await new Promise((r) => setTimeout(r, delayMs));
-    await route.fulfill({ json: mockBestStoryIds });
+    await route.fulfill({ json: mockBestItemIds });
   });
 
-  // Firebase: Individual items (stories and comments) with delay
+  // Firebase: Individual items with delay
   await page.route(`${FIREBASE_API}/item/*.json`, async (route) => {
     await new Promise((r) => setTimeout(r, delayMs));
     const url = route.request().url();
@@ -300,9 +315,9 @@ export async function setupApiMocksWithDelay(page: Page, delayMs: number = 1500)
     const id = match ? parseInt(match[1], 10) : 0;
 
     const items: Record<number, object> = {
-      12345: mockStory,
-      12346: mockStory2,
-      12347: mockStory3,
+      12345: mockItem1,
+      12346: mockItem2,
+      12347: mockItem3,
     };
 
     if (items[id]) {
@@ -311,8 +326,8 @@ export async function setupApiMocksWithDelay(page: Page, delayMs: number = 1500)
       await route.fulfill({
         json: {
           id,
-          title: `Story ${id}`,
-          url: `https://example.com/story/${id}`,
+          title: `Item ${id}`,
+          url: `https://example.com/item/${id}`,
           by: 'testuser',
           score: 50,
           time: Math.floor(Date.now() / 1000) - 7200,
@@ -328,7 +343,7 @@ export async function setupApiMocksWithDelay(page: Page, delayMs: number = 1500)
     await new Promise((r) => setTimeout(r, delayMs));
     await route.fulfill({
       json: {
-        hits: [mockAlgoliaStory, mockAlgoliaStory2, mockAlgoliaStory3],
+        hits: [mockAlgoliaItem1, mockAlgoliaItem2, mockAlgoliaItem3],
         nbHits: 3,
         page: 0,
         nbPages: 1,
@@ -342,7 +357,7 @@ export async function setupApiMocksWithDelay(page: Page, delayMs: number = 1500)
     await new Promise((r) => setTimeout(r, delayMs));
     await route.fulfill({
       json: {
-        hits: [mockPaginationStory1, mockPaginationStory2, mockPaginationStory3],
+        hits: [mockPaginationItem1, mockPaginationItem2, mockPaginationItem3],
         nbHits: 3,
         page: 0,
         nbPages: 1,

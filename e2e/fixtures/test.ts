@@ -4,17 +4,14 @@
  * @see https://playwright.dev/docs/test-fixtures
  */
 import { test as base, expect, Page } from '@playwright/test';
-import { setupApiMocks, mockEmptyStories, mockApiError, setupApiMocksWithDelay } from './api-mocks';
+import { mockEmptyItems, mockApiError } from './api-mocks';
 import { FIREBASE_API, ALGOLIA_API } from './mock-data';
-
-// Re-export setupApiMocks for tests that need manual control
-export { setupApiMocks, setupApiMocksWithDelay };
 
 /**
  * Extended test fixture types
  */
 type CustomFixtures = {
-  /** Helper to mock empty story responses */
+  /** Helper to mock empty item responses */
   mockEmpty: () => Promise<void>;
   /** Helper to mock API errors */
   mockError: () => Promise<void>;
@@ -34,7 +31,7 @@ export const test = base.extend<CustomFixtures>({
   // Helper fixture for mocking empty responses
   mockEmpty: async ({ page }, use) => {
     const mockFn = async () => {
-      await mockEmptyStories(page);
+      await mockEmptyItems(page);
     };
     await use(mockFn);
   },

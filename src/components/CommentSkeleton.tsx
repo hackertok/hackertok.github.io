@@ -67,10 +67,10 @@ export function CommentSkeletonTree({ count = 12 }: CommentSkeletonTreeProps) {
   );
 }
 
-export function StoryDetailSkeleton() {
+export function ItemDetailSkeleton() {
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4 animate-pulse">
-      {/* Story header skeleton */}
+      {/* Item header skeleton */}
       <article className="mb-6 pb-4 border-b border-gray-100 dark:border-gray-800">
         {/* Title */}
         <div className="space-y-2 mb-3">

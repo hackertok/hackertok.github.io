@@ -2,12 +2,12 @@ import { useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { formatTimeAgo, getHostname } from '../api/hn';
-import { usePrefetchStory, cancelAllPrefetches } from '../hooks/usePrefetchStory';
-import { useIsViewed, markViewedWithTime } from '../utils/viewedStories';
-import type { Story } from '../types';
+import { usePrefetchItem, cancelAllPrefetches } from '../hooks/usePrefetchItem';
+import { useIsViewed, markViewedWithTime } from '../utils/viewedItems';
+import type { StoryItem } from '../types';
 
 interface StoryCardProps {
-  story: Story;
+  story: StoryItem;
   index?: number;
   listType?: string;
   onBeforeNavigate?: () => void;
@@ -15,7 +15,7 @@ interface StoryCardProps {
 
 export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate }: StoryCardProps) {
   const hostname = getHostname(story.url);
-  const { startPrefetch, stopPrefetch } = usePrefetchStory();
+  const { startPrefetch, stopPrefetch } = usePrefetchItem();
   const isPrefetchingRef = useRef(false);
   const wasInExitZoneRef = useRef(false); // Track if card was ever in exit zone
   

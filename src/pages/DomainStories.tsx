@@ -5,7 +5,7 @@ import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
 import { ALGOLIA_API } from '../config/api';
 import { normalizeAlgoliaHit } from '../api/hn';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import type { Story, AlgoliaSearchResponse } from '../types';
+import type { StoryItem, AlgoliaSearchResponse } from '../types';
 
 export function DomainStories() {
   // Use wildcard param to capture paths like github.com/foo
@@ -14,7 +14,7 @@ export function DomainStories() {
   
   // Set document title to show which domain
   useDocumentTitle(domain ? `Stories from ${domain}` : 'Domain Stories');
-  const [stories, setStories] = useState<Story[]>([]);
+  const [stories, setStories] = useState<StoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
@@ -25,12 +25,12 @@ export function DomainStories() {
     rootMargin: '200px',
   });
 
-  const loadStories = useCallback(async (pageNum = 0, append = false) => {
+  const loadItems = useCallback(async (pageNum = 0, append = false) => {
     setLoading(true);
     setError(null);
 
     try {
-      // Use Algolia search_by_date to find stories from this domain
+      // Use Algolia search_by_date to find items from this domain
       // - restrictSearchableAttributes=url: only search in URL field (not title/author)
       // - search_by_date endpoint: returns newest first, matching HN's /from behavior
       const url = `${ALGOLIA_API}/search_by_date?tags=story&query=${encodeURIComponent(domain)}&restrictSearchableAttributes=url&hitsPerPage=50&page=${pageNum}`;
@@ -44,7 +44,7 @@ export function DomainStories() {
       
       // Filter to only include stories actually from this domain/path
       // domain can be "github.com" or "github.com/foo"
-      const domainStories: Story[] = data.hits
+      const domainStories: StoryItem[] = data.hits
         .filter((hit) => {
           if (!hit.url) return false;
           try {
@@ -87,15 +87,15 @@ export function DomainStories() {
     setStories([]);
     setPage(0);
     setHasMore(true);
-    void loadStories(0, false);
-  }, [domain, loadStories]);
+    void loadItems(0, false);
+  }, [domain, loadItems]);
 
   // Load more when scrolling near bottom
   useEffect(() => {
     if (inView && !loading && hasMore) {
-      void loadStories(page + 1, true);
+      void loadItems(page + 1, true);
     }
-  }, [inView, loading, hasMore, page, loadStories]);
+  }, [inView, loading, hasMore, page, loadItems]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
@@ -111,7 +111,7 @@ export function DomainStories() {
         <div className="text-center py-8">
           <p className="text-red-500 dark:text-red-400 mb-4">Failed to load stories: {error}</p>
           <button
-            onClick={() => loadStories(0, false)}
+            onClick={() => loadItems(0, false)}
             className="px-4 py-2 bg-hn-orange text-white rounded-lg hover:bg-orange-600 transition-colors"
           >
             Try Again

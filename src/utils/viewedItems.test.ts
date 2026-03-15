@@ -9,20 +9,21 @@ import {
   clearViewedTimes,
   getSessionViewedIds,
   addToSessionViewed,
-  clearSessionViewed
-} from './viewedStories';
+  clearSessionViewed,
+  VIEWED_KEY,
+} from './viewedItems';
 
-describe('viewedStories', () => {
+describe('viewedItems', () => {
   beforeEach(() => {
     clearViewed();
   });
 
   describe('isViewed', () => {
-    it('returns false for unviewed story', () => {
+    it('returns false for unviewed item', () => {
       expect(isViewed(12345)).toBe(false);
     });
 
-    it('returns true for viewed story', () => {
+    it('returns true for viewed item', () => {
       markViewed(12345);
       expect(isViewed(12345)).toBe(true);
     });
@@ -41,13 +42,13 @@ describe('viewedStories', () => {
   });
 
   describe('markViewed', () => {
-    it('marks a story as viewed', () => {
+    it('marks an item as viewed', () => {
       expect(isViewed(99999)).toBe(false);
       markViewed(99999);
       expect(isViewed(99999)).toBe(true);
     });
 
-    it('handles multiple different stories', () => {
+    it('handles multiple different items', () => {
       markViewed(1);
       markViewed(2);
       markViewed(3);
@@ -58,7 +59,7 @@ describe('viewedStories', () => {
       expect(isViewed(4)).toBe(false);
     });
 
-    it('is idempotent - marking same story twice has no effect', () => {
+    it('is idempotent - marking same item twice has no effect', () => {
       markViewed(12345);
       expect(isViewed(12345)).toBe(true);
       
@@ -70,7 +71,7 @@ describe('viewedStories', () => {
       // Seed 50K IDs via localStorage, then let clearViewed invalidate the cache
       const ids = Array.from({ length: 50_000 }, (_, i) => i + 1);
       clearViewed(); // invalidates in-memory cache + clears localStorage
-      localStorage.setItem('hackertok_viewed', JSON.stringify(ids));
+      localStorage.setItem(VIEWED_KEY, JSON.stringify(ids));
       // clearViewed set viewedSet = null, so next access reloads from localStorage
       
       expect(isViewed(1)).toBe(true);
@@ -84,13 +85,13 @@ describe('viewedStories', () => {
       expect(isViewed(50_001)).toBe(true); // newly added
       
       // Verify localStorage is also bounded
-      const stored = JSON.parse(localStorage.getItem('hackertok_viewed')!) as number[];
+      const stored = JSON.parse(localStorage.getItem(VIEWED_KEY)!) as number[];
       expect(stored.length).toBe(50_000);
     });
   });
 
   describe('clearViewed', () => {
-    it('clears all viewed stories', () => {
+    it('clears all viewed items', () => {
       markViewed(1);
       markViewed(2);
       markViewed(3);
@@ -106,7 +107,7 @@ describe('viewedStories', () => {
   });
 });
 
-describe('viewedStories - Time-based functions', () => {
+describe('viewedItems - Time-based functions', () => {
   beforeEach(() => {
     clearViewed();
     clearViewedTimes();
@@ -130,12 +131,12 @@ describe('viewedStories - Time-based functions', () => {
     });
 
     it('excludes IDs older than the time window', () => {
-      // Mark a story "25 hours ago"
+      // Mark an item "25 hours ago"
       const twentyFiveHoursAgo = Date.now() - (25 * 60 * 60 * 1000);
       vi.spyOn(Date, 'now').mockReturnValue(twentyFiveHoursAgo);
       markViewedWithTime(11111);
       
-      // Mark a story "now"
+      // Mark an item "now"
       vi.spyOn(Date, 'now').mockReturnValue(Date.now() + (25 * 60 * 60 * 1000));
       markViewedWithTime(22222);
       
@@ -147,7 +148,7 @@ describe('viewedStories - Time-based functions', () => {
     });
 
     it('handles custom time window', () => {
-      // Mark a story "2 hours ago"
+      // Mark an item "2 hours ago"
       const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
       vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
       markViewedWithTime(12345);
@@ -163,7 +164,7 @@ describe('viewedStories - Time-based functions', () => {
   });
 
   describe('markViewedWithTime', () => {
-    it('marks story with timestamp', () => {
+    it('marks item with timestamp', () => {
       markViewedWithTime(12345);
       
       const ids = getRecentlyViewedIds(24);
@@ -205,13 +206,13 @@ describe('viewedStories - Time-based functions', () => {
 
   describe('pruneExpiredViewed', () => {
     it('removes entries older than time window', () => {
-      // Mark a story "25 hours ago"
+      // Mark an item "25 hours ago"
       const twentyFiveHoursAgo = Date.now() - (25 * 60 * 60 * 1000);
       vi.spyOn(Date, 'now').mockReturnValueOnce(twentyFiveHoursAgo);
       markViewedWithTime(11111);
       vi.restoreAllMocks();
       
-      // Mark a story "now"
+      // Mark an item "now"
       markViewedWithTime(22222);
       
       // Before pruning - old one would fail the time check anyway
@@ -226,7 +227,7 @@ describe('viewedStories - Time-based functions', () => {
     });
 
     it('handles custom time window', () => {
-      // Mark a story "2 hours ago"
+      // Mark an item "2 hours ago"
       const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
       vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
       markViewedWithTime(12345);
@@ -254,7 +255,7 @@ describe('viewedStories - Time-based functions', () => {
   });
 
   describe('clearViewedTimes', () => {
-    it('clears all time-based viewed stories', () => {
+    it('clears all time-based viewed items', () => {
       markViewedWithTime(12345);
       markViewedWithTime(67890);
       
@@ -267,7 +268,7 @@ describe('viewedStories - Time-based functions', () => {
   });
 });
 
-describe('viewedStories - Session storage functions', () => {
+describe('viewedItems - Session storage functions', () => {
   beforeEach(() => {
     clearViewed();
     clearViewedTimes();
@@ -302,7 +303,7 @@ describe('viewedStories - Session storage functions', () => {
   });
 
   describe('addToSessionViewed', () => {
-    it('adds a story ID to session storage', () => {
+    it('adds an item ID to session storage', () => {
       expect(getSessionViewedIds().has(12345)).toBe(false);
       
       addToSessionViewed(12345);
@@ -335,7 +336,7 @@ describe('viewedStories - Session storage functions', () => {
   });
 
   describe('clearSessionViewed', () => {
-    it('clears all session-viewed stories', () => {
+    it('clears all session-viewed items', () => {
       addToSessionViewed(12345);
       addToSessionViewed(67890);
       

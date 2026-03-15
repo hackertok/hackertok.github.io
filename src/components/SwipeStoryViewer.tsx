@@ -2,33 +2,33 @@ import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 import { useScrollContainer } from '../context/ScrollContainerContext';
-import { usePrefetchStories } from '../hooks/usePrefetchStory';
+import { usePrefetchItems } from '../hooks/usePrefetchItem';
 import { usePrefetchSections } from '../hooks/usePrefetchSections';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { fetchStoryOnly } from '../api/hn';
-import { getRecentlyViewedIds, getSessionViewedIds, markViewedWithTime } from '../utils/viewedStories';
-import { STORY_TYPE_TITLES } from '../config/storyTypes';
-import { FullScreenStory, FullScreenStorySkeleton } from './FullScreenStory';
+import { fetchItemOnly } from '../api/hn';
+import { getRecentlyViewedIds, getSessionViewedIds, markViewedWithTime } from '../utils/viewedItems';
+import { FEED_TYPE_TITLES } from '../config/feedTypes';
+import { FullScreenItem, FullScreenItemSkeleton } from './FullScreenItem';
 import { Spinner } from './Spinner';
-import type { Story, StoryType, LocationState } from '../types';
+import type { StoryItem, FeedType, LocationState } from '../types';
 
 interface SwipeStoryViewerProps {
-  type: StoryType;
-  initialStoryId?: string;
+  type: FeedType;
+  initialItemId?: string;
 }
 
 /**
- * Full-screen horizontal swipe story viewer for mobile
+ * Full-screen horizontal swipe item viewer for mobile
  * Uses CSS Scroll Snap for native, smooth horizontal swiping
  * - Horizontal swipe: CSS Scroll Snap handles navigation natively
- * - Vertical scroll: Each story panel scrolls independently
- * - URL updates on each story change
+ * - Vertical scroll: Each item panel scrolls independently
+ * - URL updates on each item change
  */
-export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps) {
+export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
-  const initialStoryIdNum = initialStoryId != null ? Number(initialStoryId) : undefined;
+  const initialItemIdNum = initialItemId != null ? Number(initialItemId) : undefined;
   const { 
     stories, 
     loading, 
@@ -40,7 +40,7 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
   const { enableSwipeMode, disableSwipeMode } = useScrollContainer();
   
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [injectedStory, setInjectedStory] = useState<Story | null>(null);
+  const [injectedStory, setInjectedStory] = useState<StoryItem | null>(null);
   const [injectedLoading, setInjectedLoading] = useState(false);
   const [injectedError, setInjectedError] = useState<string | null>(null); // Error when direct-linked story not found
   // anchorStoryId: The story that should be at index 0.
@@ -50,10 +50,10 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
   const [anchorStoryId, setAnchorStoryId] = useState<number | null>(() => {
     // If location.state exists, this is returning from our navigation history (including
     // returning from external URLs) - don't reorder, preserve original position
-    return locationState?.from ? null : initialStoryIdNum ?? null;
+    return locationState?.from ? null : initialItemIdNum ?? null;
   });
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastInitialStoryIdRef = useRef(initialStoryId);
+  const lastInitialStoryIdRef = useRef(initialItemId);
   const didInitialLoadRef = useRef(false);
   const isScrollingProgrammatically = useRef(false);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -104,23 +104,24 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
     // Filter out recently-viewed, but always keep:
     // - firstStory (linked story at anchor position)
     // - injectedStory (so user can swipe back to it)
-    // - initialStoryId (current URL - browser back/forward)
+    // - initialItemId (current URL - browser back/forward)
     // - stories viewed THIS session (in sessionStorage)
     const filtered = result.filter(story => 
       story === firstStory ||
       story === injectedStory ||
-      story.id === initialStoryIdNum ||
+      story.id === initialItemIdNum ||
       sessionViewedOnMount.has(story.id) ||
       !recentlyViewedOnMount.has(story.id)
     );
     
     // Fallback: if all filtered out, show everything
     return filtered.length > 0 ? filtered : result;
-  }, [injectedStory, stories, anchorStoryId, initialStoryIdNum, sessionViewedOnMount, recentlyViewedOnMount]);
+  }, [injectedStory, stories, anchorStoryId, initialItemIdNum, sessionViewedOnMount, recentlyViewedOnMount]);
   
   // Get current story for document title (updates as user swipes)
   const currentStory = mergedStories[currentIndex];
-  const documentTitle = injectedError ? 'Story not found' : (currentStory?.title || STORY_TYPE_TITLES[type]);
+  const isNonStoryError = injectedError === 'job' || injectedError === 'comment';
+  const documentTitle = injectedError ? (isNonStoryError ? 'Item not available' : 'Story not found') : (currentStory?.title || FEED_TYPE_TITLES[type]);
   useDocumentTitle(documentTitle);
   
   // Keep refs in sync for scroll handler (avoids recreating listener on state changes)
@@ -142,7 +143,7 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
   useLayoutEffect(() => {
     enableSwipeMode();
     // Disable browser's automatic scroll restoration - it doesn't work correctly for
-    // horizontal CSS scroll-snap containers and causes flash of wrong story on back navigation
+    // horizontal CSS scroll-snap containers and causes flash of wrong item on back navigation
     const previousScrollRestoration = history.scrollRestoration;
     history.scrollRestoration = 'manual';
     return () => {
@@ -159,15 +160,15 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
     }
   }, [stories.length, hasMore, loading, loadMore]);
   
-  // Fetch story if initialStoryId is not in the feed list
+  // Fetch story if initialItemId is not in the feed list
   useEffect(() => {
-    if (!initialStoryId) return;
+    if (!initialItemId) return;
     
     // Don't wait for stories to load - fetch immediately if this is a direct navigation
-    const storyInList = stories.some(s => s.id === initialStoryIdNum);
+    const storyInList = stories.some(s => s.id === initialItemIdNum);
     if (storyInList) {
       // Story found in feed, clear any injected story (use rAF to avoid sync setState)
-      if (injectedStory && injectedStory.id === initialStoryIdNum) {
+      if (injectedStory && injectedStory.id === initialItemIdNum) {
         requestAnimationFrame(() => setInjectedStory(null));
       }
       // Clear stale state from a previous failed navigation (e.g. back from /item/99999999).
@@ -178,36 +179,42 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
     }
     
     // Already fetched this story?
-    if (fetchedStoryIdRef.current === initialStoryIdNum) return;
-    if (injectedStory && injectedStory.id === initialStoryIdNum) return;
+    if (fetchedStoryIdRef.current === initialItemIdNum) return;
+    if (injectedStory && injectedStory.id === initialItemIdNum) return;
     
     // Mark that we're fetching this story
-    fetchedStoryIdRef.current = initialStoryIdNum ?? null;
+    fetchedStoryIdRef.current = initialItemIdNum ?? null;
     // Use queueMicrotask to avoid sync setState in effect (per eslint rule)
     queueMicrotask(() => {
       setInjectedLoading(true);
       setInjectedError(null); // Clear stale error from previous fetch
     });
     
-    void fetchStoryOnly(initialStoryId)
-      .then(story => {
+    void fetchItemOnly(initialItemId)
+      .then(fetchedItem => {
         // Race condition guard: user may have swiped to another story while fetching.
         // Only update state if this fetch result matches the story we're still waiting for.
-        if (story.id === fetchedStoryIdRef.current) {
-          setInjectedStory(story);
+        if (fetchedItem.id === fetchedStoryIdRef.current) {
+          // Only inject stories (not comments or jobs)
+          if (fetchedItem.type === 'comment' || fetchedItem.type === 'job') {
+            setInjectedLoading(false);
+            setInjectedError(fetchedItem.type === 'job' ? 'job' : 'comment');
+            return;
+          }
+          setInjectedStory(fetchedItem);
           setInjectedLoading(false);
           setInjectedError(null);
         }
       })
       .catch((err: unknown) => {
-        console.error('Failed to fetch story:', err);
+        console.error('Failed to fetch item:', err);
         // Only update state if this is still the story we want
-        if (initialStoryIdNum === fetchedStoryIdRef.current) {
+        if (initialItemIdNum === fetchedStoryIdRef.current) {
           setInjectedLoading(false);
           setInjectedError(err instanceof Error ? err.message : 'Story not found');
         }
       });
-  }, [initialStoryId, initialStoryIdNum, stories, injectedStory, injectedError]);
+  }, [initialItemId, initialItemIdNum, stories, injectedStory, injectedError]);
   
   // Scroll to index 0 when injected story arrives and is anchored
   // This handles: user navigates to out-of-feed story, we fetch it, then scroll to it
@@ -248,7 +255,7 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
     };
     
     // Restore position when page is shown from bfcache (persisted=true)
-    // This fires BEFORE first paint, preventing flash of wrong story
+    // This fires BEFORE first paint, preventing flash of wrong item
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted && savedIndexOnHideRef.current !== null) {
         const targetIndex = savedIndexOnHideRef.current;
@@ -301,7 +308,7 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
   }, []);
   
   // Handle initial scroll position when returning from external URL (no anchor)
-  // This runs once when stories load and we have an initialStoryId but didn't anchor
+  // This runs once when items load and we have an initialItemId but didn't anchor
   const hasInitializedScrollRef = useRef(false);
   const pendingScrollToStoryIdRef = useRef<number | null>(null);
   
@@ -311,19 +318,19 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
   // scrolls directly when the target story is in the list. Only defers to scroll-init
   // when stories haven't loaded yet.
   useLayoutEffect(() => {
-    // Check if initialStoryId changed
-    if (lastInitialStoryIdRef.current !== initialStoryId) {
+    // Check if initialItemId changed
+    if (lastInitialStoryIdRef.current !== initialItemId) {
       // Check if WE caused this navigation (via URL update effect)
       if (isOurNavigationRef.current) {
         // We're already at the correct position - just update tracking ref
         isOurNavigationRef.current = false;
-        lastInitialStoryIdRef.current = initialStoryId;
+        lastInitialStoryIdRef.current = initialItemId;
         return;
       }
       
-      lastInitialStoryIdRef.current = initialStoryId;
+      lastInitialStoryIdRef.current = initialItemId;
       
-      if (initialStoryId) {
+      if (initialItemId) {
         // Check if this is a fresh direct link (no location.state) or history navigation
         const isHistoryNavigation = !!locationState?.from;
         
@@ -336,7 +343,7 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
           if (injectedError) setInjectedError(null);
           
           // Try to scroll directly to the story's position
-          const idx = mergedStories.findIndex(s => s.id === initialStoryIdNum);
+          const idx = mergedStories.findIndex(s => s.id === initialItemIdNum);
           if (idx >= 0 && containerRef.current) {
             // Container is available — scroll directly
             isScrollingProgrammatically.current = true;
@@ -357,12 +364,12 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
           } else {
             // Story not in list yet OR container not available (e.g. error state clearing)
             // — defer to scroll-init effect
-            pendingScrollToStoryIdRef.current = initialStoryIdNum ?? null;
+            pendingScrollToStoryIdRef.current = initialItemIdNum ?? null;
             hasInitializedScrollRef.current = false;
           }
         } else {
           // Fresh direct link (share/bookmark) - anchor so story is at index 0
-          setAnchorStoryId(initialStoryIdNum ?? null);
+          setAnchorStoryId(initialItemIdNum ?? null);
           isScrollingProgrammatically.current = true;
           setCurrentIndex(0);
           if (containerRef.current) {
@@ -374,7 +381,7 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
         }
       }
     }
-  }, [initialStoryId, initialStoryIdNum, locationState, anchorStoryId, mergedStories, injectedError]);
+  }, [initialItemId, initialItemIdNum, locationState, anchorStoryId, mergedStories, injectedError]);
   
   // Scroll-init: restore scroll position to the target story.
   // Runs after the navigation handler above has set pendingScrollToStoryIdRef.
@@ -383,7 +390,7 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
     if (hasInitializedScrollRef.current || anchorStoryId) return;
     
     // Check if we have a pending scroll target
-    const targetStoryId = pendingScrollToStoryIdRef.current ?? initialStoryIdNum;
+    const targetStoryId = pendingScrollToStoryIdRef.current ?? initialItemIdNum;
     if (!targetStoryId) return;
     
     // Wait for stories to load
@@ -420,9 +427,9 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
         }, 100);
       });
     }
-  }, [mergedStories, initialStoryId, initialStoryIdNum, anchorStoryId]);
+  }, [mergedStories, initialItemId, initialItemIdNum, anchorStoryId]);
   
-  // Handle scroll events to detect current story (CSS Scroll Snap handles the snapping)
+  // Handle scroll events to detect current item (CSS Scroll Snap handles the snapping)
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -484,10 +491,10 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
   }, []); // Empty deps - uses refs for values
   
   // Prefetch next 3 stories
-  usePrefetchStories(currentIndex, mergedStories, 6);
+  usePrefetchItems(currentIndex, mergedStories, 6);
   
   // Mark stories WITHOUT external URL as viewed on swipe (Ask HN, text posts)
-  // Stories WITH URLs are marked when user clicks the external link (in FullScreenStory)
+  // Stories WITH URLs are marked when user clicks the external link (in FullScreenItem)
   useEffect(() => {
     const currentStory = mergedStories[currentIndex];
     if (currentStory && !currentStory.url) {
@@ -515,13 +522,13 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
     // now would cause a brief flicker to the wrong story ID.
     if (isScrollingProgrammatically.current) return;
     
-    // If we have an initialStoryId from the URL, don't overwrite it until:
+    // If we have an initialItemId from the URL, don't overwrite it until:
     // 1. The story is found in the feed (user can swipe from it)
     // 2. OR the story is resolved via fetch (injectedStory)
     // This prevents the URL from reverting when navigating to a story not yet loaded
-    if (initialStoryId) {
-      const storyInFeed = mergedStories.some(s => s.id === initialStoryIdNum);
-      const storyInjected = injectedStory && injectedStory.id === initialStoryIdNum;
+    if (initialItemId) {
+      const storyInFeed = mergedStories.some(s => s.id === initialItemIdNum);
+      const storyInjected = injectedStory && injectedStory.id === initialItemIdNum;
       // If the target story isn't resolved yet, don't update URL
       if (!storyInFeed && !storyInjected) return;
     }
@@ -545,19 +552,22 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
         });
       }
     }
-  }, [currentIndex, mergedStories, navigate, location.pathname, type, injectedError, initialStoryId, initialStoryIdNum, injectedStory]);
+  }, [currentIndex, mergedStories, navigate, location.pathname, type, injectedError, initialItemId, initialItemIdNum, injectedStory]);
   
-  // Story not found error (direct navigation to non-existent story)
+  // Error state (direct navigation to non-existent or non-story item)
   if (injectedError) {
+    const isNonStory = injectedError === 'job' || injectedError === 'comment';
     return (
       <div className="swipe-snap-container flex items-center justify-center min-h-screen" data-testid="swipe-container">
         <div className="text-center px-4">
-          <p className="text-gray-500 dark:text-gray-400 mb-4">Story not found</p>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">
+            {isNonStory ? 'This item is not a story' : 'Story not found'}
+          </p>
           <Link
             to="/"
             className="text-hn-orange hover:underline"
           >
-            Back to stories
+            Back to feed
           </Link>
         </div>
       </div>
@@ -566,19 +576,19 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
   
   // Direct navigation to a specific story - wait until we resolve it
   // This prevents falling through to showing first story in list while fetch is pending
-  // Only block if we're still trying to show the anchored story (initialStoryId matches).
+  // Only block if we're still trying to show the anchored story (initialItemId matches).
   // If the user navigated away (e.g. browser back), the anchor is stale — don't block.
-  if (anchorStoryId && initialStoryIdNum === anchorStoryId) {
+  if (anchorStoryId && initialItemIdNum === anchorStoryId) {
     const anchorInFeed = mergedStories.some(s => s.id === anchorStoryId);
     const anchorIsInjected = injectedStory?.id === anchorStoryId;
     
     // If anchor story isn't resolved yet (not in feed, not injected), show loading skeleton
-    // This ensures we wait for fetchStoryOnly to complete before deciding what to show
+    // This ensures we wait for fetchItemOnly to complete before deciding what to show
     if (!anchorInFeed && !anchorIsInjected) {
       return (
         <div className="swipe-snap-container" data-testid="swipe-container">
           <div className="swipe-snap-panel" data-testid="swipe-panel">
-            <FullScreenStorySkeleton />
+            <FullScreenItemSkeleton />
           </div>
         </div>
       );
@@ -590,7 +600,7 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
         <div className="swipe-snap-panel" data-testid="swipe-panel">
-          <FullScreenStorySkeleton />
+          <FullScreenItemSkeleton />
         </div>
       </div>
     );
@@ -625,7 +635,7 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
       data-testid="swipe-container"
     >
       {mergedStories.map((story, index) => {
-        // Only render FullScreenStory for panels within virtualization window
+        // Only render FullScreenItem for panels within virtualization window
         const distance = Math.abs(index - currentIndex);
         const isWithinWindow = distance <= VIRTUALIZE_BUFFER;
         // Current + adjacent panels are priority (fetch in parallel for smooth swiping)
@@ -639,18 +649,18 @@ export function SwipeStoryViewer({ type, initialStoryId }: SwipeStoryViewerProps
             key={story.id} 
             className="swipe-snap-panel"
             data-testid="swipe-panel"
-            data-story-id={story.id}
+            data-item-id={story.id}
           >
             {isWithinWindow ? (
-              <FullScreenStory
-                storyId={story.id}
-                story={story}
+              <FullScreenItem
+                itemId={story.id}
+                initialItem={story}
                 isPriority={isPriority}
                 deferComments={deferComments}
               />
             ) : (
               // Skeleton placeholder for non-visible panels (consistent UX during quick swipes)
-              <FullScreenStorySkeleton />
+              <FullScreenItemSkeleton />
             )}
           </div>
         );

@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { StoryCard } from './StoryCard';
-import { clearViewed, markViewedWithTime } from '../utils/viewedStories';
-import { createStory } from '../test/factories';
-import type { Story } from '../types';
+import { clearViewed, markViewedWithTime } from '../utils/viewedItems';
+import { createStoryItem } from '../test/factories';
+import type { StoryItem } from '../types';
 
 describe('StoryCard', () => {
-  const mockStory = createStory({
+  const mockStory = createStoryItem({
     id: 12345,
-    title: 'Test Story Title',
+    title: 'Rust Is the Future of JavaScript Infrastructure',
     url: 'https://example.com/article',
     points: 100,
     author: 'testuser',
@@ -19,13 +19,14 @@ describe('StoryCard', () => {
 
   const mockTextStory = {
     id: 67890,
+    type: 'ask',
     title: 'Ask HN: What is the best testing library?',
-    url: null,
+    url: undefined,
     points: 50,
     author: 'askuser',
     createdAt: Date.now() - 7200000, // 2 hours ago
     commentCount: 15,
-  } as unknown as Story;
+  } as StoryItem;
 
   beforeEach(() => {
     clearViewed();
@@ -35,7 +36,7 @@ describe('StoryCard', () => {
     it('renders story title', () => {
       render(<StoryCard story={mockStory} />);
       
-      expect(screen.getByText('Test Story Title')).toBeInTheDocument();
+      expect(screen.getByText('Rust Is the Future of JavaScript Infrastructure')).toBeInTheDocument();
     });
 
     it('renders hostname for external links', () => {
@@ -73,7 +74,7 @@ describe('StoryCard', () => {
     it('renders external link for stories with URL', () => {
       render(<StoryCard story={mockStory} />);
       
-      const titleLink = screen.getByRole('link', { name: 'Test Story Title' });
+      const titleLink = screen.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
       expect(titleLink).toHaveAttribute('href', 'https://example.com/article');
       // Links navigate away from app (like original HN)
       expect(titleLink).not.toHaveAttribute('target', '_blank');
@@ -143,7 +144,7 @@ describe('StoryCard', () => {
       // Re-render - external link titles now use viewed state styling too
       rerender(<StoryCard story={mockStory} />);
       // External links use the same viewed-conditional classes
-      const titleLink = screen.getByRole('link', { name: /Test Story/i });
+      const titleLink = screen.getByRole('link', { name: /Rust Is the Future/i });
       expect(titleLink).toHaveClass('text-gray-900');
     });
   });

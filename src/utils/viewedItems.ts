@@ -1,20 +1,20 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * Track viewed stories in localStorage.
- * Simple append-only storage - story IDs are small (~8 bytes each).
+ * Track viewed items in localStorage.
+ * Simple append-only storage - item IDs are small (~8 bytes each).
  */
 
-const STORAGE_KEY = 'hackertok_viewed';
-const STORAGE_KEY_TIMES = 'hackertok_viewed_times';
-const SESSION_KEY = 'hackertok_session_viewed';
+export const VIEWED_KEY = 'viewed';
+export const VIEWED_TIMES_KEY = 'viewed:times';
+export const VIEWED_SESSION_KEY = 'viewed:session';
 const MAX_VIEWED_IDS = 50_000;
 
 // Cache the Set in memory for O(1) lookups during render
 let viewedSet: Set<number> | null = null;
-// Cache for time-based viewed stories { id: timestamp }
+// Cache for time-based viewed items { id: timestamp }
 let viewedTimesCache: Record<string, number> | null = null;
-// Cache for session-viewed stories (current session only)
+// Cache for session-viewed items (current session only)
 let sessionViewedCache: Set<number> | null = null;
 
 // Listener set for useSyncExternalStore subscriptions
@@ -30,13 +30,13 @@ function notifyListeners() {
 }
 
 /**
- * Load viewed stories from localStorage into memory cache.
+ * Load viewed items from localStorage into memory cache.
  */
 function loadViewedSet(): Set<number> {
   if (viewedSet !== null) return viewedSet;
   
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(VIEWED_KEY);
     viewedSet = stored ? new Set(JSON.parse(stored) as number[]) : new Set();
   } catch {
     viewedSet = new Set();
@@ -45,21 +45,21 @@ function loadViewedSet(): Set<number> {
 }
 
 /**
- * Check if a story has been viewed.
- * @param {number|string} storyId
+ * Check if an item has been viewed.
+ * @param {number|string} itemId
  * @returns {boolean}
  */
-export function isViewed(storyId: number | string): boolean {
-  return loadViewedSet().has(Number(storyId));
+export function isViewed(itemId: number | string): boolean {
+  return loadViewedSet().has(Number(itemId));
 }
 
 /**
- * Mark a story as viewed.
- * @param {number|string} storyId
+ * Mark an item as viewed.
+ * @param {number|string} itemId
  */
-export function markViewed(storyId: number | string): void {
+export function markViewed(itemId: number | string): void {
   const set = loadViewedSet();
-  const id = Number(storyId);
+  const id = Number(itemId);
   
   if (set.has(id)) return; // Already viewed
   
@@ -72,7 +72,7 @@ export function markViewed(storyId: number | string): void {
   }
   
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+    localStorage.setItem(VIEWED_KEY, JSON.stringify([...set]));
   } catch {
     // localStorage full - silently fail
   }
@@ -80,12 +80,12 @@ export function markViewed(storyId: number | string): void {
 }
 
 /**
- * Clear all viewed stories (for testing/debugging).
+ * Clear all viewed items (for testing/debugging).
  */
 export function clearViewed() {
   viewedSet = null;
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(VIEWED_KEY);
   } catch {
     // Silently fail
   }
@@ -93,13 +93,13 @@ export function clearViewed() {
 }
 
 /**
- * React hook — reactively returns whether a story has been viewed.
- * All components using this hook re-render when any story's viewed state changes.
- * @param {number|string} storyId
+ * React hook — reactively returns whether an item has been viewed.
+ * All components using this hook re-render when any item's viewed state changes.
+ * @param {number|string} itemId
  * @returns {boolean}
  */
-export function useIsViewed(storyId: number | string): boolean {
-  return useSyncExternalStore(subscribe, () => isViewed(storyId));
+export function useIsViewed(itemId: number | string): boolean {
+  return useSyncExternalStore(subscribe, () => isViewed(itemId));
 }
 
 // ============================================================================
@@ -108,13 +108,13 @@ export function useIsViewed(storyId: number | string): boolean {
 
 /**
  * Load viewed times from localStorage into memory cache.
- * @returns {Object} Map of { storyId: timestamp }
+ * @returns {Object} Map of { itemId: timestamp }
  */
 function loadViewedTimes(): Record<string, number> {
   if (viewedTimesCache !== null) return viewedTimesCache;
   
   try {
-    const stored = localStorage.getItem(STORAGE_KEY_TIMES);
+    const stored = localStorage.getItem(VIEWED_TIMES_KEY);
     viewedTimesCache = stored ? JSON.parse(stored) as Record<string, number> : {};
   } catch {
     viewedTimesCache = {};
@@ -127,16 +127,16 @@ function loadViewedTimes(): Record<string, number> {
  */
 function saveViewedTimes(): void {
   try {
-    localStorage.setItem(STORAGE_KEY_TIMES, JSON.stringify(viewedTimesCache));
+    localStorage.setItem(VIEWED_TIMES_KEY, JSON.stringify(viewedTimesCache));
   } catch {
     // localStorage full - silently fail
   }
 }
 
 /**
- * Get IDs of stories viewed within the specified time window.
+ * Get IDs of items viewed within the specified time window.
  * @param {number} hours - Time window in hours (default 24)
- * @returns {Set<number>} Set of story IDs viewed within the window
+ * @returns {Set<number>} Set of item IDs viewed within the window
  */
 export function getRecentlyViewedIds(hours = 24): Set<number> {
   const times = loadViewedTimes();
@@ -153,13 +153,13 @@ export function getRecentlyViewedIds(hours = 24): Set<number> {
 }
 
 /**
- * Mark a story as viewed with timestamp.
+ * Mark an item as viewed with timestamp.
  * Also calls markViewed() for permanent visual styling.
  * Also adds to session storage so it won't be filtered this session.
- * @param {number|string} storyId
+ * @param {number|string} itemId
  */
-export function markViewedWithTime(storyId: number | string): void {
-  const id = Number(storyId);
+export function markViewedWithTime(itemId: number | string): void {
+  const id = Number(itemId);
   
   // Also mark in permanent store for visual styling
   markViewed(id);
@@ -195,31 +195,31 @@ export function pruneExpiredViewed(hours = 24): void {
 }
 
 /**
- * Clear all time-based viewed stories (for testing).
+ * Clear all time-based viewed items (for testing).
  */
 export function clearViewedTimes() {
   viewedTimesCache = {};
   try {
-    localStorage.removeItem(STORAGE_KEY_TIMES);
+    localStorage.removeItem(VIEWED_TIMES_KEY);
   } catch {
     // Silently fail
   }
 }
 
 // ============================================================================
-// Session-scoped viewed tracking (stories viewed in current browser session)
+// Session-scoped viewed tracking (items viewed in current browser session)
 // Uses sessionStorage - clears when tab/browser closes
 // ============================================================================
 
 /**
  * Load session-viewed IDs from sessionStorage into memory cache.
- * @returns {Set<number>} Set of story IDs viewed this session
+ * @returns {Set<number>} Set of item IDs viewed this session
  */
 function loadSessionViewed(): Set<number> {
   if (sessionViewedCache !== null) return sessionViewedCache;
   
   try {
-    const stored = sessionStorage.getItem(SESSION_KEY);
+    const stored = sessionStorage.getItem(VIEWED_SESSION_KEY);
     sessionViewedCache = stored ? new Set(JSON.parse(stored) as number[]) : new Set();
   } catch {
     sessionViewedCache = new Set();
@@ -232,27 +232,27 @@ function loadSessionViewed(): Set<number> {
  */
 function saveSessionViewed(): void {
   try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify([...sessionViewedCache!]));
+    sessionStorage.setItem(VIEWED_SESSION_KEY, JSON.stringify([...sessionViewedCache!]));
   } catch {
     // sessionStorage full - silently fail
   }
 }
 
 /**
- * Get IDs of stories viewed in this session.
- * @returns {Set<number>} Set of story IDs viewed this session
+ * Get IDs of items viewed in this session.
+ * @returns {Set<number>} Set of item IDs viewed this session
  */
 export function getSessionViewedIds(): Set<number> {
   return new Set(loadSessionViewed());
 }
 
 /**
- * Add a story ID to session-viewed list.
- * @param {number|string} storyId
+ * Add an item ID to session-viewed list.
+ * @param {number|string} itemId
  */
-export function addToSessionViewed(storyId: number | string): void {
+export function addToSessionViewed(itemId: number | string): void {
   const set = loadSessionViewed();
-  const id = Number(storyId);
+  const id = Number(itemId);
   
   if (set.has(id)) return;
   
@@ -261,12 +261,12 @@ export function addToSessionViewed(storyId: number | string): void {
 }
 
 /**
- * Clear all session-viewed stories (for testing).
+ * Clear all session-viewed items (for testing).
  */
 export function clearSessionViewed() {
   sessionViewedCache = new Set();
   try {
-    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(VIEWED_SESSION_KEY);
   } catch {
     // Silently fail
   }

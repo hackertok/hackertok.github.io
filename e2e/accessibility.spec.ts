@@ -14,7 +14,7 @@ test.describe('Accessibility', () => {
     await page.goto('/#/');
     
     // Wait for content to load
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
     const accessibilityScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
@@ -30,11 +30,11 @@ test.describe('Accessibility', () => {
     expect(criticalViolations).toEqual([]);
   });
 
-  test('story detail page has no critical accessibility violations', async ({ page }) => {
+  test('item detail page has no critical accessibility violations', async ({ page }) => {
     await page.goto('/#/item/12345');
     
     // Wait for content to load
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
     const accessibilityScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
@@ -72,7 +72,7 @@ test.describe('Accessibility', () => {
     await page.goto('/#/');
     
     // Wait for page to load
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
     // Tab through navigation
     await page.keyboard.press('Tab');
@@ -86,8 +86,8 @@ test.describe('Accessibility', () => {
   test('external links open safely', async ({ page }) => {
     await page.goto('/#/');
     
-    // External story links should exist and be valid
-    const externalLink = page.getByRole('link', { name: 'Test Story Title' });
+    // External item links should exist and be valid
+    const externalLink = page.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
     await expect(externalLink).toBeVisible();
     
     // Verify the href points to external URL
@@ -116,7 +116,7 @@ test.describe('Accessibility', () => {
     await page.goto('/#/');
     
     // Wait for content to load
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
     const accessibilityScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2aa'])
@@ -151,7 +151,7 @@ test.describe('Accessibility - Dark Mode', () => {
     await page.goto('/#/');
     
     // Wait for content to load
-    await expect(page.getByText('Test Story Title').first()).toBeVisible();
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
     const accessibilityScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa'])

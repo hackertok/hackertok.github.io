@@ -14,8 +14,8 @@ describe('useDocumentTitle', () => {
   });
 
   it('sets document title with suffix when title provided', () => {
-    renderHook(() => useDocumentTitle('Best Stories'));
-    expect(document.title).toBe('Best Stories | HackerTok');
+    renderHook(() => useDocumentTitle('Best'));
+    expect(document.title).toBe('Best | HackerTok');
   });
 
   it('sets just "HackerTok" when no title provided', () => {

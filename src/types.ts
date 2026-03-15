@@ -1,22 +1,46 @@
 /**
  * Core data model types for HackerTok
+ *
+ * HN's API treats everything as an "item" (stories, comments, jobs, polls).
+ * We use a discriminated union so TypeScript can narrow by `type`.
  */
 
-// --- Story types ---
+// --- Feed type (which list endpoint to fetch) ---
 
-export type StoryType = 'top' | 'show' | 'ask' | 'best';
+export type FeedType = 'top' | 'show' | 'ask' | 'best';
 
-export interface Story {
+// --- Item variants (discriminated union) ---
+
+interface ItemBase {
   id: number;
-  title: string;
-  url?: string;
-  points: number;
   author: string;
   createdAt: number;
-  commentCount: number;
-  type?: string;
-  text?: string;
 }
+
+export interface StoryItem extends ItemBase {
+  type: 'story' | 'ask' | 'show';
+  title: string;
+  url?: string;
+  text?: string;
+  points: number;
+  commentCount: number;
+}
+
+export interface CommentItem extends ItemBase {
+  type: 'comment';
+  text: string;
+  parent: number;
+}
+
+export interface JobItem extends ItemBase {
+  type: 'job';
+  title: string;
+  url?: string;
+  text?: string;
+  points: number;
+}
+
+export type Item = StoryItem | CommentItem | JobItem;
 
 // --- Comment types ---
 
@@ -76,20 +100,42 @@ export interface FirebaseItem {
   kids?: number[];
   dead?: boolean;
   deleted?: boolean;
+  parent?: number;
+}
+
+// Algolia /items/{id} endpoint - returns item with full children tree
+export interface AlgoliaItemChild {
+  id: number;
+  author: string | null;
+  text: string | null;
+  created_at_i: number;
+  parent_id: number;
+  children: AlgoliaItemChild[];
+}
+
+export interface AlgoliaItemResponse {
+  id: number;
+  type: string;
+  author: string | null;
+  text: string | null;
+  created_at_i: number;
+  parent_id: number | null;
+  story_id: number | null;
+  children: AlgoliaItemChild[];
 }
 
 // --- Cache types ---
 
-export interface CachedStory {
-  story: Story;
+export interface CachedItem {
+  item: Item;
   comments: Comment[];
   timestamp: number;
   isFresh: boolean;
   orderedDepth: number;
 }
 
-export interface CachedStories {
-  stories: Story[];
+export interface CachedFeed {
+  stories: StoryItem[];
   timestamp: number;
 }
 
@@ -104,7 +150,7 @@ export interface ListSessionState {
 // --- Prefetch types ---
 
 export interface PrefetchResult {
-  story: Story;
+  item: Item;
   comments: Comment[];
 }
 
@@ -128,5 +174,5 @@ export interface ScrollContainerContextValue {
 // --- Router types ---
 
 export interface LocationState {
-  from?: StoryType;
+  from?: FeedType;
 }

@@ -4,10 +4,12 @@ import {
   getHostname, 
   fetchShowStories, 
   fetchAskStories,
-  fetchTopStoriesAlgolia,
+  fetchTopStories,
   fetchBestStories,
-  fetchItem,
-  fetchStoryOnly,
+  fetchFirebaseItem,
+  fetchItemOnly,
+  fetchAlgoliaItem,
+  normalizeAlgoliaItemChildren,
 } from './hn';
 
 describe('hn API utilities', () => {
@@ -147,7 +149,7 @@ describe('hn API utilities', () => {
   });
 
   describe('fetchShowStories', () => {
-    it('returns normalized Show HN stories', async () => {
+    it('returns normalized Show HN items', async () => {
       const result = await fetchShowStories(0);
       
       expect(result.stories).toBeDefined();
@@ -156,43 +158,43 @@ describe('hn API utilities', () => {
       expect(result.nextWindow).toBe(1);
     });
 
-    it('returns stories with show type', async () => {
+    it('returns items with show type', async () => {
       const result = await fetchShowStories(0);
       
-      result.stories.forEach(story => {
-        expect(story.type).toBe('show');
+      result.stories.forEach(item => {
+        expect(item.type).toBe('show');
       });
     });
 
-    it('returns stories with expected properties', async () => {
+    it('returns items with expected properties', async () => {
       const result = await fetchShowStories(0);
-      const story = result.stories[0];
+      const item = result.stories[0];
       
-      expect(story).toHaveProperty('id');
-      expect(story).toHaveProperty('title');
-      expect(story).toHaveProperty('points');
-      expect(story).toHaveProperty('author');
-      expect(story).toHaveProperty('createdAt');
-      expect(story).toHaveProperty('commentCount');
+      expect(item).toHaveProperty('id');
+      expect(item).toHaveProperty('title');
+      expect(item).toHaveProperty('points');
+      expect(item).toHaveProperty('author');
+      expect(item).toHaveProperty('createdAt');
+      expect(item).toHaveProperty('commentCount');
     });
 
-    it('sorts stories by gravity score', async () => {
+    it('sorts items by gravity score', async () => {
       const result = await fetchShowStories(0);
       
-      // With 2 mock stories:
-      // - Story1: 150 pts, 2hr ago → gravity = (150-1)/(2+2)^1.8 ≈ 13.2
-      // - Story2: 75 pts, 1hr ago → gravity = (75-1)/(1+2)^1.8 ≈ 11.9
+      // With 2 mock items:
+      // - Item1: 312 pts, 2hr ago → gravity = (312-1)/(2+2)^1.8 ≈ 27.5
+      // - Item2: 143 pts, 1hr ago → gravity = (143-1)/(1+2)^1.8 ≈ 22.8
       // Higher gravity score ranks first
       expect(result.stories.length).toBe(2);
-      expect(result.stories[0].points).toBe(150); // Higher gravity score first
-      expect(result.stories[1].points).toBe(75);
+      expect(result.stories[0].points).toBe(312); // Higher gravity score first
+      expect(result.stories[1].points).toBe(143);
     });
 
     it('returns correct pagination info', async () => {
       const result = await fetchShowStories(0);
       
       expect(result.nextWindow).toBe(1);
-      expect(result.hasMore).toBe(true); // Always true when stories are found (skips empty days)
+      expect(result.hasMore).toBe(true); // Always true when items are found (skips empty days)
     });
 
     it('increments window index for next page', async () => {
@@ -205,7 +207,7 @@ describe('hn API utilities', () => {
   });
 
   describe('fetchAskStories', () => {
-    it('returns normalized Ask HN stories', async () => {
+    it('returns normalized Ask HN items', async () => {
       const result = await fetchAskStories(0);
       
       expect(result.stories).toBeDefined();
@@ -214,53 +216,53 @@ describe('hn API utilities', () => {
       expect(result.nextWindow).toBe(1);
     });
 
-    it('returns stories with ask type', async () => {
+    it('returns items with ask type', async () => {
       const result = await fetchAskStories(0);
       
-      result.stories.forEach(story => {
-        expect(story.type).toBe('ask');
+      result.stories.forEach(item => {
+        expect(item.type).toBe('ask');
       });
     });
 
-    it('returns stories with expected properties', async () => {
+    it('returns items with expected properties', async () => {
       const result = await fetchAskStories(0);
-      const story = result.stories[0];
+      const item = result.stories[0];
       
-      expect(story).toHaveProperty('id');
-      expect(story).toHaveProperty('title');
-      expect(story).toHaveProperty('points');
-      expect(story).toHaveProperty('author');
-      expect(story).toHaveProperty('createdAt');
-      expect(story).toHaveProperty('commentCount');
+      expect(item).toHaveProperty('id');
+      expect(item).toHaveProperty('title');
+      expect(item).toHaveProperty('points');
+      expect(item).toHaveProperty('author');
+      expect(item).toHaveProperty('createdAt');
+      expect(item).toHaveProperty('commentCount');
     });
 
     it('handles Ask HN posts without URL', async () => {
       const result = await fetchAskStories(0);
       
       // Ask HN posts typically have no external URL
-      result.stories.forEach(story => {
+      result.stories.forEach(item => {
         // url can be null or undefined for Ask HN
-        expect(story.url === null || story.url === undefined).toBe(true);
+        expect(item.url === null || item.url === undefined).toBe(true);
       });
     });
 
-    it('sorts stories by gravity score', async () => {
+    it('sorts items by gravity score', async () => {
       const result = await fetchAskStories(0);
       
-      // With 2 mock stories:
-      // - Story1: 120 pts, 2hr ago → gravity = (120-1)/(2+2)^1.8 ≈ 10.5
-      // - Story2: 65 pts, 1hr ago → gravity = (65-1)/(1+2)^1.8 ≈ 10.3
+      // With 2 mock items:
+      // - Item1: 245 pts, 2hr ago → gravity = (245-1)/(2+2)^1.8 ≈ 17.5
+      // - Item2: 178 pts, 1hr ago → gravity = (178-1)/(1+2)^1.8 ≈ 24.5
       // Higher gravity score ranks first
       expect(result.stories.length).toBe(2);
-      expect(result.stories[0].points).toBe(120); // Higher gravity score first
-      expect(result.stories[1].points).toBe(65);
+      expect(result.stories[0].points).toBe(178); // Higher gravity score first
+      expect(result.stories[1].points).toBe(245);
     });
 
     it('returns correct pagination info', async () => {
       const result = await fetchAskStories(0);
       
       expect(result.nextWindow).toBe(1);
-      expect(result.hasMore).toBe(true); // Always true when stories are found (skips empty days)
+      expect(result.hasMore).toBe(true); // Always true when items are found (skips empty days)
     });
 
     it('increments window index for next page', async () => {
@@ -272,45 +274,45 @@ describe('hn API utilities', () => {
     });
   });
 
-  describe('fetchTopStoriesAlgolia', () => {
-    it('returns normalized stories from Algolia', async () => {
-      const result = await fetchTopStoriesAlgolia(20);
+  describe('fetchTopStories', () => {
+    it('returns normalized items from Algolia', async () => {
+      const result = await fetchTopStories(20);
       
       expect(result).toBeDefined();
       expect(result.length).toBeGreaterThan(0);
     });
 
-    it('returns stories with expected properties', async () => {
-      const result = await fetchTopStoriesAlgolia(20);
-      const story = result[0];
+    it('returns items with expected properties', async () => {
+      const result = await fetchTopStories(20);
+      const item = result[0];
       
-      expect(story).toHaveProperty('id');
-      expect(story).toHaveProperty('title');
-      expect(story).toHaveProperty('url');
-      expect(story).toHaveProperty('points');
-      expect(story).toHaveProperty('author');
-      expect(story).toHaveProperty('createdAt');
-      expect(story).toHaveProperty('commentCount');
-      expect(story).toHaveProperty('type');
+      expect(item).toHaveProperty('id');
+      expect(item).toHaveProperty('title');
+      expect(item).toHaveProperty('url');
+      expect(item).toHaveProperty('points');
+      expect(item).toHaveProperty('author');
+      expect(item).toHaveProperty('createdAt');
+      expect(item).toHaveProperty('commentCount');
+      expect(item).toHaveProperty('type');
     });
 
     it('uses default limit of 20', async () => {
-      const result = await fetchTopStoriesAlgolia();
+      const result = await fetchTopStories();
       
-      // Should return available stories up to limit
+      // Should return available items up to limit
       expect(result.length).toBeLessThanOrEqual(20);
     });
 
-    it('sorts stories by gravity score', async () => {
-      const result = await fetchTopStoriesAlgolia(20);
+    it('sorts items by gravity score', async () => {
+      const result = await fetchTopStories(20);
       
-      // Stories should be sorted by gravity (higher points relative to age)
+      // Items should be sorted by gravity (higher points relative to age)
       expect(result.length).toBeGreaterThan(0);
     });
   });
 
   describe('fetchBestStories', () => {
-    it('returns stories with pagination info', async () => {
+    it('returns items with pagination info', async () => {
       const result = await fetchBestStories(0, 30);
       
       expect(result).toHaveProperty('stories');
@@ -318,16 +320,16 @@ describe('hn API utilities', () => {
       expect(result).toHaveProperty('nextOffset');
     });
 
-    it('returns normalized story format', async () => {
+    it('returns normalized item format', async () => {
       const result = await fetchBestStories(0, 30);
-      const story = result.stories[0];
+      const item = result.stories[0];
       
-      expect(story).toHaveProperty('id');
-      expect(story).toHaveProperty('title');
-      expect(story).toHaveProperty('points');
-      expect(story).toHaveProperty('author');
-      expect(story).toHaveProperty('createdAt');
-      expect(story).toHaveProperty('commentCount');
+      expect(item).toHaveProperty('id');
+      expect(item).toHaveProperty('title');
+      expect(item).toHaveProperty('points');
+      expect(item).toHaveProperty('author');
+      expect(item).toHaveProperty('createdAt');
+      expect(item).toHaveProperty('commentCount');
     });
 
     it('paginates correctly by offset', async () => {
@@ -338,7 +340,7 @@ describe('hn API utilities', () => {
       expect(secondPage.nextOffset).toBe(4);
     });
 
-    it('returns hasMore=false when no more stories', async () => {
+    it('returns hasMore=false when no more items', async () => {
       const result = await fetchBestStories(1000, 30);
       
       expect(result.stories).toEqual([]);
@@ -346,38 +348,38 @@ describe('hn API utilities', () => {
     });
   });
 
-  describe('fetchItem', () => {
-    it('fetches a story by ID', async () => {
-      const result = await fetchItem(12345);
+  describe('fetchFirebaseItem', () => {
+    it('fetches an item by ID', async () => {
+      const result = await fetchFirebaseItem(12345);
       
       expect(result).toBeDefined();
       expect(result.id).toBe(12345);
-      expect(result.title).toBe('Test Story Title');
+      expect(result.title).toBe('Rust Is the Future of JavaScript Infrastructure');
     });
 
     it('fetches a comment by ID', async () => {
-      const result = await fetchItem(1001);
+      const result = await fetchFirebaseItem(1001);
       
       expect(result).toBeDefined();
       expect(result.id).toBe(1001);
-      expect(result.by).toBe('commenter1');
+      expect(result.by).toBe('patio11');
     });
 
     it('supports AbortSignal for cancellation', async () => {
       const controller = new AbortController();
       controller.abort();
       
-      await expect(fetchItem(12345, controller.signal))
+      await expect(fetchFirebaseItem(12345, controller.signal))
         .rejects.toThrow();
     });
   });
 
-  describe('fetchStoryOnly', () => {
-    it('returns story metadata without comments', async () => {
-      const result = await fetchStoryOnly(12345);
+  describe('fetchItemOnly', () => {
+    it('returns item metadata without comments', async () => {
+      const result = await fetchItemOnly(12345);
       
       expect(result).toHaveProperty('id', 12345);
-      expect(result).toHaveProperty('title', 'Test Story Title');
+      expect(result).toHaveProperty('title', 'Rust Is the Future of JavaScript Infrastructure');
       expect(result).toHaveProperty('url');
       expect(result).toHaveProperty('points');
       expect(result).toHaveProperty('author');
@@ -385,37 +387,41 @@ describe('hn API utilities', () => {
       expect(result).toHaveProperty('commentCount');
     });
 
-    it('normalizes Firebase story format', async () => {
-      const result = await fetchStoryOnly(12345);
+    it('normalizes Firebase item format', async () => {
+      const result = await fetchItemOnly(12345);
+      expect(result.type).not.toBe('comment');
+      if (result.type === 'comment') throw new Error('unexpected');
       
       // Firebase uses 'score' but we return 'points'
-      expect(result.points).toBe(100);
+      expect(result.points).toBe(284);
       // Firebase uses 'by' but we return 'author'
-      expect(result.author).toBe('testuser');
+      expect(result.author).toBe('leerob');
       // Firebase uses 'descendants' but we return 'commentCount'
-      expect(result.commentCount).toBe(10);
+      expect(result.type !== 'job' ? result.commentCount : 0).toBe(137);
     });
 
     it('converts Unix timestamp to milliseconds', async () => {
-      const result = await fetchStoryOnly(12345);
+      const result = await fetchItemOnly(12345);
       
       // createdAt should be in milliseconds (> 1 trillion)
       expect(result.createdAt).toBeGreaterThan(1000000000000);
     });
 
     it('handles string ID parameter', async () => {
-      const result = await fetchStoryOnly('12345');
+      const result = await fetchItemOnly('12345');
       
       expect(result.id).toBe(12345);
     });
 
     it('defaults commentCount to 0 when descendants missing', async () => {
-      // Note: Mock returns story with descendants for unknown IDs
+      // Note: Mock returns item with descendants for unknown IDs
       // This test verifies the normalizer handles the field correctly
-      const result = await fetchStoryOnly(12345);
+      const result = await fetchItemOnly(12345);
+      expect(result.type).not.toBe('comment');
+      if (result.type === 'comment') throw new Error('unexpected');
       
-      // Mock story 12345 has descendants: 10
-      expect(result.commentCount).toBe(10);
+      // Mock item 12345 has descendants: 137
+      expect(result.type !== 'job' ? result.commentCount : 0).toBe(137);
     });
   });
 
@@ -442,6 +448,131 @@ describe('hn API utilities', () => {
 
     it('getHostname handles IP addresses', () => {
       expect(getHostname('http://192.168.1.1/admin')).toBe('192.168.1.1');
+    });
+  });
+
+  describe('fetchAlgoliaItem', () => {
+    it('fetches a comment item from Algolia /items endpoint', async () => {
+      const result = await fetchAlgoliaItem(1001);
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe(1001);
+      expect(result.type).toBe('comment');
+      expect(result.author).toBe('patio11');
+      expect(result.story_id).toBe(12345);
+      expect(result.parent_id).toBe(12345);
+    });
+
+    it('returns children array', async () => {
+      const result = await fetchAlgoliaItem(1001);
+
+      expect(result.children).toHaveLength(1);
+      expect(result.children[0].id).toBe(2001);
+      expect(result.children[0].author).toBe('tptacek');
+    });
+
+    it('supports AbortSignal for cancellation', async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(fetchAlgoliaItem(1001, controller.signal))
+        .rejects.toThrow();
+    });
+
+    it('throws on 404 for unknown items', async () => {
+      await expect(fetchAlgoliaItem(999999999))
+        .rejects.toThrow(/404/);
+    });
+  });
+
+  describe('normalizeAlgoliaItemChildren', () => {
+    it('converts Algolia children to Comment array', () => {
+      const children = [
+        {
+          id: 2001,
+          author: 'user1',
+          text: 'Reply text',
+          created_at_i: 1700000000,
+          parent_id: 1001,
+          children: [],
+        },
+      ];
+
+      const result = normalizeAlgoliaItemChildren(children);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(2001);
+      expect(result[0].author).toBe('user1');
+      expect(result[0].text).toBe('Reply text');
+      expect(result[0].createdAt).toBe(1700000000 * 1000);
+      expect(result[0].parentId).toBe(1001);
+      expect(result[0].depth).toBe(0);
+    });
+
+    it('calculates depth for nested children', () => {
+      const children = [
+        {
+          id: 2001,
+          author: 'user1',
+          text: 'Level 0',
+          created_at_i: 1700000000,
+          parent_id: 1001,
+          children: [
+            {
+              id: 3001,
+              author: 'user2',
+              text: 'Level 1',
+              created_at_i: 1700000100,
+              parent_id: 2001,
+              children: [],
+            },
+          ],
+        },
+      ];
+
+      const result = normalizeAlgoliaItemChildren(children);
+
+      expect(result[0].depth).toBe(0);
+      expect(result[0].children[0].depth).toBe(1);
+    });
+
+    it('collapses children beyond depth 3', () => {
+      const children = [
+        {
+          id: 1,
+          author: 'a',
+          text: 't',
+          created_at_i: 1700000000,
+          parent_id: 0,
+          children: [],
+        },
+      ];
+
+      // Start at depth 3 → childrenCollapsed should be true
+      const result = normalizeAlgoliaItemChildren(children, 3);
+      expect(result[0].childrenCollapsed).toBe(true);
+
+      // Start at depth 0 → childrenCollapsed should be false
+      const result2 = normalizeAlgoliaItemChildren(children, 0);
+      expect(result2[0].childrenCollapsed).toBe(false);
+    });
+
+    it('filters out deleted comments (no author)', () => {
+      const children = [
+        { id: 1, author: 'user1', text: 'Visible', created_at_i: 1700000000, parent_id: 0, children: [] },
+        { id: 2, author: null, text: null, created_at_i: 1700000100, parent_id: 0, children: [] },
+        { id: 3, author: 'user3', text: 'Also visible', created_at_i: 1700000200, parent_id: 0, children: [] },
+      ];
+
+      const result = normalizeAlgoliaItemChildren(children);
+      expect(result).toHaveLength(2);
+      expect(result[0].author).toBe('user1');
+      expect(result[1].author).toBe('user3');
+    });
+
+    it('handles empty children array', () => {
+      const result = normalizeAlgoliaItemChildren([]);
+      expect(result).toEqual([]);
     });
   });
 });

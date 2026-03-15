@@ -6,7 +6,7 @@ const ScrollContainerContext = createContext<ScrollContainerContextValue | null>
 
 /**
  * Provider for scroll container context
- * Used to communicate scroll position from SwipeStoryViewer to Header
+ * Used to communicate scroll position from SwipeItemViewer to Header
  */
 export function ScrollContainerProvider({ children }: { children: ReactNode }) {
   const [isSwipeMode, setIsSwipeMode] = useState(false);
