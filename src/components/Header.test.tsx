@@ -8,9 +8,7 @@ describe('Header', () => {
     it('renders logo', () => {
       render(<Header />);
       
-      // Logo is split: "Hacker" + "Tok"
-      expect(screen.getByText('Hacker')).toBeInTheDocument();
-      expect(screen.getByText('Tok')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'HackerTok' })).toBeInTheDocument();
     });
 
     it('renders best navigation link', () => {
@@ -25,14 +23,14 @@ describe('Header', () => {
       render(<Header />, { initialEntries: ['/best'] });
       
       const bestLink = screen.getByRole('link', { name: /best/i });
-      expect(bestLink).toHaveClass('bg-hn-orange');
+      expect(bestLink).toHaveClass('bg-accent');
     });
 
     it('does not highlight best button on home route', () => {
       render(<Header />, { initialEntries: ['/'] });
       
       const bestLink = screen.getByRole('link', { name: /best/i });
-      expect(bestLink).not.toHaveClass('bg-hn-orange');
+      expect(bestLink).not.toHaveClass('bg-accent');
     });
 
     it('highlights best button on item detail when navigated from best list', () => {
@@ -44,7 +42,7 @@ describe('Header', () => {
       });
       
       const bestLink = screen.getByRole('link', { name: /best/i });
-      expect(bestLink).toHaveClass('bg-hn-orange');
+      expect(bestLink).toHaveClass('bg-accent');
     });
 
     it('does not highlight best button on item detail when navigated from top list', () => {
@@ -55,7 +53,7 @@ describe('Header', () => {
       });
       
       const bestLink = screen.getByRole('link', { name: /best/i });
-      expect(bestLink).not.toHaveClass('bg-hn-orange');
+      expect(bestLink).not.toHaveClass('bg-accent');
     });
 
     it('does not highlight best button on item detail without navigation state', () => {
@@ -64,7 +62,7 @@ describe('Header', () => {
       });
       
       const bestLink = screen.getByRole('link', { name: /best/i });
-      expect(bestLink).not.toHaveClass('bg-hn-orange');
+      expect(bestLink).not.toHaveClass('bg-accent');
     });
   });
 
@@ -79,14 +77,14 @@ describe('Header', () => {
       render(<Header />, { initialEntries: ['/show'] });
       
       const showLink = screen.getByRole('link', { name: /show/i });
-      expect(showLink).toHaveClass('bg-hn-orange');
+      expect(showLink).toHaveClass('bg-accent');
     });
 
     it('does not highlight show button on home route', () => {
       render(<Header />, { initialEntries: ['/'] });
       
       const showLink = screen.getByRole('link', { name: /show/i });
-      expect(showLink).not.toHaveClass('bg-hn-orange');
+      expect(showLink).not.toHaveClass('bg-accent');
     });
 
     it('highlights show button on item detail when navigated from show list', () => {
@@ -97,7 +95,7 @@ describe('Header', () => {
       });
       
       const showLink = screen.getByRole('link', { name: /show/i });
-      expect(showLink).toHaveClass('bg-hn-orange');
+      expect(showLink).toHaveClass('bg-accent');
     });
 
     it('does not highlight show button on item detail when navigated from top list', () => {
@@ -108,7 +106,7 @@ describe('Header', () => {
       });
       
       const showLink = screen.getByRole('link', { name: /show/i });
-      expect(showLink).not.toHaveClass('bg-hn-orange');
+      expect(showLink).not.toHaveClass('bg-accent');
     });
   });
 
@@ -123,14 +121,14 @@ describe('Header', () => {
       render(<Header />, { initialEntries: ['/ask'] });
       
       const askLink = screen.getByRole('link', { name: /ask/i });
-      expect(askLink).toHaveClass('bg-hn-orange');
+      expect(askLink).toHaveClass('bg-accent');
     });
 
     it('does not highlight ask button on home route', () => {
       render(<Header />, { initialEntries: ['/'] });
       
       const askLink = screen.getByRole('link', { name: /ask/i });
-      expect(askLink).not.toHaveClass('bg-hn-orange');
+      expect(askLink).not.toHaveClass('bg-accent');
     });
 
     it('highlights ask button on item detail when navigated from ask list', () => {
@@ -141,7 +139,7 @@ describe('Header', () => {
       });
       
       const askLink = screen.getByRole('link', { name: /ask/i });
-      expect(askLink).toHaveClass('bg-hn-orange');
+      expect(askLink).toHaveClass('bg-accent');
     });
 
     it('does not highlight ask button on item detail when navigated from top list', () => {
@@ -152,7 +150,7 @@ describe('Header', () => {
       });
       
       const askLink = screen.getByRole('link', { name: /ask/i });
-      expect(askLink).not.toHaveClass('bg-hn-orange');
+      expect(askLink).not.toHaveClass('bg-accent');
     });
   });
 });

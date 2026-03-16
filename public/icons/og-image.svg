@@ -3,24 +3,29 @@
   <desc id="og-desc">Your daily dose of Hacker News</desc>
 
   <!-- Background -->
-  <rect width="1200" height="630" fill="#1c1917"/>
+  <rect width="1200" height="630" fill="#1a1511"/>
 
   <!-- Centered content group -->
   <g transform="translate(600, 315) scale(0.90)">
     <!-- Logo icon -->
     <g transform="translate(-615, -120)">
-      <rect fill="#ff6600" width="240" height="240" rx="36"/>
-      <g fill="#ffffff" transform="translate(15, 15) scale(3.28)">
-        <rect x="12" y="14" width="10" height="36" rx="2"/>
-        <rect x="42" y="14" width="10" height="36" rx="2"/>
-        <rect x="12" y="27" width="40" height="10" rx="2"/>
-        <rect x="27" y="27" width="10" height="23" rx="2"/>
-      </g>
+      <defs>
+        <mask id="ht-mask">
+          <rect width="240" height="240" rx="45" fill="#ffffff"/>
+          <g transform="scale(3.75)">
+            <rect x="14" y="16" width="8" height="32" rx="1" fill="#000000"/>
+            <rect x="42" y="16" width="8" height="32" rx="1" fill="#000000"/>
+            <rect x="24" y="28" width="16" height="8" rx="1" fill="#000000"/>
+            <rect x="28" y="28" width="8" height="20" rx="1" fill="#000000"/>
+          </g>
+        </mask>
+      </defs>
+      <rect width="240" height="240" rx="45" fill="#f36303" mask="url(#ht-mask)"/>
     </g>
 
     <!-- HackerTok text -->
     <text x="135" y="5" font-family="Verdana, Geneva, sans-serif" font-size="160" font-weight="bold" text-anchor="middle">
-      <tspan fill="#ff6600">Hacker</tspan><tspan fill="#888888">Tok</tspan>
+      <tspan fill="#f36303">Hacker</tspan><tspan fill="#878787">Tok</tspan>
     </text>
 
     <!-- Tagline with Glitch/RGB Split effect -->

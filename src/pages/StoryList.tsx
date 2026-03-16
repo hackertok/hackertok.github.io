@@ -76,10 +76,10 @@ export function StoryList({ type }: { type: FeedType }) {
   if (error && stories.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p className="text-red-500 dark:text-red-400 mb-4">Failed to load stories: {error}</p>
+        <p className="text-destructive mb-4">Failed to load stories: {error}</p>
         <button
           onClick={loadMore}
-          className="px-4 md:px-8 lg:px-12 py-2 bg-hn-orange text-white rounded-lg hover:bg-orange-600 transition-colors"
+          className="px-4 md:px-8 lg:px-12 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
         >
           Try Again
         </button>
@@ -93,7 +93,7 @@ export function StoryList({ type }: { type: FeedType }) {
         <StoryCardSkeletonList count={12} />
       ) : (
         <>
-          <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800/50">
+          <div className="space-y-0 divide-y divide-border">
             {stories.map((story, index) => (
               <StoryCard key={story.id} story={story} index={index} listType={type} onBeforeNavigate={saveSessionState} />
             ))}
@@ -107,17 +107,17 @@ export function StoryList({ type }: { type: FeedType }) {
           )}
 
           {!hasMore && stories.length > 0 && (
-            <p className="text-center text-sm text-gray-500 dark:text-gray-500 py-8">
+            <p className="text-center text-sm text-muted-foreground py-8">
               You&apos;ve reached the end
             </p>
           )}
 
           {error && stories.length > 0 && (
             <div className="text-center py-4">
-              <p className="text-red-500 dark:text-red-400 mb-2">{error}</p>
+              <p className="text-destructive mb-2">{error}</p>
               <button
                 onClick={loadMore}
-                className="px-4 md:px-8 lg:px-12 py-2 bg-hn-orange text-white rounded-lg hover:bg-orange-600 transition-colors"
+                className="px-4 md:px-8 lg:px-12 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
               >
                 Retry
               </button>

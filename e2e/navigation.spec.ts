@@ -22,9 +22,9 @@ test.describe('Navigation', () => {
     await expect(page).toHaveTitle(/Show.*HackerTok|HackerTok/);
 
     // "show" nav link should be highlighted as active
-    await expect(page.getByRole('link', { name: 'show', exact: true })).toHaveClass(/bg-hn-orange/);
-    await expect(page.getByRole('link', { name: 'best', exact: true })).not.toHaveClass(/bg-hn-orange/);
-    await expect(page.getByRole('link', { name: 'ask', exact: true })).not.toHaveClass(/bg-hn-orange/);
+    await expect(page.getByRole('link', { name: 'show', exact: true })).toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'best', exact: true })).not.toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'ask', exact: true })).not.toHaveClass(/bg-accent/);
   });
 
   test('navigates to Ask HN section', async ({ page }) => {
@@ -43,9 +43,9 @@ test.describe('Navigation', () => {
     await expect(page).toHaveTitle(/Ask.*HackerTok|HackerTok/);
 
     // "ask" nav link should be highlighted as active
-    await expect(page.getByRole('link', { name: 'ask', exact: true })).toHaveClass(/bg-hn-orange/);
-    await expect(page.getByRole('link', { name: 'show', exact: true })).not.toHaveClass(/bg-hn-orange/);
-    await expect(page.getByRole('link', { name: 'best', exact: true })).not.toHaveClass(/bg-hn-orange/);
+    await expect(page.getByRole('link', { name: 'ask', exact: true })).toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'show', exact: true })).not.toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'best', exact: true })).not.toHaveClass(/bg-accent/);
   });
 
   test('navigates to Best section', async ({ page }) => {
@@ -66,9 +66,9 @@ test.describe('Navigation', () => {
     await expect(page).toHaveTitle(/Best.*HackerTok|HackerTok/);
 
     // "best" nav link should be highlighted as active
-    await expect(page.getByRole('link', { name: 'best', exact: true })).toHaveClass(/bg-hn-orange/);
-    await expect(page.getByRole('link', { name: 'ask', exact: true })).not.toHaveClass(/bg-hn-orange/);
-    await expect(page.getByRole('link', { name: 'show', exact: true })).not.toHaveClass(/bg-hn-orange/);
+    await expect(page.getByRole('link', { name: 'best', exact: true })).toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'ask', exact: true })).not.toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'show', exact: true })).not.toHaveClass(/bg-accent/);
   });
 
   test('navigates back to Top from other section', async ({ page }) => {

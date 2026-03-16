@@ -76,7 +76,7 @@ describe('StoryCard', () => {
       
       const titleLink = screen.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
       expect(titleLink).toHaveAttribute('href', 'https://example.com/article');
-      // Links navigate away from app (like original HN)
+      // Links navigate in same tab (like original HN)
       expect(titleLink).not.toHaveAttribute('target', '_blank');
     });
 
@@ -100,7 +100,7 @@ describe('StoryCard', () => {
       render(<StoryCard story={mockTextStory} />);
       
       const titleLink = screen.getByRole('link', { name: /Ask HN/i });
-      expect(titleLink).toHaveClass('text-gray-900');
+      expect(titleLink).toHaveClass('text-foreground');
     });
 
     it('applies viewed styles when story was previously viewed', () => {
@@ -108,7 +108,7 @@ describe('StoryCard', () => {
       render(<StoryCard story={mockTextStory} />);
       
       const titleLink = screen.getByRole('link', { name: /Ask HN/i });
-      expect(titleLink).toHaveClass('text-gray-500');
+      expect(titleLink).toHaveClass('text-viewed');
     });
 
     it('marks story as viewed on internal title click', () => {
@@ -120,7 +120,7 @@ describe('StoryCard', () => {
       // Re-render to see the style change
       rerender(<StoryCard story={mockTextStory} />);
       const newTitleLink = screen.getByRole('link', { name: /Ask HN/i });
-      expect(newTitleLink).toHaveClass('text-gray-500');
+      expect(newTitleLink).toHaveClass('text-viewed');
     });
 
     it('marks text post as viewed when clicking comments link', () => {
@@ -132,7 +132,7 @@ describe('StoryCard', () => {
       // Re-render to see the style change
       rerender(<StoryCard story={mockTextStory} />);
       const titleLink = screen.getByRole('link', { name: /Ask HN/i });
-      expect(titleLink).toHaveClass('text-gray-500');
+      expect(titleLink).toHaveClass('text-viewed');
     });
 
     it('does not mark regular story as viewed when clicking comments link', () => {
@@ -145,7 +145,7 @@ describe('StoryCard', () => {
       rerender(<StoryCard story={mockStory} />);
       // External links use the same viewed-conditional classes
       const titleLink = screen.getByRole('link', { name: /Rust Is the Future/i });
-      expect(titleLink).toHaveClass('text-gray-900');
+      expect(titleLink).toHaveClass('text-foreground');
     });
   });
 

@@ -1,6 +1,16 @@
-import { test, expect } from '@playwright/test';
-import AxeBuilder from '@axe-core/playwright';
+import type { AxeResults } from 'axe-core';
+import { test, expect } from './fixtures/test';
 import { setupApiMocks } from './fixtures/api-mocks';
+
+/** Attach axe incomplete results to the Playwright test report for manual review */
+function attachIncomplete(results: AxeResults) {
+  if (results.incomplete.length > 0) {
+    test.info().annotations.push({
+      type: 'axe-incomplete',
+      description: results.incomplete.map(i => `${i.id} (${i.nodes.length} node(s))`).join(', '),
+    });
+  }
+}
 
 test.describe('Accessibility', () => {
   // Increase timeout for accessibility scans - axe-core can be slow
@@ -8,45 +18,39 @@ test.describe('Accessibility', () => {
   
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
+    await page.emulateMedia({ colorScheme: 'light' });
   });
 
-  test('homepage has no critical accessibility violations', async ({ page }) => {
+  test('homepage has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
     await page.goto('/#/');
     
     // Wait for content to load
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
-    const accessibilityScanResults = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-      .exclude('.swipe-snap-container') // Exclude complex scroll containers
-      .setLegacyMode(true) // Avoid video/trace conflicts
-      .analyze();
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
     
-    // Filter to only critical violations (not color contrast which is a known issue)
-    const criticalViolations = accessibilityScanResults.violations.filter(
-      v => v.impact === 'critical' && v.id !== 'color-contrast'
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
     );
     
-    expect(criticalViolations).toEqual([]);
+    expect(seriousViolations).toEqual([]);
   });
 
-  test('item detail page has no critical accessibility violations', async ({ page }) => {
+  test('item detail page has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
     await page.goto('/#/item/12345');
     
     // Wait for content to load
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
-    const accessibilityScanResults = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-      .setLegacyMode(true) // Avoid video/trace conflicts
-      .analyze();
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
     
-    // Filter to only critical violations (not color contrast which is a known issue)
-    const criticalViolations = accessibilityScanResults.violations.filter(
-      v => v.impact === 'critical' && v.id !== 'color-contrast'
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
     );
     
-    expect(criticalViolations).toEqual([]);
+    expect(seriousViolations).toEqual([]);
   });
 
   test('theme toggle is keyboard accessible', async ({ page }) => {
@@ -68,22 +72,32 @@ test.describe('Accessibility', () => {
     await expect(html).not.toHaveClass(/light/);
   });
 
-  test('navigation is keyboard accessible', async ({ page }) => {
+  test('navigation is keyboard accessible', async ({ page, browserName }) => {
+    // Mobile browsers don't support Tab-key focus navigation
+    test.skip(browserName === 'webkit', 'Tab navigation not supported on mobile webkit');
+
     await page.goto('/#/');
     
     // Wait for page to load
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
-    // Tab through navigation
-    await page.keyboard.press('Tab');
+    const interactiveTags = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'];
     
-    // Should be able to focus on interactive elements
-    const focusedElement = await page.evaluate(() => document.activeElement?.tagName);
-    // On mobile the body might get focus first, but interactive elements should still be focusable
-    expect(focusedElement).toBeTruthy();
+    // First Tab should land on an interactive element
+    await page.keyboard.press('Tab');
+    const firstTag = await page.evaluate(() => document.activeElement?.tagName);
+    expect(interactiveTags).toContain(firstTag);
+
+    // Second Tab should move focus to a different interactive element
+    const firstIdentity = await page.evaluate(() => document.activeElement?.id || document.activeElement?.getAttribute('href'));
+    await page.keyboard.press('Tab');
+    const secondTag = await page.evaluate(() => document.activeElement?.tagName);
+    const secondIdentity = await page.evaluate(() => document.activeElement?.id || document.activeElement?.getAttribute('href'));
+    expect(interactiveTags).toContain(secondTag);
+    expect(secondIdentity).not.toEqual(firstIdentity);
   });
 
-  test('external links open safely', async ({ page }) => {
+  test('external links have valid URLs', async ({ page }) => {
     await page.goto('/#/');
     
     // External item links should exist and be valid
@@ -95,45 +109,37 @@ test.describe('Accessibility', () => {
     expect(href).toContain('https://example.com');
   });
 
-  test('images have alt text', async ({ page }) => {
-    await page.goto('/#/');
+  test('best stories page has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
+    await page.goto('/#/best');
     
-    // Check all images have alt attributes
-    const images = page.locator('img');
-    const count = await images.count();
+    await expect(page.getByText('The Art of Finishing Projects')).toBeVisible({ timeout: 10000 });
+    // Active nav pill renders bg-accent text-accent-foreground — exercises accent contrast
+    await expect(page.getByRole('link', { name: 'best', exact: true })).toBeVisible();
     
-    for (let i = 0; i < count; i++) {
-      const img = images.nth(i);
-      const alt = await img.getAttribute('alt');
-      // Alt can be empty string for decorative images, but should exist
-      expect(alt !== null).toBe(true);
-    }
-  });
-
-  // Known issue: Logo uses HN orange (#ff6600) which has contrast ratio of 2.93
-  // This is a brand color limitation - documenting rather than failing
-  test.skip('color contrast meets WCAG AA standards', async ({ page }) => {
-    await page.goto('/#/');
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
     
-    // Wait for content to load
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
-    
-    const accessibilityScanResults = await new AxeBuilder({ page })
-      .withTags(['wcag2aa'])
-      .setLegacyMode(true) // Avoid video/trace conflicts
-      .analyze();
-    
-    // Filter to only color contrast violations
-    const contrastViolations = accessibilityScanResults.violations.filter(
-      v => v.id === 'color-contrast'
-    );
-    
-    // Allow some minor contrast issues but flag critical ones
-    const criticalContrastIssues = contrastViolations.filter(
+    const seriousViolations = accessibilityScanResults.violations.filter(
       v => v.impact === 'critical' || v.impact === 'serious'
     );
     
-    expect(criticalContrastIssues).toEqual([]);
+    expect(seriousViolations).toEqual([]);
+  });
+
+  test('domain filter page has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
+    await page.goto('/#/from/example.com');
+    
+    // Wait for domain-filtered content to load
+    await expect(page.getByText('Google Announces Gemini 3.0 with Extended Context')).toBeVisible({ timeout: 10000 });
+    
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
+    
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
+    );
+    
+    expect(seriousViolations).toEqual([]);
   });
 });
 
@@ -143,26 +149,42 @@ test.describe('Accessibility - Dark Mode', () => {
   
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
-    // Set dark mode preference
+    // Set dark mode preference before navigation so ThemeContext reads it on mount
     await page.emulateMedia({ colorScheme: 'dark' });
   });
 
-  test('dark mode has no critical accessibility violations', async ({ page }) => {
+  test('dark mode has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
     await page.goto('/#/');
     
     // Wait for content to load
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     
-    const accessibilityScanResults = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa'])
-      .exclude('.swipe-snap-container')
-      .setLegacyMode(true) // Avoid video/trace conflicts
-      .analyze();
+    // Verify dark mode is actually active
+    await expect(page.locator('html')).toHaveClass(/dark/);
     
-    const criticalViolations = accessibilityScanResults.violations.filter(
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
+    
+    const seriousViolations = accessibilityScanResults.violations.filter(
       v => v.impact === 'critical' || v.impact === 'serious'
     );
     
-    expect(criticalViolations).toEqual([]);
+    expect(seriousViolations).toEqual([]);
+  });
+
+  test('dark mode item detail has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
+    await page.goto('/#/item/12345');
+    
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
+    
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
+    );
+    
+    expect(seriousViolations).toEqual([]);
   });
 });

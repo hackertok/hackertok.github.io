@@ -17,8 +17,8 @@ describe('FullScreenItem', () => {
       render(<FullScreenItem itemId={12345} />);
 
       const heading = await screen.findByRole('heading', { level: 1 });
-      expect(heading).toHaveClass('text-gray-900');
-      expect(heading).not.toHaveClass('text-gray-500');
+      expect(heading).toHaveClass('text-foreground');
+      expect(heading).not.toHaveClass('text-viewed');
     });
 
     it('shows viewed title color when story was previously viewed', async () => {
@@ -26,20 +26,20 @@ describe('FullScreenItem', () => {
       render(<FullScreenItem itemId={12345} />);
 
       const heading = await screen.findByRole('heading', { level: 1 });
-      expect(heading).toHaveClass('text-gray-500');
-      expect(heading).not.toHaveClass('text-gray-900');
+      expect(heading).toHaveClass('text-viewed');
+      expect(heading).not.toHaveClass('text-foreground');
     });
 
     it('marks story as viewed and updates title color on external link click', async () => {
       render(<FullScreenItem itemId={12345} />);
 
       const titleLink = await screen.findByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
-      expect(titleLink.closest('h1')).toHaveClass('text-gray-900');
+      expect(titleLink.closest('h1')).toHaveClass('text-foreground');
 
       fireEvent.click(titleLink);
 
       await waitFor(() => {
-        expect(titleLink.closest('h1')).toHaveClass('text-gray-500');
+        expect(titleLink.closest('h1')).toHaveClass('text-viewed');
       });
 
       expect(isViewed(12345)).toBe(true);

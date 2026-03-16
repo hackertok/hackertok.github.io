@@ -4,6 +4,7 @@
  * @see https://playwright.dev/docs/test-fixtures
  */
 import { test as base, expect, Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { mockEmptyItems, mockApiError } from './api-mocks';
 import { FIREBASE_API, ALGOLIA_API } from './mock-data';
 
@@ -15,6 +16,8 @@ type CustomFixtures = {
   mockEmpty: () => Promise<void>;
   /** Helper to mock API errors */
   mockError: () => Promise<void>;
+  /** Factory for a pre-configured AxeBuilder with consistent tags and excludes */
+  makeAxeBuilder: () => AxeBuilder;
   /**
    * Page with error routes pre-configured on browserContext.
    * This fixture sets up routes BEFORE page creation to avoid race conditions
@@ -65,6 +68,13 @@ export const test = base.extend<CustomFixtures>({
     const page = await context.newPage();
     await use(page);
     await page.close();
+  },
+
+  makeAxeBuilder: async ({ page }, use) => {
+    await use(() =>
+      new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    );
   },
 });
 
