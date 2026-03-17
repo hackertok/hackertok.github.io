@@ -32,8 +32,8 @@ export function ItemDetail() {
   if (!id) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-8 text-center">
-        <p className="text-gray-500 dark:text-gray-400 mb-4">Item not found</p>
-        <Link to="/" className="text-hn-orange hover:underline">Back to feed</Link>
+        <p className="text-muted-foreground mb-4">Item not found</p>
+        <Link to="/" className="text-accent hover:underline">Back to feed</Link>
       </div>
     );
   }
@@ -46,10 +46,10 @@ export function ItemDetail() {
   if (error) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-8 text-center">
-        <p className="text-red-500 dark:text-red-400 mb-4">Failed to load item: {error}</p>
+        <p className="text-destructive mb-4">Failed to load item: {error}</p>
         <Link
           to="/"
-          className="text-hn-orange hover:underline"
+          className="text-accent hover:underline"
         >
           Back to feed
         </Link>
@@ -60,10 +60,10 @@ export function ItemDetail() {
   if (!item) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-8 text-center">
-        <p className="text-gray-500 dark:text-gray-400 mb-4">Item not found</p>
+        <p className="text-muted-foreground mb-4">Item not found</p>
         <Link
           to="/"
-          className="text-hn-orange hover:underline"
+          className="text-accent hover:underline"
         >
           Back to feed
         </Link>
@@ -84,12 +84,12 @@ export function ItemDetail() {
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
       {/* Item header - shown immediately */}
-      <article className="mb-6 pb-4 border-b border-gray-100 dark:border-gray-800">
-        <h1 className={`text-lg font-semibold mb-2 leading-snug ${viewed ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100'}`}>
+      <article className="mb-6 pb-4 border-b border-border">
+        <h1 className={`text-lg font-semibold mb-2 leading-snug ${viewed ? 'text-viewed' : 'text-foreground'}`}>
           {item.url ? (
             <a
               href={item.url}
-              className="hover:text-hn-orange transition-colors"
+              className="hover:text-accent transition-colors"
               onClick={() => markViewedWithTime(item.id)}
             >
               {item.title}
@@ -98,10 +98,10 @@ export function ItemDetail() {
             item.title
           )}
           {hostname && (
-            <span className="ml-1.5 text-[13px] text-gray-500 dark:text-gray-400 font-normal">
+            <span className="ml-1.5 text-[13px] text-muted-foreground font-normal">
               (<Link
                 to={`/from/${hostname}`}
-                className="hover:text-hn-orange transition-colors"
+                className="hover:text-accent transition-colors"
               >
                 {hostname}
               </Link>)
@@ -110,7 +110,7 @@ export function ItemDetail() {
         </h1>
 
         {/* Meta: "16 points by idw 23 minutes ago | past | 52 comments" */}
-        <div className="text-[13px] text-gray-600 dark:text-gray-400 mb-2">
+        <div className="text-[13px] text-muted-foreground mb-2">
           <span>{item.points} points</span>
           <span> by </span>
           <span>{item.author}</span>
@@ -120,7 +120,7 @@ export function ItemDetail() {
             href={pastUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-hn-orange transition-colors"
+            className="hover:text-accent transition-colors"
           >
             past
           </a>
@@ -131,7 +131,7 @@ export function ItemDetail() {
         {/* Item text (for Ask HN, etc.) */}
         {sanitizedText && (
           <div
-            className="mt-3 comment-content text-gray-800 dark:text-gray-200 text-[15px] leading-relaxed"
+            className="mt-3 comment-content text-foreground text-[15px] leading-relaxed"
             dangerouslySetInnerHTML={{ __html: sanitizedText }}
           />
         )}

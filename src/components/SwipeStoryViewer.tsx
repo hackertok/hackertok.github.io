@@ -560,12 +560,12 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     return (
       <div className="swipe-snap-container flex items-center justify-center min-h-screen" data-testid="swipe-container">
         <div className="text-center px-4">
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
+          <p className="text-muted-foreground mb-4">
             {isNonStory ? 'This item is not a story' : 'Story not found'}
           </p>
           <Link
             to="/"
-            className="text-hn-orange hover:underline"
+            className="text-accent hover:underline"
           >
             Back to feed
           </Link>
@@ -611,10 +611,10 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     return (
       <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
         <div className="text-center px-4">
-          <p className="text-red-500 dark:text-red-400 mb-4">Failed to load stories</p>
+          <p className="text-destructive mb-4">Failed to load stories</p>
           <button
             onClick={loadMore}
-            className="px-4 py-2 bg-hn-orange text-white rounded-lg hover:bg-orange-600 transition-colors"
+            className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
           >
             Try Again
           </button>

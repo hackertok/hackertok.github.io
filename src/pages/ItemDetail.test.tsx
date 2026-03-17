@@ -30,8 +30,8 @@ describe('ItemDetail', () => {
 
       // Wait for item to load
       const heading = await screen.findByRole('heading', { level: 1 });
-      expect(heading).toHaveClass('text-gray-900');
-      expect(heading).not.toHaveClass('text-gray-500');
+      expect(heading).toHaveClass('text-foreground');
+      expect(heading).not.toHaveClass('text-viewed');
     });
 
     it('shows viewed title color when item was previously viewed', async () => {
@@ -40,8 +40,8 @@ describe('ItemDetail', () => {
 
       // Wait for item to load
       const heading = await screen.findByRole('heading', { level: 1 });
-      expect(heading).toHaveClass('text-gray-500');
-      expect(heading).not.toHaveClass('text-gray-900');
+      expect(heading).toHaveClass('text-viewed');
+      expect(heading).not.toHaveClass('text-foreground');
     });
 
     it('marks item as viewed and updates title color on external link click', async () => {
@@ -49,13 +49,13 @@ describe('ItemDetail', () => {
 
       // Wait for item to load - title link should appear
       const titleLink = await screen.findByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
-      expect(titleLink.closest('h1')).toHaveClass('text-gray-900');
+      expect(titleLink.closest('h1')).toHaveClass('text-foreground');
 
       fireEvent.click(titleLink);
 
       // Title should now have viewed color
       await waitFor(() => {
-        expect(titleLink.closest('h1')).toHaveClass('text-gray-500');
+        expect(titleLink.closest('h1')).toHaveClass('text-viewed');
       });
 
       // Should be persisted to storage

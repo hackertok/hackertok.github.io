@@ -11,12 +11,12 @@ export function StoryCardSkeleton({ titleWidths = [0.8, 0.4], metaWidths = [0.12
         {/* Title skeleton - varying widths for natural look */}
         <div className="space-y-1.5">
           <div 
-            className="h-4 bg-gray-200 dark:bg-gray-800 rounded" 
+            className="h-4 bg-skeleton rounded" 
             style={{ width: `${titleWidths[0] * 100}%` }} 
           />
           {titleWidths[1] > 0 && (
             <div 
-              className="h-4 bg-gray-200 dark:bg-gray-800 rounded" 
+              className="h-4 bg-skeleton rounded" 
               style={{ width: `${titleWidths[1] * 100}%` }} 
             />
           )}
@@ -24,10 +24,10 @@ export function StoryCardSkeleton({ titleWidths = [0.8, 0.4], metaWidths = [0.12
 
         {/* Meta info skeleton */}
         <div className="flex items-center gap-2">
-          <div className="h-3 bg-gray-200 dark:bg-gray-800 rounded" style={{ width: `${metaWidths[0] * 100}%` }} />
-          <div className="h-3 bg-gray-200 dark:bg-gray-800 rounded" style={{ width: `${metaWidths[1] * 100}%` }} />
-          <div className="h-3 bg-gray-200 dark:bg-gray-800 rounded" style={{ width: `${metaWidths[2] * 100}%` }} />
-          <div className="h-3 bg-gray-200 dark:bg-gray-800 rounded" style={{ width: `${metaWidths[3] * 100}%` }} />
+          <div className="h-3 bg-skeleton rounded" style={{ width: `${metaWidths[0] * 100}%` }} />
+          <div className="h-3 bg-skeleton rounded" style={{ width: `${metaWidths[1] * 100}%` }} />
+          <div className="h-3 bg-skeleton rounded" style={{ width: `${metaWidths[2] * 100}%` }} />
+          <div className="h-3 bg-skeleton rounded" style={{ width: `${metaWidths[3] * 100}%` }} />
         </div>
       </div>
     </article>
@@ -56,7 +56,7 @@ export function StoryCardSkeletonList({ count = 10 }: StoryCardSkeletonListProps
   ];
 
   return (
-    <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800/50 animate-pulse">
+    <div className="space-y-0 divide-y divide-border animate-pulse">
       {Array.from({ length: count }, (_, i) => {
         const variation = variations[i % variations.length];
         return (

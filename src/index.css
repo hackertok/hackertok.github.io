@@ -3,8 +3,72 @@
 /* Enable class-based dark mode (toggle with .dark class on html element) */
 @custom-variant dark (&:where(.dark, .dark *));
 
-@theme {
-  --color-hn-orange: #ff6600;
+/* ── Design Tokens ──────────────────────────────────────────────────── */
+/* Light mode (default) — warm stone/taupe palette */
+:root {
+  --background: oklch(0.98 0.006 70);        /* warm cream */
+  --foreground: oklch(0.22 0.01 60);         /* warm near-black */
+  --card: oklch(0.995 0.003 70);             /* warm near-white */
+  --card-foreground: oklch(0.22 0.01 60);    /* same as foreground */
+  --muted: oklch(0.94 0.008 70);             /* warm cream-100 */
+  --muted-foreground: oklch(0.55 0.02 60);   /* warm gray-500 */
+  --accent: oklch(0.673 0.195 44);
+  --accent-foreground: oklch(0.22 0.01 60);  /* near-black */
+  --accent-hover: oklch(0.63 0.195 44);      /* darker orange for hover */
+  --border: oklch(0.90 0.008 70);            /* warm cream-200 */
+  --destructive: oklch(0.58 0.22 27);        /* red-500 */
+  --destructive-foreground: oklch(1 0 0);    /* white */
+  --skeleton: oklch(0.90 0.008 70);          /* warm cream-200 */
+  --secondary: oklch(0.94 0.008 70);         /* warm cream-100 */
+  --secondary-foreground: oklch(0.35 0.01 60);
+  --viewed: oklch(0.55 0.01 60);             /* dimmed for read stories */
+  --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
+  --pill-glow: 0 2px 8px oklch(0.673 0.195 44 / 0.25);
+  --header-height: 53px;
+}
+
+/* Dark mode — soft dark, warm tones */
+.dark {
+  --background: oklch(0.20 0.012 55);        /* soft dark with warm tint */
+  --foreground: oklch(0.92 0.005 80);        /* warm light text */
+  --card: oklch(0.24 0.012 55);              /* slightly lighter than bg */
+  --card-foreground: oklch(0.92 0.005 80);   /* same as foreground */
+  --muted: oklch(0.28 0.012 55);             /* warm gray-800 */
+  --muted-foreground: oklch(0.65 0.02 60);   /* warm gray-400 */
+  --accent: oklch(0.673 0.195 44);
+  --accent-foreground: oklch(0.22 0.01 60);  /* near-black */
+  --accent-hover: oklch(0.63 0.195 44);      /* darker orange for hover */
+  --border: oklch(0.32 0.012 55 / 0.8);      /* warm gray-700 with alpha */
+  --destructive: oklch(0.65 0.20 27);        /* red-400 */
+  --destructive-foreground: oklch(1 0 0);    /* white */
+  --skeleton: oklch(0.30 0.012 55);          /* warm gray-700 */
+  --secondary: oklch(0.28 0.012 55);         /* warm gray-800 */
+  --secondary-foreground: oklch(0.85 0.005 80);
+  --viewed: oklch(0.62 0.01 60);             /* dimmed for read stories */
+  --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
+  --pill-glow: 0 2px 8px oklch(0.673 0.195 44 / 0.3);
+}
+
+/* Wire CSS variables into Tailwind utility classes */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-hover: var(--accent-hover);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-skeleton: var(--skeleton);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-viewed: var(--viewed);
+  --color-tok: var(--tok-color);
+  --shadow-pill-glow: var(--pill-glow);
 }
 
 /* Spin animation for loading spinners */
@@ -31,15 +95,15 @@
 }
 
 .comment-content a {
-  @apply text-hn-orange hover:underline break-all;
+  @apply text-accent underline break-all;
 }
 
 .comment-content code {
-  @apply bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-sm font-mono;
+  @apply bg-muted px-1 py-0.5 rounded text-sm font-mono;
 }
 
 .comment-content pre {
-  @apply bg-gray-200 dark:bg-gray-700 p-3 rounded overflow-x-auto text-sm font-mono my-2;
+  @apply bg-muted p-3 rounded overflow-x-auto text-sm font-mono my-2;
 }
 
 .comment-content i {
@@ -62,7 +126,7 @@
   scrollbar-width: none;
   -ms-overflow-style: none;
   width: 100vw;
-  height: calc(100dvh - 56px);
+  height: calc(100dvh - var(--header-height));
 }
 
 .swipe-snap-container::-webkit-scrollbar {
@@ -85,7 +149,7 @@
 
 .full-screen-item {
   width: 100%;
-  min-height: calc(100dvh - 56px);
+  min-height: calc(100dvh - var(--header-height));
 }
 
 /* Prevent pull-to-refresh on iOS in swipe mode.

@@ -101,10 +101,10 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
           {story.url ? (
             <a
               href={story.url}
-              className={`hover:text-hn-orange transition-colors ${
+              className={`hover:text-accent transition-colors ${
                 viewed
-                  ? 'text-gray-500 dark:text-gray-500'
-                  : 'text-gray-900 dark:text-gray-100'
+                  ? 'text-viewed'
+                  : 'text-foreground'
               }`}
               onClick={() => markViewedWithTime(story.id)}
             >
@@ -115,20 +115,20 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
               to={`/item/${story.id}`}
               state={{ from: listType }}
               onClick={handleTitleClick}
-              className={`hover:text-hn-orange transition-colors ${
+              className={`hover:text-accent transition-colors ${
                 viewed
-                  ? 'text-gray-500 dark:text-gray-500'
-                  : 'text-gray-900 dark:text-gray-100'
+                  ? 'text-viewed'
+                  : 'text-foreground'
               }`}
             >
               {story.title}
             </Link>
           )}
           {hostname && (
-            <span className="ml-1.5 text-[13px] text-gray-500 dark:text-gray-400 font-normal">
+            <span className="ml-1.5 text-[13px] text-muted-foreground font-normal">
               (<Link
                 to={`/from/${hostname}`}
-                className="hover:text-hn-orange transition-colors"
+                className="hover:text-accent transition-colors"
               >
                 {hostname}
               </Link>)
@@ -137,7 +137,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
         </h2>
 
         {/* Meta info: "58 points by pocksuppet 3 hours ago | 17 comments" */}
-        <div className="text-[13px] text-gray-600 dark:text-gray-400">
+        <div className="text-[13px] text-muted-foreground">
           <span>{story.points ?? 0} points</span>
           <span> by </span>
           <span>{story.author || 'unknown'}</span>
@@ -147,7 +147,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
             to={`/item/${story.id}`}
             state={{ from: listType }}
             onClick={handleCommentsClick}
-            className="hover:text-hn-orange transition-colors"
+            className="hover:text-accent transition-colors"
           >
             {story.commentCount ?? 0} comments
           </Link>

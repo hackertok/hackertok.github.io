@@ -99,8 +99,8 @@ export function DomainStories() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-      <div className="mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+      <div className="mb-4 pb-3 border-b border-border">
+        <h1 className="text-lg font-semibold text-foreground">
           Stories from {domain}
         </h1>
       </div>
@@ -109,21 +109,21 @@ export function DomainStories() {
         <StoryCardSkeletonList count={12} />
       ) : error && stories.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-red-500 dark:text-red-400 mb-4">Failed to load stories: {error}</p>
+          <p className="text-destructive mb-4">Failed to load stories: {error}</p>
           <button
             onClick={() => loadItems(0, false)}
-            className="px-4 py-2 bg-hn-orange text-white rounded-lg hover:bg-orange-600 transition-colors"
+            className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
           >
             Try Again
           </button>
         </div>
       ) : stories.length === 0 ? (
-        <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+        <p className="text-center text-muted-foreground py-8">
           No stories found from {domain}
         </p>
       ) : (
         <>
-          <div className="space-y-0 divide-y divide-gray-100 dark:divide-gray-800/50">
+          <div className="space-y-0 divide-y divide-border">
             {stories.map(story => (
               <StoryCard key={story.id} story={story} />
             ))}
@@ -137,7 +137,7 @@ export function DomainStories() {
           )}
 
           {!hasMore && stories.length > 0 && (
-            <p className="text-center text-sm text-gray-500 dark:text-gray-500 py-8">
+            <p className="text-center text-sm text-muted-foreground py-8">
               You&apos;ve reached the end
             </p>
           )}
