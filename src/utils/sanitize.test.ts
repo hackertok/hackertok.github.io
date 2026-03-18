@@ -89,14 +89,21 @@ describe('sanitizeHtml', () => {
       expect(result).toContain('mailto:');
     });
 
-    it('adds target="_blank" to links', () => {
+    it('opens links in the same tab (no target="_blank")', () => {
       const result = sanitizeHtml('<a href="https://example.com">link</a>');
-      expect(result).toContain('target="_blank"');
+      expect(result).not.toContain('target=');
     });
 
-    it('adds rel="noopener noreferrer" to links', () => {
+    it('adds rel="noreferrer" to links', () => {
       const result = sanitizeHtml('<a href="https://example.com">link</a>');
-      expect(result).toContain('rel="noopener noreferrer"');
+      expect(result).toContain('rel="noreferrer"');
+    });
+
+    it('overrides existing rel and strips target from input HTML', () => {
+      const result = sanitizeHtml('<a href="https://example.com" target="_blank" rel="noopener">link</a>');
+      expect(result).not.toContain('target=');
+      expect(result).toContain('rel="noreferrer"');
+      expect(result).not.toContain('noopener');
     });
 
     it('preserves relative URLs', () => {

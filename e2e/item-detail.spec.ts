@@ -20,11 +20,12 @@ test.describe('Item Detail', () => {
     const articleLink = page.getByRole('link', { name: /example\.com/i }).first();
     await expect(articleLink).toHaveAttribute('href', /example\.com/);
 
-    // "past" link to Algolia
+    // "past" link to Algolia (opens in same tab)
     const pastLink = page.getByRole('link', { name: 'past' }).first();
     await expect(pastLink).toBeVisible();
     await expect(pastLink).toHaveAttribute('href', /hn\.algolia\.com/);
-    await expect(pastLink).toHaveAttribute('target', '_blank');
+    await expect(pastLink).not.toHaveAttribute('target', '_blank');
+    await expect(pastLink).toHaveAttribute('rel', 'noreferrer');
   });
 
   test('displays comments', async ({ page }) => {

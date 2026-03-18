@@ -97,6 +97,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
             {item.url ? (
               <a
                 href={item.url}
+                rel="noreferrer"
                 className="hover:text-accent transition-colors"
                 onClick={() => markViewedWithTime(item.id)}
               >
@@ -126,8 +127,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
             <span className="mx-1.5">|</span>
             <a
               href={pastUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+              rel="noreferrer"
               className="hover:text-accent transition-colors"
             >
               past

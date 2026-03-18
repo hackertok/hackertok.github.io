@@ -76,8 +76,8 @@ describe('StoryCard', () => {
       
       const titleLink = screen.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
       expect(titleLink).toHaveAttribute('href', 'https://example.com/article');
-      // Links navigate in same tab (like original HN)
       expect(titleLink).not.toHaveAttribute('target', '_blank');
+      expect(titleLink).toHaveAttribute('rel', 'noreferrer');
     });
 
     it('renders internal link for text stories (no URL)', () => {

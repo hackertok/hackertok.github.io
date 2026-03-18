@@ -52,6 +52,7 @@ describe('FullScreenItem', () => {
 
       const pastLink = await screen.findByRole('link', { name: 'past' });
       expect(pastLink).toHaveAttribute('href', expect.stringContaining('type=story'));
+      expect(pastLink).toHaveAttribute('rel', 'noreferrer');
     });
   });
 

@@ -101,6 +101,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
           {story.url ? (
             <a
               href={story.url}
+              rel="noreferrer"
               className={`hover:text-accent transition-colors ${
                 viewed
                   ? 'text-viewed'
