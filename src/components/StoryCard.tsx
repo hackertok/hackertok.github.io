@@ -97,7 +97,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
     <article ref={setRefs} className="py-3 first:pt-0" data-testid="story-card" data-story-id={story.id} data-viewed={viewed}>
       <div className="space-y-1">
         {/* Title with hostname */}
-        <h2 className="text-[15px] leading-snug font-semibold">
+        <h2 className="text-base leading-snug font-semibold">
           {story.url ? (
             <a
               href={story.url}
@@ -126,7 +126,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
             </Link>
           )}
           {hostname && (
-            <span className="ml-1.5 text-[13px] text-muted-foreground font-normal">
+            <span className="ml-1.5 text-sm text-muted-foreground font-normal">
               (<Link
                 to={`/from/${hostname}`}
                 className="hover:text-accent transition-colors"
@@ -138,7 +138,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
         </h2>
 
         {/* Meta info: "58 points by pocksuppet 3 hours ago | 17 comments" */}
-        <div className="text-[13px] text-muted-foreground">
+        <div className="text-sm text-muted-foreground">
           <span>{story.points ?? 0} points</span>
           <span> by </span>
           <span>{story.author || 'unknown'}</span>

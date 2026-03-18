@@ -636,55 +636,6 @@ describe('hn API utilities', () => {
       expect(result[0].text).toBe('Reply text');
       expect(result[0].createdAt).toBe(1700000000 * 1000);
       expect(result[0].parentId).toBe(1001);
-      expect(result[0].depth).toBe(0);
-    });
-
-    it('calculates depth for nested children', () => {
-      const children = [
-        {
-          id: 2001,
-          author: 'user1',
-          text: 'Level 0',
-          created_at_i: 1700000000,
-          parent_id: 1001,
-          children: [
-            {
-              id: 3001,
-              author: 'user2',
-              text: 'Level 1',
-              created_at_i: 1700000100,
-              parent_id: 2001,
-              children: [],
-            },
-          ],
-        },
-      ];
-
-      const result = normalizeAlgoliaItemChildren(children);
-
-      expect(result[0].depth).toBe(0);
-      expect(result[0].children[0].depth).toBe(1);
-    });
-
-    it('collapses children beyond depth 3', () => {
-      const children = [
-        {
-          id: 1,
-          author: 'a',
-          text: 't',
-          created_at_i: 1700000000,
-          parent_id: 0,
-          children: [],
-        },
-      ];
-
-      // Start at depth 3 → childrenCollapsed should be true
-      const result = normalizeAlgoliaItemChildren(children, 3);
-      expect(result[0].childrenCollapsed).toBe(true);
-
-      // Start at depth 0 → childrenCollapsed should be false
-      const result2 = normalizeAlgoliaItemChildren(children, 0);
-      expect(result2[0].childrenCollapsed).toBe(false);
     });
 
     it('filters out deleted comments (no author)', () => {

@@ -31,26 +31,29 @@ test.describe('Item Detail', () => {
   test('displays comments', async ({ page }) => {
     await page.goto('/#/item/12345');
     
-    // Wait for comments to load - comments may take time to fetch from Algolia
+    // Top-level comments visible on load
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
 
-    // Nested comments should also be visible
-    await expect(page.getByText('tptacek').first()).toBeVisible({ timeout: 10000 });
+    // Nested comment hidden behind "View replies"
+    await expect(page.getByText('tptacek').first()).not.toBeVisible();
+    
+    // Expanding reveals nested comment
+    await page.getByText(/1 reply/i).first().click();
+    await expect(page.getByText('tptacek').first()).toBeVisible();
   });
 
-  test('can collapse/expand comments', async ({ page }) => {
+  test('can expand and collapse replies', async ({ page }) => {
     await page.goto('/#/item/12345');
     
-    // Wait for comments to load - check for author name
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
     
-    // Find collapse button - it has aria-label "Collapse comment" or "Expand comment"
-    const collapseButton = page.getByRole('button', { name: /collapse comment/i }).first();
+    // Expand replies
+    await page.getByText(/1 reply/i).first().click();
+    await expect(page.getByText('tptacek').first()).toBeVisible();
     
-    if (await collapseButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await collapseButton.click();
-      // After collapse, some content should be hidden
-    }
+    // Collapse replies via trunk line button
+    await page.getByRole('button', { name: /collapse replies/i }).first().click();
+    await expect(page.getByText('tptacek').first()).not.toBeVisible();
   });
 
   test('handles item not found', async ({ page }) => {

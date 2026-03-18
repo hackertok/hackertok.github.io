@@ -324,9 +324,8 @@ async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Pr
 }
 
 // Build comment tree from flat list of comments
-// If maxDepth is specified, children beyond that depth are collapsed
 // Uses kidsOrder map to maintain HN's ranking order (from Firebase kids arrays)
-function buildCommentTree(comments: AlgoliaComment[], itemId: number, maxDepth = Infinity, kidsOrder = new Map<number, number[]>()): Comment[] {
+function buildCommentTree(comments: AlgoliaComment[], itemId: number, kidsOrder = new Map<number, number[]>()): Comment[] {
   // Create a map of all comments by ID
   const commentMap = new Map<number, Comment>();
   
@@ -339,28 +338,22 @@ function buildCommentTree(comments: AlgoliaComment[], itemId: number, maxDepth =
         createdAt: comment.created_at_i * 1000,
         parentId: comment.parent_id,
         children: [],
-        depth: 0, // Will be calculated
       });
     }
   });
   
-  // Build the tree structure and calculate depths
+  // Build the tree structure
   const rootComments: Comment[] = [];
   
   commentMap.forEach(comment => {
     if (comment.parentId === itemId) {
-      // This is a top-level comment
-      comment.depth = 0;
       rootComments.push(comment);
     } else {
-      // This is a reply - add it to its parent's children
       const parent = commentMap.get(comment.parentId);
       if (parent) {
-        comment.depth = parent.depth + 1;
         parent.children.push(comment);
       } else {
         // Parent not found (might be deleted), treat as root
-        comment.depth = 0;
         rootComments.push(comment);
       }
     }
@@ -384,18 +377,11 @@ function buildCommentTree(comments: AlgoliaComment[], itemId: number, maxDepth =
     return a.createdAt - b.createdAt;
   };
   
-  // Collapse deep threads if maxDepth is set
-  const processTree = (commentList: Comment[], parentId: number, currentDepth = 0) => {
+  const processTree = (commentList: Comment[], parentId: number) => {
     commentList.sort(sortByHNOrder(parentId));
     commentList.forEach(comment => {
       if (comment.children.length > 0) {
-        if (currentDepth >= maxDepth) {
-          // Mark as having hidden children, collapse them
-          comment.hiddenChildCount = countAllChildren(comment);
-          comment.childrenCollapsed = true;
-          // Keep children reference for lazy loading but mark as not loaded initially
-        }
-        processTree(comment.children, comment.id, currentDepth + 1);
+        processTree(comment.children, comment.id);
       }
     });
   };
@@ -405,13 +391,74 @@ function buildCommentTree(comments: AlgoliaComment[], itemId: number, maxDepth =
   return rootComments;
 }
 
-// Count total descendants of a comment
-function countAllChildren(comment: Comment): number {
-  let count = comment.children.length;
-  comment.children.forEach(child => {
-    count += countAllChildren(child);
+// Shared helper: fetch kids ordering and build an ordered comment tree
+// maxOrderingDepth limits how deep we fetch ordering (Infinity = all levels)
+async function buildOrderedCommentTree(
+  comments: AlgoliaComment[],
+  itemId: number,
+  itemKids: number[] | undefined,
+  signal?: AbortSignal,
+  maxOrderingDepth = Infinity,
+): Promise<Comment[]> {
+  const kidsOrder = new Map<number, number[]>();
+  if (itemKids) {
+    kidsOrder.set(itemId, itemKids);
+  }
+
+  // Count children per parent to identify which ones need ordering
+  const childrenCount = new Map<number, number>();
+  comments.forEach((c: AlgoliaComment) => {
+    const count = childrenCount.get(c.parent_id) ?? 0;
+    childrenCount.set(c.parent_id, count + 1);
   });
-  return count;
+
+  // Determine which parents need ordering fetched
+  let parentsNeedingOrder: number[];
+
+  if (maxOrderingDepth < Infinity) {
+    // Depth-limited: calculate depths and only order within limit
+    const commentDepths = new Map<number, number>();
+    const commentParents = new Map<number, number>();
+    comments.forEach(c => {
+      commentParents.set(parseInt(c.objectID, 10), c.parent_id);
+    });
+
+    const getDepth = (commentId: number): number => {
+      if (commentDepths.has(commentId)) return commentDepths.get(commentId)!;
+      const parentId = commentParents.get(commentId);
+      if (parentId === undefined || parentId === itemId) {
+        commentDepths.set(commentId, 0);
+        return 0;
+      }
+      if (!commentParents.has(parentId)) {
+        commentDepths.set(commentId, 0);
+        return 0;
+      }
+      const depth = getDepth(parentId) + 1;
+      commentDepths.set(commentId, depth);
+      return depth;
+    };
+
+    comments.forEach(c => getDepth(Number(c.objectID)));
+
+    parentsNeedingOrder = [...childrenCount.entries()]
+      .filter(([parentId, count]: [number, number]) => {
+        if (count <= 1 || parentId === itemId) return false;
+        const parentDepth = commentDepths.get(parentId) ?? -1;
+        return parentDepth >= 0 && parentDepth < maxOrderingDepth;
+      })
+      .map(([parentId]) => parentId);
+  } else {
+    // No depth limit: order all parents with multiple children
+    parentsNeedingOrder = [...childrenCount.entries()]
+      .filter(([parentId, count]: [number, number]) => count > 1 && parentId !== itemId)
+      .map(([parentId]) => parentId);
+  }
+
+  const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder, signal);
+  nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
+
+  return buildCommentTree(comments, itemId, kidsOrder);
 }
 
 // Fetch just the item metadata (without comments)
@@ -472,87 +519,19 @@ export async function prefetchItemComments(id: number | string, signal?: AbortSi
   try {
     const itemId = Number(id);
     
-    // Check if aborted before starting
     if (signal?.aborted) return null;
     
-    // Fetch item and comments in parallel (pass signal for cancellation)
     const [item, comments] = await Promise.all([
       fetchFirebaseItem(itemId, signal),
       fetchAllCommentsAlgolia(itemId, signal),
     ]);
     
-    // Check if aborted after network calls
     if (signal?.aborted) return null;
-    
     if (!item) return null;
     
-    // Build kids order map - always include item's kids (depth 0)
-    const kidsOrder = new Map<number, number[]>();
-    if (item.kids) {
-      kidsOrder.set(itemId, item.kids);
-    }
+    const commentTree = await buildOrderedCommentTree(comments, itemId, item.kids, signal, maxOrderingDepth);
     
-    // Build a map of comment depths from the flat list
-    const commentDepths = new Map<number, number>();
-    const commentParents = new Map<number, number>();
-    comments.forEach(c => {
-      const id = parseInt(c.objectID, 10);
-      commentParents.set(id, c.parent_id);
-    });
-    
-    // Calculate depth for each comment by traversing parent chain
-    const getDepth = (commentId: number): number => {
-      if (commentDepths.has(commentId)) return commentDepths.get(commentId)!;
-      const parentId = commentParents.get(commentId);
-      
-      // If no parent info, or parent is the item, this is a root comment
-      if (parentId === undefined || parentId === itemId) {
-        commentDepths.set(commentId, 0);
-        return 0;
-      }
-      
-      // If parent isn't in our comment set (deleted/not fetched), treat as root
-      if (!commentParents.has(parentId)) {
-        commentDepths.set(commentId, 0);
-        return 0;
-      }
-      
-      const parentDepth = getDepth(parentId);
-      const depth = parentDepth + 1;
-      commentDepths.set(commentId, depth);
-      return depth;
-    };
-    
-    // Calculate depths for all comments
-    comments.forEach(c => getDepth(Number(c.objectID)));
-    
-    // Count children per parent
-    const childrenCount = new Map<number, number>();
-    comments.forEach((c: AlgoliaComment) => {
-      const count = childrenCount.get(c.parent_id) ?? 0;
-      childrenCount.set(c.parent_id, count + 1);
-    });
-    
-    // Only fetch kids for parents with multiple children AND within depth limit
-    // A parent at depth D has children at depth D+1, so we need ordering for parents at depth < maxOrderingDepth
-    const parentsNeedingOrder = [...childrenCount.entries()]
-      .filter(([parentId, count]: [number, number]) => {
-        if (count <= 1 || parentId === itemId) return false;
-        const parentDepth = commentDepths.get(parentId) ?? -1;
-        return parentDepth >= 0 && parentDepth < maxOrderingDepth;
-      })
-      .map(([parentId]) => parentId);
-    
-    // Check abort before expensive operation
     if (signal?.aborted) return null;
-    
-    const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder, signal);
-    nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
-    
-    // Check final abort
-    if (signal?.aborted) return null;
-    
-    const commentTree = buildCommentTree(comments, itemId, 3, kidsOrder);
     
     return {
       item: normalizeFirebaseItem(item),
@@ -566,49 +545,23 @@ export async function prefetchItemComments(id: number | string, signal?: AbortSi
 
 // Fetch comments for an item (separate from item fetch)
 // Accepts optional AbortSignal for cancellation
-export async function fetchCommentsForItem(id: number | string, maxDepth = 3, signal: AbortSignal | null = null): Promise<Comment[]> {
+export async function fetchCommentsForItem(id: number | string, signal: AbortSignal | null = null): Promise<Comment[]> {
   const itemId = Number(id);
   
-  // Check abort before starting
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
   }
   
-  // Fetch item (for kids order) and comments in parallel
   const [item, comments] = await Promise.all([
     fetchFirebaseItem(itemId, signal ?? undefined),
     fetchAllCommentsAlgolia(itemId, signal ?? undefined),
   ]);
   
-  // Start with item's kids order for top-level comments
-  const kidsOrder = new Map<number, number[]>();
-  if (item?.kids) {
-    kidsOrder.set(itemId, item.kids);
-  }
-  
-  // Count children per parent to identify which ones need ordering
-  const childrenCount = new Map<number, number>();
-  comments.forEach((c: AlgoliaComment) => {
-    const count = childrenCount.get(c.parent_id) ?? 0;
-    childrenCount.set(c.parent_id, count + 1);
-  });
-  
-  // Only fetch kids for parents with multiple children (order matters)
-  // Single-child parents don't need ordering
-  const parentsNeedingOrder = [...childrenCount.entries()]
-    .filter(([parentId, count]: [number, number]) => count > 1 && parentId !== itemId)
-    .map(([parentId]) => parentId);
-  
-  // Check abort before expensive ordering operation
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
   }
   
-  // Fetch kids ordering for all parents that need it
-  const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder, signal ?? undefined);
-  nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
-  
-  return buildCommentTree(comments, itemId, maxDepth, kidsOrder);
+  return buildOrderedCommentTree(comments, itemId, item?.kids, signal ?? undefined);
 }
 
 // Fetch a single item with its children tree from Algolia /items/{id} endpoint
@@ -622,7 +575,7 @@ export async function fetchAlgoliaItem(id: number | string, signal?: AbortSignal
 }
 
 // Recursively convert Algolia item children to Comment[] tree
-export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[], depth = 0): Comment[] {
+export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comment[] {
   return children
     .filter(child => child.author) // skip deleted comments (no author)
     .map(child => ({
@@ -631,9 +584,7 @@ export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[], depth
       text: child.text ?? '',
       createdAt: child.created_at_i * 1000,
       parentId: child.parent_id,
-      children: normalizeAlgoliaItemChildren(child.children ?? [], depth + 1),
-      depth,
-      childrenCollapsed: depth >= 3,
+      children: normalizeAlgoliaItemChildren(child.children ?? []),
     }));
 }
 

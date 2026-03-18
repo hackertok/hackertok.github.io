@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
@@ -12,8 +12,8 @@ export function DomainStories() {
   const params = useParams();
   const domain = params['*'] ?? '';
   
-  // Set document title to show which domain
-  useDocumentTitle(domain ? `Stories from ${domain}` : 'Domain Stories');
+  // Set document title to show which domain (falls back to default "HackerTok" when empty)
+  useDocumentTitle(domain ? `Submissions from ${domain}` : undefined);
   const [stories, setStories] = useState<StoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +84,7 @@ export function DomainStories() {
   }, [domain]);
 
   useEffect(() => {
+    if (!domain) return;
     setStories([]);
     setPage(0);
     setHasMore(true);
@@ -97,14 +98,24 @@ export function DomainStories() {
     }
   }, [inView, loading, hasMore, page, loadItems]);
 
+  if (!domain) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
+        <div className="text-center py-8">
+          <p className="text-destructive mb-4">No domain specified</p>
+          <Link
+            to="/"
+            className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
+          >
+            Return to Home
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-      <div className="mb-4 pb-3 border-b border-border">
-        <h1 className="text-lg font-semibold text-foreground">
-          Stories from {domain}
-        </h1>
-      </div>
-
       {stories.length === 0 && loading ? (
         <StoryCardSkeletonList count={12} />
       ) : error && stories.length === 0 ? (

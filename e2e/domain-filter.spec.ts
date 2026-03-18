@@ -63,3 +63,57 @@ test.describe('Domain Filter - Edge Cases', () => {
     await expect(page).toHaveURL(/\/#\/from\/blog\.example\.com/);
   });
 });
+
+test.describe('Domain Filter - Header "from" button', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('shows active "from" button only on domain pages', async ({ page }) => {
+    await page.goto('/#/from/example.com');
+
+    // "from" button should appear in the header nav with active styling
+    const fromButton = page.locator('header nav span', { hasText: 'from' });
+    await expect(fromButton).toBeVisible();
+    await expect(fromButton).toHaveClass(/bg-accent/);
+
+    // Other nav links should not be active
+    await expect(page.getByRole('link', { name: 'best', exact: true })).not.toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'show', exact: true })).not.toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'ask', exact: true })).not.toHaveClass(/bg-accent/);
+  });
+
+  test('"from" button is hidden on non-domain pages', async ({ page }) => {
+    const fromButton = page.locator('header nav span', { hasText: 'from' });
+
+    // Not visible on homepage
+    await page.goto('/#/');
+    await expect(fromButton).toHaveCount(0);
+
+    // Not visible on feed pages
+    await page.goto('/#/best');
+    await expect(fromButton).toHaveCount(0);
+  });
+});
+
+test.describe('Domain Filter - Empty domain', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('shows error with link to home when domain is empty', async ({ page }) => {
+    await page.goto('/#/from/');
+
+    // Document title should fall back to default
+    await expect(page).toHaveTitle('HackerTok');
+
+    // Should show error message
+    await expect(page.getByText('No domain specified')).toBeVisible();
+
+    // Should have a link back to home that works
+    const homeLink = page.getByRole('link', { name: /Return to Home/i });
+    await expect(homeLink).toBeVisible();
+    await homeLink.click();
+    await expect(page).toHaveURL(/\/#\/$/);
+  });
+});

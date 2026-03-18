@@ -56,14 +56,15 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
       <article className="mb-6 pb-4 border-b border-border">
         {/* Author + time */}
-        <div className="text-[13px] text-muted-foreground mb-1.5">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-0.5">
+          <span className="text-accent/80 text-base leading-none">›</span>
           <span className="font-medium text-foreground">{comment.author}</span>
-          <span className="mx-1.5">·</span>
+          <span className="text-muted-foreground">·</span>
           <span>{formatTimeAgo(comment.createdAt)}</span>
         </div>
 
         {/* Navigation: parent | on: Item Title */}
-        <div className="text-[13px] text-muted-foreground mb-3">
+        <div className="text-sm text-muted-foreground mb-3">
           {comment.parentId != null && (
             <Link
               to={`/item/${comment.parentId}`}
@@ -94,7 +95,7 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
         {/* Comment text */}
         {sanitizedText && (
           <div
-            className="comment-content text-foreground text-[15px] leading-relaxed"
+            className="comment-content text-foreground text-sm leading-relaxed"
             dangerouslySetInnerHTML={{ __html: sanitizedText }}
           />
         )}
@@ -106,7 +107,7 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
           <CommentSkeletonTree count={6} />
         ) : replies.length > 0 ? (
           <>
-            <div className="text-[13px] text-muted-foreground mb-3">
+            <div className="text-sm text-muted-foreground mb-3">
               {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
             </div>
             <CommentTree comments={replies} />

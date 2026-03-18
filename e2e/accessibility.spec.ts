@@ -42,6 +42,8 @@ test.describe('Accessibility', () => {
     
     // Wait for content to load
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    // Wait for comments so axe scans .comment-content links (text-accent contrast)
+    await expect(page.getByRole('link', { name: 'wasm-bindgen' }).first()).toBeVisible();
     
     const accessibilityScanResults = await makeAxeBuilder().analyze();
     attachIncomplete(accessibilityScanResults);
@@ -177,6 +179,8 @@ test.describe('Accessibility - Dark Mode', () => {
     
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     await expect(page.locator('html')).toHaveClass(/dark/);
+    // Wait for comments so axe scans .comment-content links (text-accent contrast)
+    await expect(page.getByRole('link', { name: 'wasm-bindgen' }).first()).toBeVisible();
     
     const accessibilityScanResults = await makeAxeBuilder().analyze();
     attachIncomplete(accessibilityScanResults);

@@ -23,7 +23,6 @@ export function createComment(overrides: Partial<Comment> = {}): Comment {
     createdAt: faker.date.recent().getTime(),
     parentId: faker.number.int({ min: 1, max: 99999 }),
     children: [],
-    depth: 0,
     ...overrides,
   };
 }

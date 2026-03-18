@@ -5,91 +5,70 @@ import type { Comment as CommentType } from '../types';
 
 interface CommentProps {
   comment: CommentType;
-  depth?: number;
 }
 
-export function Comment({ comment, depth = 0 }: CommentProps) {
-  const [collapsed, setCollapsed] = useState(false);
-  // Track if deep children have been expanded (when initially collapsed by tree builder)
-  const [deepChildrenExpanded, setDeepChildrenExpanded] = useState(
-    !comment.childrenCollapsed
-  );
-  
+export function Comment({ comment }: CommentProps) {
+  const [repliesExpanded, setRepliesExpanded] = useState(false);
+
   const sanitizedText = useMemo(
     () => comment.text ? sanitizeHtml(comment.text) : '',
     [comment.text]
   );
 
   const hasChildren = comment.children && comment.children.length > 0;
-  const showLoadMore = hasChildren && comment.childrenCollapsed && !deepChildrenExpanded;
+
+  const contentBlock = sanitizedText ? (
+    <div
+      className="comment-content text-foreground text-sm leading-relaxed"
+      dangerouslySetInnerHTML={{ __html: sanitizedText }}
+    />
+  ) : null;
 
   return (
-    <div
-      className={`${depth > 0 ? 'border-l border-border pl-3 ml-2' : ''}`}
-    >
-      <div className="py-2">
-        {/* Comment header */}
-        <div className="flex items-center gap-2 text-[13px] text-muted-foreground mb-1.5">
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="hover:text-accent transition-colors flex items-center"
-            aria-label={collapsed ? 'Expand comment' : 'Collapse comment'}
-          >
-            <svg
-              className={`w-3.5 h-3.5 transition-transform ${collapsed ? '-rotate-90' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          <span className="font-medium text-foreground">{comment.author}</span>
-          <span className="text-muted-foreground">·</span>
-          <span>{formatTimeAgo(comment.createdAt)}</span>
-          {collapsed && hasChildren && (
-            <span className="text-muted-foreground">
-              ({/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- 0 should fall through to children.length */}
-              {comment.hiddenChildCount || comment.children.length} {(comment.hiddenChildCount || comment.children.length) === 1 ? 'reply' : 'replies'})
-            </span>
-          )}
-        </div>
-
-        {/* Comment content */}
-        {!collapsed && (
-          <>
-            {sanitizedText && (
-              <div
-                className="comment-content text-foreground text-[14px] leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: sanitizedText }}
-              />
-            )}
-
-            {/* Show "load more" button for deep collapsed threads */}
-            {showLoadMore && (
-              <button
-                onClick={() => setDeepChildrenExpanded(true)}
-                className="mt-2 text-[13px] text-accent hover:underline flex items-center gap-1"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- 0 should fall through to children.length */}
-                Load {comment.hiddenChildCount || comment.children.length} more {(comment.hiddenChildCount || comment.children.length) === 1 ? 'reply' : 'replies'}
-              </button>
-            )}
-
-            {/* Child comments - only render if not collapsed by depth limit OR user expanded them */}
-            {hasChildren && (!comment.childrenCollapsed || deepChildrenExpanded) && (
-              <div className="mt-2">
-                {comment.children.map(child => (
-                  <Comment key={child.id} comment={child} depth={depth + 1} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
+    <div className="py-2">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-0.5">
+        <span className="text-accent/80 text-base leading-none">›</span>
+        <span className="font-medium text-foreground">{comment.author}</span>
+        <span className="text-muted-foreground">·</span>
+        <span>{formatTimeAgo(comment.createdAt)}</span>
       </div>
+
+      {hasChildren ? (
+        <div className="tree-trunk">
+          {repliesExpanded && (
+            <button
+              className="tree-trunk-collapse"
+              onClick={() => setRepliesExpanded(false)}
+              aria-label="Collapse replies"
+            />
+          )}
+
+          {contentBlock}
+
+          {!repliesExpanded && (
+            <div className="tree-branch tree-branch--last pt-2">
+              <button
+                onClick={() => setRepliesExpanded(true)}
+                className="text-sm text-muted-foreground hover:text-accent"
+              >
+                <span className="inline-block rotate-90 text-accent/80 text-base" aria-hidden="true">›</span>{' '}
+                {comment.children.length} {comment.children.length === 1 ? 'reply' : 'replies'}
+              </button>
+            </div>
+          )}
+
+          {repliesExpanded && comment.children.map((child, i) => (
+            <div
+              key={child.id}
+              className={`tree-branch${i === comment.children.length - 1 ? ' tree-branch--last' : ''}`}
+            >
+              <Comment comment={child} />
+            </div>
+          ))}
+        </div>
+      ) : contentBlock ? (
+        <div className="ml-[20px] pt-2">{contentBlock}</div>
+      ) : null}
     </div>
   );
 }
@@ -108,7 +87,7 @@ export function CommentTree({ comments }: CommentTreeProps) {
   return (
     <div className="space-y-0">
       {comments.map(comment => (
-        <Comment key={comment.id} comment={comment} depth={0} />
+        <Comment key={comment.id} comment={comment} />
       ))}
     </div>
   );

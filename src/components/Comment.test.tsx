@@ -10,9 +10,7 @@ describe('Comment', () => {
     id: 1,
     author: 'testuser',
     text: '<p>This is a test comment</p>',
-    createdAt: Date.now() - 3600000, // 1 hour ago
-    childrenCollapsed: false,
-    hiddenChildCount: 0,
+    createdAt: Date.now() - 3600000,
   });
 
   const mockCommentWithChildren = createComment({
@@ -26,12 +24,8 @@ describe('Comment', () => {
         author: 'childuser',
         text: '<p>Child comment</p>',
         createdAt: Date.now() - 3600000,
-        childrenCollapsed: false,
-        hiddenChildCount: 0,
       }),
     ],
-    childrenCollapsed: false,
-    hiddenChildCount: 0,
   });
 
   describe('rendering', () => {
@@ -66,89 +60,82 @@ describe('Comment', () => {
     });
   });
 
-  describe('collapsing', () => {
-    it('renders collapse/expand button', () => {
-      render(<Comment comment={mockComment} />);
-      
-      expect(screen.getByLabelText(/collapse comment/i)).toBeInTheDocument();
-    });
-
-    it('hides content when collapsed', () => {
-      render(<Comment comment={mockComment} />);
-      
-      const collapseButton = screen.getByLabelText(/collapse comment/i);
-      fireEvent.click(collapseButton);
-      
-      expect(screen.queryByText('This is a test comment')).not.toBeInTheDocument();
-    });
-
-    it('shows content when expanded again', () => {
-      render(<Comment comment={mockComment} />);
-      
-      const button = screen.getByLabelText(/collapse comment/i);
-      fireEvent.click(button); // Collapse
-      fireEvent.click(button); // Expand
-      
-      expect(screen.getByText('This is a test comment')).toBeInTheDocument();
-    });
-
-    it('shows reply count when collapsed', () => {
-      render(<Comment comment={mockCommentWithChildren} />);
-      
-      // Get the first (parent) collapse button
-      const collapseButtons = screen.getAllByLabelText(/collapse comment/i);
-      fireEvent.click(collapseButtons[0]);
-      
-      expect(screen.getByText(/1 reply/i)).toBeInTheDocument();
-    });
-  });
-
   describe('nested comments', () => {
-    it('renders child comments', () => {
+    it('renders child comments after expanding replies', () => {
       render(<Comment comment={mockCommentWithChildren} />);
       
       expect(screen.getByText('Parent comment')).toBeInTheDocument();
+      expect(screen.queryByText('Child comment')).not.toBeInTheDocument();
+      
+      fireEvent.click(screen.getByText(/1 reply/i));
+      
       expect(screen.getByText('Child comment')).toBeInTheDocument();
     });
 
     it('applies indentation to child comments', () => {
-      render(<Comment comment={mockCommentWithChildren} depth={0} />);
+      render(<Comment comment={mockCommentWithChildren} />);
       
-      // Child should have border-left class
-      const childComment = screen.getByText('Child comment').closest('div');
-      expect(childComment!.parentElement!.parentElement).toHaveClass('border-l');
-    });
-  });
-
-  describe('deep collapsed threads', () => {
-    it('shows load more button for collapsed children', () => {
-      const collapsedComment = {
-        ...mockCommentWithChildren,
-        childrenCollapsed: true,
-        hiddenChildCount: 3,
-      };
+      fireEvent.click(screen.getByText(/1 reply/i));
       
-      render(<Comment comment={collapsedComment} />);
-      
-      expect(screen.getByText(/load 3 more replies/i)).toBeInTheDocument();
+      const childComment = screen.getByText('childuser').closest('.tree-branch');
+      expect(childComment).not.toBeNull();
     });
 
-    it('expands children when load more is clicked', () => {
-      const collapsedComment = {
-        ...mockCommentWithChildren,
-        childrenCollapsed: true,
-        hiddenChildCount: 1,
-      };
+    it('collapses replies when trunk line is clicked', () => {
+      render(<Comment comment={mockCommentWithChildren} />);
       
-      render(<Comment comment={collapsedComment} />);
-      
-      // Child should not be visible initially
-      expect(screen.queryByText('Child comment')).not.toBeInTheDocument();
-      
-      fireEvent.click(screen.getByText(/load 1 more reply/i));
-      
-      // Child should now be visible
+      fireEvent.click(screen.getByText(/1 reply/i));
       expect(screen.getByText('Child comment')).toBeInTheDocument();
+      
+      fireEvent.click(screen.getByRole('button', { name: /collapse replies/i }));
+      expect(screen.queryByText('Child comment')).not.toBeInTheDocument();
+      expect(screen.getByText(/1 reply/i)).toBeInTheDocument();
+    });
+
+    it('gates replies behind expand button at all depths', () => {
+      render(<Comment comment={mockCommentWithChildren} />);
+      
+      expect(screen.getByText('Parent comment')).toBeInTheDocument();
+      expect(screen.queryByText('Child comment')).not.toBeInTheDocument();
+      expect(screen.getByText(/1 reply/i)).toBeInTheDocument();
+      
+      fireEvent.click(screen.getByText(/1 reply/i));
+      expect(screen.getByText('Child comment')).toBeInTheDocument();
+    });
+
+    it('shows direct children count, not total descendants', () => {
+      const deepComment = createComment({
+        id: 10,
+        author: 'topuser',
+        text: '<p>Top comment</p>',
+        createdAt: Date.now() - 7200000,
+        children: [
+          createComment({
+            id: 11,
+            author: 'replyuser',
+            text: '<p>Reply</p>',
+            createdAt: Date.now() - 3600000,
+            children: [
+              createComment({
+                id: 12,
+                author: 'grandchild1',
+                text: '<p>Grandchild 1</p>',
+                createdAt: Date.now() - 1800000,
+              }),
+              createComment({
+                id: 13,
+                author: 'grandchild2',
+                text: '<p>Grandchild 2</p>',
+                createdAt: Date.now() - 900000,
+              }),
+            ],
+          }),
+        ],
+      });
+      
+      render(<Comment comment={deepComment} />);
+      
+      expect(screen.getByText(/1 reply/i)).toBeInTheDocument();
     });
   });
 });
@@ -160,16 +147,12 @@ describe('CommentTree', () => {
       author: 'user1',
       text: '<p>First comment</p>',
       createdAt: Date.now() - 3600000,
-      childrenCollapsed: false,
-      hiddenChildCount: 0,
     }),
     createComment({
       id: 2,
       author: 'user2',
       text: '<p>Second comment</p>',
       createdAt: Date.now() - 7200000,
-      childrenCollapsed: false,
-      hiddenChildCount: 0,
     }),
   ];
 

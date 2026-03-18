@@ -181,8 +181,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       }
       
       try {
-        // Fetch with full ordering (default maxDepth=3)
-        const commentsData = await fetchCommentsForItem(itemId, 3, controller.signal);
+        const commentsData = await fetchCommentsForItem(itemId, controller.signal);
         if (!controller.signal.aborted) {
           setComments(commentsData);
           setCommentsLoading(false);

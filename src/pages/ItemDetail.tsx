@@ -85,7 +85,7 @@ export function ItemDetail() {
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
       {/* Item header - shown immediately */}
       <article className="mb-6 pb-4 border-b border-border">
-        <h1 className={`text-lg font-semibold mb-2 leading-snug ${viewed ? 'text-viewed' : 'text-foreground'}`}>
+        <h1 className={`text-xl font-semibold mb-2 leading-snug ${viewed ? 'text-viewed' : 'text-foreground'}`}>
           {item.url ? (
             <a
               href={item.url}
@@ -99,7 +99,7 @@ export function ItemDetail() {
             item.title
           )}
           {hostname && (
-            <span className="ml-1.5 text-[13px] text-muted-foreground font-normal">
+            <span className="ml-1.5 text-base text-muted-foreground font-normal">
               (<Link
                 to={`/from/${hostname}`}
                 className="hover:text-accent transition-colors"
@@ -111,7 +111,7 @@ export function ItemDetail() {
         </h1>
 
         {/* Meta: "16 points by idw 23 minutes ago | past | 52 comments" */}
-        <div className="text-[13px] text-muted-foreground mb-2">
+        <div className="text-sm text-muted-foreground mb-2">
           <span>{item.points} points</span>
           <span> by </span>
           <span>{item.author}</span>
@@ -131,7 +131,7 @@ export function ItemDetail() {
         {/* Item text (for Ask HN, etc.) */}
         {sanitizedText && (
           <div
-            className="mt-3 comment-content text-foreground text-[15px] leading-relaxed"
+            className="mt-3 comment-content text-foreground text-sm leading-relaxed"
             dangerouslySetInnerHTML={{ __html: sanitizedText }}
           />
         )}
