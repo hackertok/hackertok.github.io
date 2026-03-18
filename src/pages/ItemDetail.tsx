@@ -89,6 +89,7 @@ export function ItemDetail() {
           {item.url ? (
             <a
               href={item.url}
+              rel="noreferrer"
               className="hover:text-accent transition-colors"
               onClick={() => markViewedWithTime(item.id)}
             >
@@ -118,8 +119,7 @@ export function ItemDetail() {
           <span className="mx-1.5">|</span>
           <a
             href={pastUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+            rel="noreferrer"
             className="hover:text-accent transition-colors"
           >
             past
