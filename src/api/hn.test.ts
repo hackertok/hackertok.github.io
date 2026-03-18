@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { 
   formatTimeAgo, 
   getHostname, 
+  normalizeAlgoliaHit,
   fetchShowStories, 
   fetchAskStories,
   fetchTopStories,
@@ -145,6 +146,135 @@ describe('hn API utilities', () => {
     it('handles URLs without path segments', () => {
       expect(getHostname('https://github.com')).toBe('github.com');
       expect(getHostname('https://github.com/')).toBe('github.com');
+    });
+  });
+
+  describe('normalizeAlgoliaHit', () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    it('maps story_text to text field', () => {
+      const hit = {
+        objectID: '88888',
+        title: 'Ask HN: What are you working on?',
+        url: null,
+        points: 245,
+        author: 'whoishiring',
+        created_at_i: nowSec - 7200,
+        num_comments: 312,
+        story_text: 'I\u2019m curious what side projects everyone is working on this month. Share your progress, challenges, and what technologies you\u2019re using!',
+        _tags: ['story', 'ask_hn'],
+      };
+
+      const result = normalizeAlgoliaHit(hit);
+
+      expect(result.text).toBe(hit.story_text);
+      expect(result.url).toBeUndefined();
+    });
+
+    it('converts null story_text to undefined', () => {
+      const hit = {
+        objectID: '88888',
+        title: 'Ask HN: What are you working on?',
+        url: null,
+        points: 245,
+        author: 'whoishiring',
+        created_at_i: nowSec - 7200,
+        num_comments: 312,
+        story_text: null,
+        _tags: ['story', 'ask_hn'],
+      };
+
+      const result = normalizeAlgoliaHit(hit);
+
+      expect(result.text).toBeUndefined();
+    });
+
+    it('sets text to undefined when story_text is absent', () => {
+      const hit = {
+        objectID: '12345',
+        title: 'Rust Is the Future of JavaScript Infrastructure',
+        url: 'https://leerob.io/blog/rust',
+        points: 284,
+        author: 'leerob',
+        created_at_i: nowSec - 3600,
+        num_comments: 137,
+        _tags: ['story', 'front_page'],
+      };
+
+      const result = normalizeAlgoliaHit(hit);
+
+      expect(result.text).toBeUndefined();
+    });
+
+    it('passes through empty story_text as empty string', () => {
+      const hit = {
+        objectID: '34567',
+        title: 'PostgreSQL 17 Released',
+        url: 'https://www.postgresql.org/about/news/postgresql-17-released/',
+        points: 198,
+        author: 'cratermoon',
+        created_at_i: nowSec - 5400,
+        num_comments: 73,
+        story_text: '',
+        _tags: ['story', 'front_page'],
+      };
+
+      const result = normalizeAlgoliaHit(hit);
+
+      expect(result.text).toBe('');
+    });
+
+    it('normalizes all standard fields correctly', () => {
+      const hit = {
+        objectID: '12345',
+        title: 'Rust Is the Future of JavaScript Infrastructure',
+        url: 'https://leerob.io/blog/rust',
+        points: 284,
+        author: 'leerob',
+        created_at_i: nowSec - 3600,
+        num_comments: 137,
+        _tags: ['story', 'front_page'],
+      };
+
+      const result = normalizeAlgoliaHit(hit);
+
+      expect(result.id).toBe(12345);
+      expect(result.title).toBe('Rust Is the Future of JavaScript Infrastructure');
+      expect(result.url).toBe('https://leerob.io/blog/rust');
+      expect(result.points).toBe(284);
+      expect(result.author).toBe('leerob');
+      expect(result.createdAt).toBe(hit.created_at_i * 1000);
+      expect(result.commentCount).toBe(137);
+      expect(result.type).toBe('story');
+    });
+
+    it('detects ask_hn type from tags', () => {
+      const hit = {
+        objectID: '88887',
+        title: 'Ask HN: Best resources to learn Rust?',
+        points: 178,
+        author: 'rustlearner',
+        created_at_i: nowSec - 3600,
+        num_comments: 95,
+        _tags: ['story', 'ask_hn'],
+      };
+
+      expect(normalizeAlgoliaHit(hit).type).toBe('ask');
+    });
+
+    it('detects show_hn type from tags', () => {
+      const hit = {
+        objectID: '99999',
+        title: 'Show HN: Piko \u2013 Open-Source Ngrok Alternative in Go',
+        url: 'https://github.com/andydunstall/piko',
+        points: 312,
+        author: 'andydunstall',
+        created_at_i: nowSec - 7200,
+        num_comments: 89,
+        _tags: ['story', 'show_hn'],
+      };
+
+      expect(normalizeAlgoliaHit(hit).type).toBe('show');
     });
   });
 

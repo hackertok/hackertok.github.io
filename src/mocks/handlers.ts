@@ -122,6 +122,7 @@ export const mockAskHNItem1 = {
   created_at_i: Math.floor(Date.now() / 1000) - 7200, // 2 hours ago
   num_comments: 312,
   _tags: ['story', 'ask_hn'],
+  story_text: 'I\u2019m curious what side projects everyone is working on this month. Share your progress, challenges, and what technologies you\u2019re using!',
 };
 
 export const mockAskHNItem2 = {

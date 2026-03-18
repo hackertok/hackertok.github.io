@@ -39,7 +39,8 @@ export function normalizeAlgoliaHit(hit: AlgoliaHit): StoryItem {
   return {
     id: parseInt(hit.objectID, 10),
     title: hit.title,
-    url: hit.url,
+    url: hit.url ?? undefined,
+    text: hit.story_text ?? undefined,
     points: hit.points,
     author: hit.author,
     createdAt: hit.created_at_i * 1000,

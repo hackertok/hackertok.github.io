@@ -460,6 +460,29 @@ test.describe('Mobile Direct Item Access', () => {
     expect(panelCount).toBeGreaterThan(3);
   });
 
+  test('displays Ask HN body text when swiping through feed (Algolia story_text)', async ({ page }) => {
+    // Regression: stories loaded from Algolia search (used by /ask, /show, /)
+    // carry body text in the `story_text` field. normalizeAlgoliaHit must map
+    // it to `text` so FullScreenItem can render it. Previously, this field was
+    // dropped, causing body text to be missing on mobile (but not desktop,
+    // which always re-fetches from Firebase).
+
+    await page.goto('/#/ask');
+
+    const container = page.getByTestId('swipe-container');
+    await waitForSwipeReady(page, 2);
+
+    // Mock Ask HN items sorted by gravity: item2 (88887, no text) is first,
+    // item1 (88888, has story_text) is second. Swipe to the second panel.
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+    await smoothScrollAndAwaitSettled(container, panelWidth);
+    await expect(page).toHaveURL(/\/item\/88888/, { timeout: 5000 });
+
+    // The body text should be visible — this comes from Algolia's story_text
+    // field, NOT from a Firebase re-fetch (which is the point of the test).
+    await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
+  });
+
   test('shows "not a story" message and back link when navigating directly to a comment', async ({ page }) => {
     await page.goto('/#/item/1001');
 

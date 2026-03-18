@@ -61,11 +61,12 @@ export interface Comment {
 export interface AlgoliaHit {
   objectID: string;
   title: string;
-  url?: string;
+  url?: string | null;
   points: number;
   author: string;
   created_at_i: number;
   num_comments: number;
+  story_text?: string | null;
   _tags?: string[];
   type?: string;
 }
