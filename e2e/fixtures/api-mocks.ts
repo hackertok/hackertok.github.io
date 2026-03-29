@@ -167,7 +167,7 @@ export async function setupApiMocks(page: Page) {
         {
           objectID: '1001',
           author: 'patio11',
-          comment_text: 'The wasm-bindgen approach is really interesting. It essentially lets you write Rust that compiles to WebAssembly and then generates <code>JS bindings</code> automatically.',
+          comment_text: 'The <a href="https://github.com/aspect-build/bazel-lib">wasm-bindgen</a> approach is really interesting. It essentially lets you write Rust that compiles to WebAssembly and then generates <code>JS bindings</code> automatically.',
           created_at_i: Math.floor(Date.now() / 1000) - 1800,
           parent_id: 12345,
           story_id: 12345,

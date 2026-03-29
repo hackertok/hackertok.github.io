@@ -1,31 +1,26 @@
 interface CommentSkeletonProps {
-  depth?: number;
   lineCount?: number;
   widths?: number[];
 }
 
 // Single comment skeleton with randomized content
-export function CommentSkeleton({ depth = 0, lineCount = 3, widths = [1, 0.92, 0.75] }: CommentSkeletonProps) {
+export function CommentSkeleton({ lineCount = 3, widths = [1, 0.92, 0.75] }: CommentSkeletonProps) {
   return (
-    <div className={`${depth > 0 ? 'border-l border-border pl-3 ml-2' : ''}`}>
-      <div className="py-2">
-        {/* Comment header skeleton */}
-        <div className="flex items-center gap-2 mb-1.5">
-          <div className="w-3.5 h-3.5 bg-skeleton rounded" />
-          <div className="h-3 bg-skeleton rounded" style={{ width: `${60 + widths[0] * 40}px` }} />
-          <div className="h-3 bg-skeleton rounded w-16" />
-        </div>
+    <div className="py-2">
+      <div className="flex items-center gap-2 mb-0.5">
+        <div className="w-2 h-2 bg-accent/30 rounded-sm" />
+        <div className="h-3 bg-skeleton rounded" style={{ width: `${60 + widths[0] * 40}px` }} />
+        <div className="h-3 bg-skeleton rounded w-16" />
+      </div>
 
-        {/* Comment body skeleton - variable lines */}
-        <div className="space-y-1.5">
-          {Array.from({ length: lineCount }, (_, i) => (
-            <div 
-              key={i} 
-              className="h-3.5 bg-skeleton rounded" 
-              style={{ width: `${widths[i % widths.length] * 100}%` }} 
-            />
-          ))}
-        </div>
+      <div className="ml-[20px] space-y-1.5">
+        {Array.from({ length: lineCount }, (_, i) => (
+          <div 
+            key={i} 
+            className="h-3.5 bg-skeleton rounded" 
+            style={{ width: `${widths[i % widths.length] * 100}%` }} 
+          />
+        ))}
       </div>
     </div>
   );
@@ -37,20 +32,20 @@ interface CommentSkeletonTreeProps {
 }
 
 export function CommentSkeletonTree({ count = 12 }: CommentSkeletonTreeProps) {
-  // Create realistic-looking comments with varied depth, length, and width
+  // Create realistic-looking comments with varied length and width
   const comments = [
-    { depth: 0, lines: 4, widths: [0.95, 1, 0.88, 0.45] },
-    { depth: 1, lines: 2, widths: [0.92, 0.65] },
-    { depth: 2, lines: 3, widths: [0.85, 0.78, 0.4] },
-    { depth: 2, lines: 1, widths: [0.72] },
-    { depth: 1, lines: 5, widths: [1, 0.95, 0.98, 0.82, 0.35] },
-    { depth: 0, lines: 3, widths: [0.9, 0.88, 0.55] },
-    { depth: 1, lines: 2, widths: [0.85, 0.6] },
-    { depth: 0, lines: 4, widths: [1, 0.92, 0.95, 0.7] },
-    { depth: 1, lines: 3, widths: [0.88, 0.82, 0.48] },
-    { depth: 2, lines: 2, widths: [0.75, 0.52] },
-    { depth: 1, lines: 1, widths: [0.68] },
-    { depth: 0, lines: 3, widths: [0.95, 0.9, 0.6] },
+    { lines: 4, widths: [0.95, 1, 0.88, 0.45] },
+    { lines: 2, widths: [0.92, 0.65] },
+    { lines: 3, widths: [0.85, 0.78, 0.4] },
+    { lines: 1, widths: [0.72] },
+    { lines: 5, widths: [1, 0.95, 0.98, 0.82, 0.35] },
+    { lines: 3, widths: [0.9, 0.88, 0.55] },
+    { lines: 2, widths: [0.85, 0.6] },
+    { lines: 4, widths: [1, 0.92, 0.95, 0.7] },
+    { lines: 3, widths: [0.88, 0.82, 0.48] },
+    { lines: 2, widths: [0.75, 0.52] },
+    { lines: 1, widths: [0.68] },
+    { lines: 3, widths: [0.95, 0.9, 0.6] },
   ];
 
   return (
@@ -58,7 +53,6 @@ export function CommentSkeletonTree({ count = 12 }: CommentSkeletonTreeProps) {
       {comments.slice(0, count).map((item, i) => (
         <CommentSkeleton 
           key={i} 
-          depth={item.depth} 
           lineCount={item.lines}
           widths={item.widths}
         />

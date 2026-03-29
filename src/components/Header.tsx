@@ -4,7 +4,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { useScrollDirection } from '../hooks/useScrollDirection';
 import { useScrollContainer } from '../context/ScrollContainerContext';
 import { clearListSessionState } from '../utils/itemCache';
-import type { LocationState } from '../types';
+import type { FeedType, LocationState } from '../types';
 
 export function Header() {
   const maskId = useId();
@@ -13,23 +13,14 @@ export function Header() {
   const location = useLocation();
   const locationState = location.state as LocationState | null;
   
-  // Determine if Show should be highlighted:
-  // - On /show route, or
-  // - On item detail page when navigated from show list
-  const isShowActive = location.pathname === '/show' || 
-    (location.pathname.startsWith('/item/') && locationState?.from === 'show');
-  
-  // Determine if Ask should be highlighted:
-  // - On /ask route, or
-  // - On item detail page when navigated from ask list
-  const isAskActive = location.pathname === '/ask' || 
-    (location.pathname.startsWith('/item/') && locationState?.from === 'ask');
-  
-  // Determine if Best should be highlighted:
-  // - On /best route, or
-  // - On item detail page when navigated from best list
-  const isBestActive = location.pathname === '/best' || 
-    (location.pathname.startsWith('/item/') && locationState?.from === 'best');
+  // Determine if a nav link should be highlighted:
+  // - On its route, or on item detail page when navigated from that list
+  const isNavActive = (feed: FeedType) =>
+    location.pathname === `/${feed}` || 
+    (location.pathname.startsWith('/item/') && locationState?.from === feed);
+
+  // Show "from" tab only when viewing domain stories
+  const isFromActive = location.pathname.startsWith('/from/');
   
   // On mobile: 
   // - In swipe mode: always visible (like desktop)
@@ -51,26 +42,9 @@ export function Header() {
     }
   };
 
-  const handleShowClick = () => {
-    clearListSessionState('show');
-    // Only smooth scroll if already on show - otherwise just navigate
-    if (location.pathname === '/show') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
-  const handleAskClick = () => {
-    clearListSessionState('ask');
-    // Only smooth scroll if already on ask - otherwise just navigate
-    if (location.pathname === '/ask') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
-
-  const handleBestClick = () => {
-    clearListSessionState('best');
-    // Only smooth scroll if already on best - otherwise just navigate
-    if (location.pathname === '/best') {
+  const handleNavClick = (feed: FeedType) => {
+    clearListSessionState(feed);
+    if (location.pathname === `/${feed}`) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -125,25 +99,30 @@ export function Header() {
             <nav className="flex gap-1">
               <NavLink
                 to="/best"
-                onClick={handleBestClick}
-                className={() => navLinkClass(isBestActive)}
+                onClick={() => handleNavClick('best')}
+                className={() => navLinkClass(isNavActive('best'))}
               >
                 best
               </NavLink>
               <NavLink
                 to="/show"
-                onClick={handleShowClick}
-                className={() => navLinkClass(isShowActive)}
+                onClick={() => handleNavClick('show')}
+                className={() => navLinkClass(isNavActive('show'))}
               >
                 show
               </NavLink>
               <NavLink
                 to="/ask"
-                onClick={handleAskClick}
-                className={() => navLinkClass(isAskActive)}
+                onClick={() => handleNavClick('ask')}
+                className={() => navLinkClass(isNavActive('ask'))}
               >
                 ask
               </NavLink>
+              {isFromActive && (
+                <span className={navLinkClass(true)} aria-current="page">
+                  from
+                </span>
+              )}
             </nav>
             <ThemeToggle />
           </div>

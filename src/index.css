@@ -6,44 +6,40 @@
 /* ── Design Tokens ──────────────────────────────────────────────────── */
 /* Light mode (default) — warm stone/taupe palette */
 :root {
-  --background: oklch(0.98 0.006 70);        /* warm cream */
+  --background: oklch(0.98 0.006 60);        /* warm cream */
   --foreground: oklch(0.22 0.01 60);         /* warm near-black */
-  --card: oklch(0.995 0.003 70);             /* warm near-white */
+  --card: oklch(0.995 0.003 60);             /* warm near-white */
   --card-foreground: oklch(0.22 0.01 60);    /* same as foreground */
-  --muted: oklch(0.94 0.008 70);             /* warm cream-100 */
+  --muted: oklch(0.94 0.008 60);             /* warm cream-100 */
   --muted-foreground: oklch(0.55 0.02 60);   /* warm gray-500 */
-  --accent: oklch(0.673 0.195 44);
-  --accent-foreground: oklch(0.22 0.01 60);  /* near-black */
-  --accent-hover: oklch(0.63 0.195 44);      /* darker orange for hover */
-  --border: oklch(0.90 0.008 70);            /* warm cream-200 */
+  --accent: oklch(0.55 0.195 44);            /* WCAG AA text on light bg */
+  --accent-foreground: oklch(0.995 0.003 60);
+  --accent-hover: oklch(0.51 0.195 44);      /* darker orange for hover */
+  --border: oklch(0.90 0.008 60);            /* warm cream-200 */
   --destructive: oklch(0.58 0.22 27);        /* red-500 */
   --destructive-foreground: oklch(1 0 0);    /* white */
-  --skeleton: oklch(0.90 0.008 70);          /* warm cream-200 */
-  --secondary: oklch(0.94 0.008 70);         /* warm cream-100 */
-  --secondary-foreground: oklch(0.35 0.01 60);
+  --skeleton: oklch(0.90 0.008 60);          /* warm cream-200 */
   --viewed: oklch(0.55 0.01 60);             /* dimmed for read stories */
   --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
-  --pill-glow: 0 2px 8px oklch(0.673 0.195 44 / 0.25);
+  --pill-glow: 0 2px 8px oklch(0.55 0.195 44 / 0.25);
   --header-height: 53px;
 }
 
 /* Dark mode — soft dark, warm tones */
 .dark {
-  --background: oklch(0.20 0.012 55);        /* soft dark with warm tint */
-  --foreground: oklch(0.92 0.005 80);        /* warm light text */
-  --card: oklch(0.24 0.012 55);              /* slightly lighter than bg */
-  --card-foreground: oklch(0.92 0.005 80);   /* same as foreground */
-  --muted: oklch(0.28 0.012 55);             /* warm gray-800 */
+  --background: oklch(0.20 0.012 60);        /* soft dark with warm tint */
+  --foreground: oklch(0.92 0.005 60);        /* warm light text */
+  --card: oklch(0.24 0.012 60);              /* slightly lighter than bg */
+  --card-foreground: oklch(0.92 0.005 60);   /* same as foreground */
+  --muted: oklch(0.28 0.012 60);             /* warm gray-800 */
   --muted-foreground: oklch(0.65 0.02 60);   /* warm gray-400 */
   --accent: oklch(0.673 0.195 44);
   --accent-foreground: oklch(0.22 0.01 60);  /* near-black */
   --accent-hover: oklch(0.63 0.195 44);      /* darker orange for hover */
-  --border: oklch(0.32 0.012 55 / 0.8);      /* warm gray-700 with alpha */
+  --border: oklch(0.30 0.012 60);            /* warm gray-700 */
   --destructive: oklch(0.65 0.20 27);        /* red-400 */
   --destructive-foreground: oklch(1 0 0);    /* white */
-  --skeleton: oklch(0.30 0.012 55);          /* warm gray-700 */
-  --secondary: oklch(0.28 0.012 55);         /* warm gray-800 */
-  --secondary-foreground: oklch(0.85 0.005 80);
+  --skeleton: oklch(0.30 0.012 60);          /* warm gray-700 */
   --viewed: oklch(0.62 0.01 60);             /* dimmed for read stories */
   --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
   --pill-glow: 0 2px 8px oklch(0.673 0.195 44 / 0.3);
@@ -64,8 +60,6 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-skeleton: var(--skeleton);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
   --color-viewed: var(--viewed);
   --color-tok: var(--tok-color);
   --shadow-pill-glow: var(--pill-glow);
@@ -108,6 +102,97 @@
 
 .comment-content i {
   @apply italic;
+}
+
+/* Focus indicator for keyboard navigation (WCAG 2.4.11) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Tree trunk: vertical line under › marker */
+.tree-trunk {
+  --tree-line: color-mix(in oklch, var(--accent) 20%, transparent);
+  position: relative;
+  margin-left: 3px;
+  padding-left: 17px;
+  padding-top: 8px;
+  transition: border-color 0.15s ease;
+}
+.tree-trunk::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--tree-line);
+  transition: border-color 0.15s ease;
+}
+
+/* Clickable collapse button overlaying the trunk line */
+.tree-trunk-collapse {
+  position: absolute;
+  left: -6px;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+  z-index: 2;
+}
+
+/* Suppress outline on invisible collapse overlay; brighten tree line instead */
+.tree-trunk-collapse:focus-visible {
+  outline: none;
+}
+
+/* Brighten entire tree on collapse-hover or keyboard focus */
+.tree-trunk:has(> .tree-trunk-collapse:hover),
+.tree-trunk:has(> .tree-trunk-collapse:focus-visible) {
+  --tree-line: color-mix(in oklch, var(--accent) 50%, transparent);
+}
+
+/* Branch: horizontal connector to child */
+.tree-branch {
+  position: relative;
+}
+.tree-branch::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 19px;
+  width: 12px;
+  border-top: 1px solid var(--tree-line);
+  transition: border-color 0.15s ease;
+}
+
+/* Last branch: rounded L-curve replaces straight connector */
+.tree-branch--last::before {
+  left: -17px;
+  top: 0;
+  width: 10px;
+  height: 20px;
+  background: transparent;
+  border-top: none;
+  border-left: 1px solid var(--tree-line);
+  border-bottom: 1px solid var(--tree-line);
+  border-bottom-left-radius: 6px;
+  transition: border-color 0.15s ease;
+  z-index: 1;
+}
+
+/* Last branch: mask trunk line below the curve.
+   Uses var(--background) — breaks if comments are inside a container with a different bg. */
+.tree-branch--last::after {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--background);
 }
 
 /* CSS Scroll Snap based swipe viewer (industry standard for carousels)

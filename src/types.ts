@@ -51,9 +51,6 @@ export interface Comment {
   createdAt: number;
   parentId: number;
   children: Comment[];
-  depth: number;
-  hiddenChildCount?: number;
-  childrenCollapsed?: boolean;
 }
 
 // --- API response shapes ---

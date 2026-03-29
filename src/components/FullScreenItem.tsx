@@ -93,7 +93,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
       <div className="px-4 py-4">
         {/* Item header */}
         <article className="mb-4 pb-4 border-b border-border">
-          <h1 className={`text-lg font-semibold mb-2 leading-snug ${viewed ? 'text-viewed' : 'text-foreground'}`}>
+          <h1 className={`text-xl font-semibold mb-2 leading-snug ${viewed ? 'text-viewed' : 'text-foreground'}`}>
             {item.url ? (
               <a
                 href={item.url}
@@ -107,7 +107,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
               item.title
             )}
             {hostname && (
-              <span className="ml-1.5 text-[13px] text-muted-foreground font-normal">
+              <span className="ml-1.5 text-base text-muted-foreground font-normal">
                 (<Link
                   to={`/from/${hostname}`}
                   className="hover:text-accent transition-colors"
@@ -119,7 +119,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
           </h1>
 
           {/* Meta info */}
-          <div className="text-[13px] text-muted-foreground mb-2">
+          <div className="text-sm text-muted-foreground mb-2">
             <span>{item.points} points</span>
             <span> by </span>
             <span>{item.author}</span>
@@ -139,7 +139,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
           {/* Item text (for Ask HN, etc.) */}
           {sanitizedText && (
             <div
-              className="mt-3 comment-content text-foreground text-[15px] leading-relaxed"
+              className="mt-3 comment-content text-foreground text-sm leading-relaxed"
               dangerouslySetInnerHTML={{ __html: sanitizedText }}
             />
           )}
