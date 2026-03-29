@@ -248,3 +248,71 @@ export const mockAlgoliaCommentItem = {
     },
   ],
 };
+
+// Sibling comments (Algolia /items format) for mobile swipe tests
+export const mockAlgoliaCommentItem1002 = {
+  id: 1002,
+  type: 'comment',
+  author: 'jgrahamc',
+  text: 'This is a great point. The performance characteristics of the new compiler are impressive.',
+  created_at_i: now() - 1200,
+  parent_id: 12345,
+  story_id: 12345,
+  children: [],
+};
+
+export const mockAlgoliaCommentItem1003 = {
+  id: 1003,
+  type: 'comment',
+  author: 'dang',
+  text: 'Worth reading the follow-up discussion linked in the article.',
+  created_at_i: now() - 600,
+  parent_id: 12345,
+  story_id: 12345,
+  children: [],
+};
+
+export const mockAlgoliaCommentItem2001 = {
+  id: 2001,
+  type: 'comment',
+  author: 'tptacek',
+  text: 'Agreed. Worth noting that the Deno team has been investing heavily in this direction too.',
+  created_at_i: now() - 900,
+  parent_id: 1001,
+  story_id: 12345,
+  children: [],
+};
+
+// Job item (Firebase format) — for "not a story" error path on mobile
+export const mockJobItem = {
+  id: 55555,
+  type: 'job',
+  title: 'YC Startup Is Hiring Engineers',
+  by: 'whoishiring',
+  score: 1,
+  time: now() - 3600,
+  url: 'https://jobs.example.com/apply',
+};
+
+// Domain pagination items (Algolia format) — for page-1 assertion in domain-filter tests
+export const mockDomainPaginationItem1 = {
+  objectID: '77700',
+  title: 'Advanced CSS Grid Techniques for Modern Layouts',
+  url: 'https://example.com/css-grid-2026',
+  author: 'csswizard',
+  points: 178,
+  created_at_i: now() - 86400,
+  num_comments: 62,
+  _tags: ['story'],
+};
+
+export const mockDomainPaginationItem2 = {
+  objectID: '77701',
+  title: 'Zero-Downtime Deployments with Blue-Green Strategy',
+  url: 'https://example.com/blue-green-deploy',
+  author: 'devopsguru',
+  points: 134,
+  created_at_i: now() - 86400,
+  num_comments: 41,
+  _tags: ['story'],
+};

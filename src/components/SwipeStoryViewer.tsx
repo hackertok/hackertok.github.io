@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
-import { useScrollContainer } from '../context/ScrollContainerContext';
+import { useSwipeScroll } from '../hooks/useSwipeScroll';
 import { usePrefetchItems } from '../hooks/usePrefetchItem';
 import { usePrefetchSections } from '../hooks/usePrefetchSections';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -37,34 +37,20 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     loadMore 
   } = useInfiniteStories(type);
   
-  const { enableSwipeMode, disableSwipeMode } = useScrollContainer();
-  
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [injectedStory, setInjectedStory] = useState<StoryItem | null>(null);
   const [injectedLoading, setInjectedLoading] = useState(false);
-  const [injectedError, setInjectedError] = useState<string | null>(null); // Error when direct-linked story not found
+  const [injectedError, setInjectedError] = useState<string | null>(null);
   // anchorStoryId: The story that should be at index 0.
   // Only set on FRESH direct links (shared/bookmarked URLs with no location.state).
   // When returning from external URL, location.state is preserved from our earlier navigation,
   // so we DON'T reorder (user expects to return to same position).
   const [anchorStoryId, setAnchorStoryId] = useState<number | null>(() => {
-    // If location.state exists, this is returning from our navigation history (including
-    // returning from external URLs) - don't reorder, preserve original position
     return locationState?.from ? null : initialItemIdNum ?? null;
   });
-  const containerRef = useRef<HTMLDivElement>(null);
   const lastInitialStoryIdRef = useRef(initialItemId);
   const didInitialLoadRef = useRef(false);
-  const isScrollingProgrammatically = useRef(false);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchedStoryIdRef = useRef<number | null>(null);
-  // Tracks whether WE caused the URL change (vs browser back/forward).
-  // When true, sync effect should skip re-initialization since we're already at correct position.
   const isOurNavigationRef = useRef(false);
-
-  // Refs for scroll handler to avoid recreating listener on state changes
-  const currentIndexRef = useRef(currentIndex);
-  const storiesLengthRef = useRef(0);
   
   // Snapshots at mount for filtering logic:
   // - recentlyViewedOnMount: stories viewed in last 24h (from localStorage)
@@ -118,39 +104,31 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     return filtered.length > 0 ? filtered : result;
   }, [injectedStory, stories, anchorStoryId, initialItemIdNum, sessionViewedOnMount, recentlyViewedOnMount]);
   
+  // Defer listener attachment until the main container (with ref) actually renders.
+  // On cold start (no localStorage cache), stories start empty → loading skeleton renders
+  // without the ref → the hook's listener effect would silently miss attachment.
+  const anchorResolved = !anchorStoryId ||
+    mergedStories.some(s => s.id === anchorStoryId);
+
+  const {
+    containerRef,
+    currentIndex,
+    currentIndexRef,
+    scrollToIndex,
+    isScrollingProgrammaticallyRef,
+  } = useSwipeScroll({
+    itemCount: mergedStories.length,
+    enabled: mergedStories.length > 0 && anchorResolved,
+  });
+
   // Get current story for document title (updates as user swipes)
   const currentStory = mergedStories[currentIndex];
   const isNonStoryError = injectedError === 'job' || injectedError === 'comment';
   const documentTitle = injectedError ? (isNonStoryError ? 'Item not available' : 'Story not found') : (currentStory?.title || FEED_TYPE_TITLES[type]);
   useDocumentTitle(documentTitle);
   
-  // Keep refs in sync for scroll handler (avoids recreating listener on state changes)
-  // useLayoutEffect ensures refs are updated synchronously before any scroll events fire
-  useLayoutEffect(() => {
-    currentIndexRef.current = currentIndex;
-  }, [currentIndex]);
-  
-  useLayoutEffect(() => {
-    storiesLengthRef.current = mergedStories.length;
-  }, [mergedStories.length]);
-  
   // Prefetch other sections in background for instant tab switching
   usePrefetchSections(type);
-  
-  // Enable swipe mode on mount, disable on unmount
-  // useLayoutEffect runs synchronously before paint, preventing scrollbar flash on reload
-  // Also disable browser's scroll restoration - we handle it ourselves for horizontal scroll
-  useLayoutEffect(() => {
-    enableSwipeMode();
-    // Disable browser's automatic scroll restoration - it doesn't work correctly for
-    // horizontal CSS scroll-snap containers and causes flash of wrong item on back navigation
-    const previousScrollRestoration = history.scrollRestoration;
-    history.scrollRestoration = 'manual';
-    return () => {
-      disableSwipeMode();
-      history.scrollRestoration = previousScrollRestoration;
-    };
-  }, [enableSwipeMode, disableSwipeMode]);
   
   // Trigger initial load when stories are empty or low
   useEffect(() => {
@@ -190,8 +168,13 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
       setInjectedError(null); // Clear stale error from previous fetch
     });
     
-    void fetchItemOnly(initialItemId)
+    const controller = new AbortController();
+    let fetchCompleted = false;
+    
+    void fetchItemOnly(initialItemId, controller.signal)
       .then(fetchedItem => {
+        fetchCompleted = true;
+        if (controller.signal.aborted) return;
         // Race condition guard: user may have swiped to another story while fetching.
         // Only update state if this fetch result matches the story we're still waiting for.
         if (fetchedItem.id === fetchedStoryIdRef.current) {
@@ -207,6 +190,8 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
         }
       })
       .catch((err: unknown) => {
+        fetchCompleted = true;
+        if (controller.signal.aborted) return;
         console.error('Failed to fetch item:', err);
         // Only update state if this is still the story we want
         if (initialItemIdNum === fetchedStoryIdRef.current) {
@@ -214,6 +199,17 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
           setInjectedError(err instanceof Error ? err.message : 'Story not found');
         }
       });
+    
+    return () => {
+      controller.abort();
+      // Only reset the ref when the fetch was aborted mid-flight (e.g. `stories`
+      // loaded and the effect re-ran). If the fetch already completed (success or
+      // error), the ref must stay so the next effect run skips the re-fetch — otherwise
+      // injectedError would be cleared and re-set in an infinite loop.
+      if (!fetchCompleted && fetchedStoryIdRef.current === initialItemIdNum) {
+        fetchedStoryIdRef.current = null;
+      }
+    };
   }, [initialItemId, initialItemIdNum, stories, injectedStory, injectedError]);
   
   // Scroll to index 0 when injected story arrives and is anchored
@@ -230,18 +226,8 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     scrolledToInjectedStoryIdRef.current = injectedStory.id;
     
     // Injected story just arrived and matches anchor - scroll to index 0
-    isScrollingProgrammatically.current = true;
-    setCurrentIndex(0);
-    
-    requestAnimationFrame(() => {
-      if (containerRef.current) {
-        containerRef.current.scrollTo({ left: 0, behavior: 'instant' });
-      }
-      setTimeout(() => {
-        isScrollingProgrammatically.current = false;
-      }, 100);
-    });
-  }, [injectedStory, anchorStoryId]);
+    scrollToIndex(0);
+  }, [injectedStory, anchorStoryId, scrollToIndex]);
   
   // Restore scroll position when returning from external URL
   // Uses both pageshow (for bfcache) and visibilitychange (for tab switches)
@@ -260,18 +246,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
       if (event.persisted && savedIndexOnHideRef.current !== null) {
         const targetIndex = savedIndexOnHideRef.current;
         savedIndexOnHideRef.current = null;
-        
-        isScrollingProgrammatically.current = true;
-        setCurrentIndex(targetIndex);
-        
-        if (containerRef.current) {
-          const expectedLeft = targetIndex * window.innerWidth;
-          containerRef.current.scrollTo({ left: expectedLeft, behavior: 'instant' });
-        }
-        
-        setTimeout(() => {
-          isScrollingProgrammatically.current = false;
-        }, 100);
+        scrollToIndex(targetIndex);
       }
     };
     
@@ -282,18 +257,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
       } else if (document.visibilityState === 'visible' && savedIndexOnHideRef.current !== null) {
         const targetIndex = savedIndexOnHideRef.current;
         savedIndexOnHideRef.current = null;
-        
-        isScrollingProgrammatically.current = true;
-        setCurrentIndex(targetIndex);
-        
-        if (containerRef.current) {
-          const expectedLeft = targetIndex * window.innerWidth;
-          containerRef.current.scrollTo({ left: expectedLeft, behavior: 'instant' });
-        }
-        
-        setTimeout(() => {
-          isScrollingProgrammatically.current = false;
-        }, 100);
+        scrollToIndex(targetIndex);
       }
     };
     
@@ -305,7 +269,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
       window.removeEventListener('pageshow', handlePageShow);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [currentIndexRef, scrollToIndex]);
   
   // Handle initial scroll position when returning from external URL (no anchor)
   // This runs once when items load and we have an initialItemId but didn't anchor
@@ -345,22 +309,8 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
           // Try to scroll directly to the story's position
           const idx = mergedStories.findIndex(s => s.id === initialItemIdNum);
           if (idx >= 0 && containerRef.current) {
-            // Container is available — scroll directly
-            isScrollingProgrammatically.current = true;
-            setCurrentIndex(idx);
             hasInitializedScrollRef.current = true;
-            const targetLeft = idx * window.innerWidth;
-            containerRef.current.scrollTo({ left: targetLeft, behavior: 'instant' });
-            // Reinforce after React re-render — WebKit scroll-snap can override
-            // instant scrollTo when the DOM changes (virtualization window shift).
-            requestAnimationFrame(() => {
-              if (containerRef.current && Math.round(containerRef.current.scrollLeft / window.innerWidth) !== idx) {
-                containerRef.current.scrollTo({ left: targetLeft, behavior: 'instant' });
-              }
-              setTimeout(() => {
-                isScrollingProgrammatically.current = false;
-              }, 100);
-            });
+            scrollToIndex(idx);
           } else {
             // Story not in list yet OR container not available (e.g. error state clearing)
             // — defer to scroll-init effect
@@ -370,18 +320,11 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
         } else {
           // Fresh direct link (share/bookmark) - anchor so story is at index 0
           setAnchorStoryId(initialItemIdNum ?? null);
-          isScrollingProgrammatically.current = true;
-          setCurrentIndex(0);
-          if (containerRef.current) {
-            containerRef.current.scrollTo({ left: 0, behavior: 'instant' });
-          }
-          setTimeout(() => {
-            isScrollingProgrammatically.current = false;
-          }, 100);
+          scrollToIndex(0);
         }
       }
     }
-  }, [initialItemId, initialItemIdNum, locationState, anchorStoryId, mergedStories, injectedError]);
+  }, [initialItemId, initialItemIdNum, locationState, anchorStoryId, mergedStories, injectedError, containerRef, scrollToIndex]);
   
   // Scroll-init: restore scroll position to the target story.
   // Runs after the navigation handler above has set pendingScrollToStoryIdRef.
@@ -399,96 +342,11 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     // Find the story's position
     const idx = mergedStories.findIndex(s => s.id === targetStoryId);
     if (idx >= 0) {
-      // Clear pending scroll
       pendingScrollToStoryIdRef.current = null;
       hasInitializedScrollRef.current = true;
-      
-      // CRITICAL: Set flag BEFORE setCurrentIndex to block any scroll events
-      // that might fire during the re-render or browser scroll restoration
-      isScrollingProgrammatically.current = true;
-      // Synchronous setState is intentional here - URL effect must see correct index immediately
-      setCurrentIndex(idx);
-      
-      // Scroll synchronously in layout effect — DOM is committed, container is sized
-      const targetLeft = idx * window.innerWidth;
-      if (containerRef.current) {
-        containerRef.current.scrollTo({ left: targetLeft, behavior: 'instant' });
-      }
-      // Reinforce scroll position after React commits the re-render triggered by
-      // setCurrentIndex. On WebKit, scroll-snap can override an instant scrollTo
-      // when the DOM changes (virtualization window shifts), resetting to index 0.
-      // A second scrollTo in the next frame ensures the position sticks.
-      requestAnimationFrame(() => {
-        if (containerRef.current && Math.round(containerRef.current.scrollLeft / window.innerWidth) !== idx) {
-          containerRef.current.scrollTo({ left: targetLeft, behavior: 'instant' });
-        }
-        setTimeout(() => {
-          isScrollingProgrammatically.current = false;
-        }, 100);
-      });
+      scrollToIndex(idx);
     }
-  }, [mergedStories, initialItemId, initialItemIdNum, anchorStoryId]);
-  
-  // Handle scroll events to detect current item (CSS Scroll Snap handles the snapping)
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    
-    const updateIndex = () => {
-      // Clear any pending debounce - scrollend is authoritative
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-        scrollTimeoutRef.current = null;
-      }
-      
-      // Don't update if we're scrolling programmatically
-      if (isScrollingProgrammatically.current) return;
-      
-      const scrollLeft = container.scrollLeft;
-      const panelWidth = window.innerWidth;
-      const newIndex = Math.round(scrollLeft / panelWidth);
-      
-      // Use refs to get current values without recreating listener
-      if (newIndex !== currentIndexRef.current && newIndex >= 0 && newIndex < storiesLengthRef.current) {
-        setCurrentIndex(newIndex);
-      }
-    };
-    
-    const handleScroll = () => {
-      // Don't process if we're scrolling programmatically
-      if (isScrollingProgrammatically.current) return;
-      
-      // Debounce scroll end detection
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-      
-      // Debounce: wait for scroll/snap to settle before calculating position.
-      // 150ms allows CSS Scroll Snap animation to complete on slower devices
-      // and prevents glitches from mid-swipe index updates.
-      // This is a fallback - browsers with scrollend will use that instead.
-      scrollTimeoutRef.current = setTimeout(updateIndex, 150);
-    };
-    
-    // scrollend event fires when scroll truly ends (after CSS Scroll Snap animation).
-    // Supported in Chrome 114+, Firefox 109+, Safari 18+.
-    const hasScrollEnd = 'onscrollend' in window;
-    
-    if (hasScrollEnd) {
-      container.addEventListener('scrollend', updateIndex, { passive: true });
-    }
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    
-    return () => {
-      if (hasScrollEnd) {
-        container.removeEventListener('scrollend', updateIndex);
-      }
-      container.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []); // Empty deps - uses refs for values
+  }, [mergedStories, initialItemId, initialItemIdNum, anchorStoryId, scrollToIndex]);
   
   // Prefetch next 3 stories
   usePrefetchItems(currentIndex, mergedStories, 6);
@@ -520,7 +378,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     // Don't update URL while a programmatic scroll is in progress (e.g. scroll-init on
     // refresh). currentIndex may not yet reflect the target position — writing the URL
     // now would cause a brief flicker to the wrong story ID.
-    if (isScrollingProgrammatically.current) return;
+    if (isScrollingProgrammaticallyRef.current) return;
     
     // If we have an initialItemId from the URL, don't overwrite it until:
     // 1. The story is found in the feed (user can swipe from it)
@@ -552,7 +410,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
         });
       }
     }
-  }, [currentIndex, mergedStories, navigate, location.pathname, type, injectedError, initialItemId, initialItemIdNum, injectedStory]);
+  }, [currentIndex, mergedStories, navigate, location.pathname, type, injectedError, initialItemId, initialItemIdNum, injectedStory, isScrollingProgrammaticallyRef]);
   
   // Error state (direct navigation to non-existent or non-story item)
   if (injectedError) {

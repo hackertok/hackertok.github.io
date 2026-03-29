@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useCommentDetail } from '../hooks/useCommentDetail';
-import { CommentTree, CommentSkeletonTree } from '../components';
-import { formatTimeAgo } from '../api/hn';
-import { sanitizeHtml } from '../utils/sanitize';
+import { CommentSkeletonTree } from './CommentSkeleton';
+import { CommentArticle } from './CommentArticle';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import type { LocationState } from '../types';
 
 interface CommentDetailProps {
   commentId: number | string;
@@ -18,14 +18,18 @@ interface CommentDetailProps {
 
 export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
   const { comment, replies, itemId, itemTitle, loading, error } = useCommentDetail(commentId, initialData);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = location.state as LocationState | null;
+
+  // Set isComment in router state so Header shows "comments" indicator
+  useEffect(() => {
+    if (!locationState?.isComment) {
+      void navigate(location.pathname, { replace: true, state: { isComment: true } });
+    }
+  }, [locationState?.isComment, navigate, location.pathname]);
 
   useDocumentTitle(comment?.author ? `Comment by ${comment.author}` : undefined);
-
-  const commentText = comment?.text;
-  const sanitizedText = useMemo(
-    () => commentText ? sanitizeHtml(commentText) : '',
-    [commentText],
-  );
 
   if (error) {
     return (
@@ -54,68 +58,14 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-      <article className="mb-6 pb-4 border-b border-border">
-        {/* Author + time */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-0.5">
-          <span className="text-accent/80 text-base leading-none">›</span>
-          <span className="font-medium text-foreground">{comment.author}</span>
-          <span className="text-muted-foreground">·</span>
-          <span>{formatTimeAgo(comment.createdAt)}</span>
-        </div>
-
-        {/* Navigation: parent | on: Item Title */}
-        <div className="text-sm text-muted-foreground mb-3">
-          {comment.parentId != null && (
-            <Link
-              to={`/item/${comment.parentId}`}
-              className="text-accent hover:underline"
-            >
-              parent
-            </Link>
-          )}
-          {itemId != null ? (
-            <>
-              {comment.parentId != null && <span className="mx-1.5">|</span>}
-              <span>on: </span>
-              <Link
-                to={`/item/${itemId}`}
-                className="text-accent hover:underline"
-              >
-                {itemTitle ?? `item ${itemId}`}
-              </Link>
-            </>
-          ) : loading && (
-            <>
-              {comment.parentId != null && <span className="mx-1.5">|</span>}
-              <span className="inline-block h-3 w-48 bg-skeleton rounded animate-pulse align-middle" />
-            </>
-          )}
-        </div>
-
-        {/* Comment text */}
-        {sanitizedText && (
-          <div
-            className="comment-content text-foreground text-sm leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: sanitizedText }}
-          />
-        )}
-      </article>
-
-      {/* Replies */}
-      <section>
-        {loading ? (
-          <CommentSkeletonTree count={6} />
-        ) : replies.length > 0 ? (
-          <>
-            <div className="text-sm text-muted-foreground mb-3">
-              {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
-            </div>
-            <CommentTree comments={replies} />
-          </>
-        ) : (
-          <p className="text-muted-foreground text-sm py-4">No replies yet.</p>
-        )}
-      </section>
+      <CommentArticle
+        comment={comment}
+        replies={replies}
+        itemId={itemId}
+        itemTitle={itemTitle}
+        loading={loading}
+        articleClassName="mb-6"
+      />
     </div>
   );
 }

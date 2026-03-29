@@ -65,6 +65,9 @@ test.describe('Navigation', () => {
     // Document title should reflect section
     await expect(page).toHaveTitle(/Best.*HackerTok|HackerTok/);
 
+    // Best-specific content should be visible (not just URL/title)
+    await expect(page.getByText('The Art of Finishing Projects')).toBeVisible();
+
     // "best" nav link should be highlighted as active
     await expect(page.getByRole('link', { name: 'best', exact: true })).toHaveClass(/bg-accent/);
     await expect(page.getByRole('link', { name: 'ask', exact: true })).not.toHaveClass(/bg-accent/);

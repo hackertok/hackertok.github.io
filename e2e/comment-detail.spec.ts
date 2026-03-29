@@ -37,9 +37,6 @@ test.describe('Comment Detail', () => {
 
     // Should show reply text
     await expect(page.getByText(/DX improvements/i).first()).toBeVisible();
-
-    // Should show reply count
-    await expect(page.getByText(/1 reply/i).first()).toBeVisible();
   });
 
   test('parent link navigates to parent item', async ({ page }) => {

@@ -67,6 +67,9 @@ export const test = base.extend<CustomFixtures>({
     // Create page AFTER routes are set up
     const page = await context.newPage();
     await use(page);
+    // Navigate away before closing to cancel pending JS/network activity,
+    // preventing context teardown from exceeding the test timeout
+    await page.goto('about:blank');
     await page.close();
   },
 

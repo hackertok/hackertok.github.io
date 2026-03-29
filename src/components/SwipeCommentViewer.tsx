@@ -1,0 +1,152 @@
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useSwipeScroll } from '../hooks/useSwipeScroll';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useSiblingComments } from '../hooks/useSiblingComments';
+import { FullScreenComment, FullScreenCommentSkeleton } from './FullScreenComment';
+import type { LocationState } from '../types';
+
+interface SwipeCommentViewerProps {
+  initialCommentId: string;
+}
+
+/**
+ * Full-screen horizontal swipe comment viewer for mobile.
+ * Displays sibling comments (children of the same parent) as swipeable panels.
+ * Uses CSS Scroll Snap for native, smooth horizontal swiping.
+ */
+export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Track a stable comment ID for fetching — only changes on external navigation, not on swipe URL updates
+  const [siblingSourceId, setSiblingSourceId] = useState(initialCommentId);
+  const { siblingIds, currentIndex: initialIndex, loading, error } = useSiblingComments(siblingSourceId);
+
+  const [scrollInitialized, setScrollInitialized] = useState(false);
+  const {
+    containerRef,
+    currentIndex,
+    scrollToIndex,
+  } = useSwipeScroll({
+    itemCount: siblingIds.length,
+    initialIndex,
+    enabled: scrollInitialized,
+  });
+
+  const hasInitializedScrollRef = useRef(false);
+  const isOurNavigationRef = useRef(false);
+  const lastInitialCommentIdRef = useRef(initialCommentId);
+
+  const currentCommentId = siblingIds[currentIndex];
+
+  // Track comment authors as they load — used for document title
+  const [authorsByCommentId, setAuthorsByCommentId] = useState<Record<number, string>>({});
+  const handleAuthorLoaded = useCallback((commentId: number, author: string) => {
+    setAuthorsByCommentId(prev => prev[commentId] === author ? prev : { ...prev, [commentId]: author });
+  }, []);
+
+  const currentAuthor = currentCommentId ? authorsByCommentId[currentCommentId] : undefined;
+  useDocumentTitle(currentAuthor ? `Comment by ${currentAuthor}` : 'Comments');
+
+  // Handle initialCommentId prop changes (e.g. "parent" link navigation)
+  // Swipe URL updates set isOurNavigationRef → skip. External nav → refetch siblings.
+  useEffect(() => {
+    if (lastInitialCommentIdRef.current !== initialCommentId) {
+      if (isOurNavigationRef.current) {
+        isOurNavigationRef.current = false;
+        lastInitialCommentIdRef.current = initialCommentId;
+        return;
+      }
+      lastInitialCommentIdRef.current = initialCommentId;
+      setSiblingSourceId(initialCommentId);
+      setScrollInitialized(false);
+      hasInitializedScrollRef.current = false;
+    }
+  }, [initialCommentId]);
+
+  // Scroll-init: scroll to correct position once siblings are loaded
+  useLayoutEffect(() => {
+    if (hasInitializedScrollRef.current) return;
+    if (siblingIds.length === 0 || loading) return;
+
+    const idx = siblingIds.indexOf(Number(initialCommentId));
+    const targetIdx = idx >= 0 ? idx : initialIndex;
+
+    hasInitializedScrollRef.current = true;
+    setScrollInitialized(true);
+    scrollToIndex(targetIdx);
+  }, [siblingIds, loading, initialCommentId, initialIndex, scrollToIndex]);
+
+  // URL update on swipe — only after scroll position is initialized.
+  // Uses scrollInitialized state (not ref) so it's batched with setCurrentIndex
+  // and both take effect in the same render — preventing a stale currentIndex=0 navigation.
+  useEffect(() => {
+    if (!scrollInitialized) return;
+    if (siblingIds.length === 0) return;
+    const commentId = siblingIds[currentIndex];
+    if (!commentId) return;
+
+    const newPath = `/item/${commentId}`;
+    if (location.pathname !== newPath) {
+      isOurNavigationRef.current = true;
+      void navigate(newPath, {
+        replace: true,
+        state: { isComment: true } satisfies LocationState
+      });
+    }
+  }, [scrollInitialized, currentIndex, siblingIds, navigate, location.pathname]);
+
+  // Loading state
+  if (loading && siblingIds.length <= 1) {
+    return (
+      <div className="swipe-snap-container" data-testid="swipe-container">
+        <div className="swipe-snap-panel" data-testid="swipe-panel">
+          <FullScreenCommentSkeleton />
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error && siblingIds.length <= 1) {
+    return (
+      <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
+        <div className="text-center px-4">
+          <p className="text-destructive mb-4">Failed to load comments</p>
+          <p className="text-muted-foreground text-sm mb-4">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const VIRTUALIZE_BUFFER = 2;
+
+  return (
+    <div
+      ref={containerRef}
+      className="swipe-snap-container"
+      data-testid="swipe-container"
+    >
+      {siblingIds.map((id, index) => {
+        const distance = Math.abs(index - currentIndex);
+        const isWithinWindow = distance <= VIRTUALIZE_BUFFER;
+
+        return (
+          <div
+            key={id}
+            className="swipe-snap-panel"
+            data-testid="swipe-panel"
+            data-item-id={id}
+          >
+            {isWithinWindow ? (
+              <FullScreenComment commentId={id} onAuthorLoaded={handleAuthorLoaded} />
+            ) : (
+              <FullScreenCommentSkeleton />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

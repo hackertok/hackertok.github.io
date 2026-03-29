@@ -54,6 +54,29 @@ export const mockAlgoliaCommentItem = {
   ],
 };
 
+// Sibling comments (Algolia /items format) for SwipeCommentViewer tests
+export const mockAlgoliaCommentItem1002 = {
+  id: 1002,
+  type: 'comment',
+  author: 'jgrahamc',
+  text: 'This is a great point. The performance characteristics of the new compiler are impressive.',
+  created_at_i: Math.floor(Date.now() / 1000) - 1200,
+  parent_id: 12345,
+  story_id: 12345,
+  children: [],
+};
+
+export const mockAlgoliaCommentItem1003 = {
+  id: 1003,
+  type: 'comment',
+  author: 'dang',
+  text: 'Worth reading the follow-up discussion linked in the article.',
+  created_at_i: Math.floor(Date.now() / 1000) - 600,
+  parent_id: 12345,
+  story_id: 12345,
+  children: [],
+};
+
 // Normalized item (Algolia format)
 export const mockAlgoliaItem1 = {
   objectID: '12345',
@@ -252,8 +275,14 @@ export const handlers = [
   http.get(`${ALGOLIA_API}/items/:id`, ({ params }) => {
     const id = parseInt(params.id as string, 10);
 
-    if (id === 1001) {
-      return HttpResponse.json(mockAlgoliaCommentItem);
+    const algoliaItems: Record<number, object> = {
+      1001: mockAlgoliaCommentItem,
+      1002: mockAlgoliaCommentItem1002,
+      1003: mockAlgoliaCommentItem1003,
+    };
+
+    if (algoliaItems[id]) {
+      return HttpResponse.json(algoliaItems[id]);
     }
 
     // Return 404 for unknown items

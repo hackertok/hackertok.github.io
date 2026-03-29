@@ -462,9 +462,9 @@ async function buildOrderedCommentTree(
 }
 
 // Fetch just the item metadata (without comments)
-export async function fetchItemOnly(id: number | string): Promise<Item> {
+export async function fetchItemOnly(id: number | string, signal?: AbortSignal): Promise<Item> {
   const itemId = Number(id);
-  const item = await fetchFirebaseItem(itemId);
+  const item = await fetchFirebaseItem(itemId, signal);
   
   if (!item) {
     throw new Error(`Item ${id} not found`);
