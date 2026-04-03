@@ -173,4 +173,5 @@ export interface ScrollContainerContextValue {
 
 export interface LocationState {
   from?: FeedType;
+  isComment?: boolean;
 }

@@ -24,6 +24,12 @@ import {
   mockPaginationItem2,
   mockPaginationItem3,
   mockAlgoliaCommentItem,
+  mockAlgoliaCommentItem1002,
+  mockAlgoliaCommentItem1003,
+  mockAlgoliaCommentItem2001,
+  mockJobItem,
+  mockDomainPaginationItem1,
+  mockDomainPaginationItem2,
 } from './mock-data';
 
 /**
@@ -117,6 +123,8 @@ export async function setupApiMocks(page: Page) {
         descendants: mockDomainItem.num_comments,
         type: 'story',
       },
+      // Job item (not a story — triggers "not a story" error in SwipeStoryViewer)
+      55555: mockJobItem,
     };
 
     if (items[id]) {
@@ -226,32 +234,56 @@ export async function setupApiMocks(page: Page) {
     const match = url.match(/\/items\/(\d+)/);
     const id = match ? parseInt(match[1], 10) : 0;
 
-    if (id === 1001) {
-      await route.fulfill({ json: mockAlgoliaCommentItem });
+    const algoliaItems: Record<number, object> = {
+      1001: mockAlgoliaCommentItem,
+      1002: mockAlgoliaCommentItem1002,
+      1003: mockAlgoliaCommentItem1003,
+      2001: mockAlgoliaCommentItem2001,
+    };
+
+    if (algoliaItems[id]) {
+      await route.fulfill({ json: algoliaItems[id] });
       return;
     }
 
     await route.fulfill({ status: 404, json: { status: 404, error: 'Item not found' } });
   });
 
-  // Algolia: Search by date endpoint (used by DomainItems page for domain-filtered results)
+  // Algolia: Search by date endpoint (used by DomainStories page for domain-filtered results)
   await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get('query') || '';
+    const pageNum = parseInt(url.searchParams.get('page') || '0', 10);
 
     let hits: object[] = [];
+    let nbPages = 0;
+
     if (query) {
-      // Domain filter query (e.g. query=example.com)
-      hits = [mockDomainItem];
+      if (pageNum === 0) {
+        // Page 0: original item + 4 generated clones (5 total for scrollability)
+        hits = [
+          mockDomainItem,
+          ...Array.from({ length: 4 }, (_, i) => ({
+            ...mockDomainItem,
+            objectID: String(77770 + i),
+            title: `Domain Article ${i + 2}`,
+          })),
+        ];
+        nbPages = 2;
+      } else {
+        // Page 1: pagination items with unique titles for assertion
+        hits = [mockDomainPaginationItem1, mockDomainPaginationItem2];
+        nbPages = 2;
+      }
     }
 
     await route.fulfill({
       json: {
         hits,
         nbHits: hits.length,
-        page: 0,
-        nbPages: hits.length > 0 ? 1 : 0,
-        hitsPerPage: 20,
+        page: pageNum,
+        nbPages,
+        hitsPerPage: 50,
       },
     });
   });

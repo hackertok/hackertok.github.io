@@ -1,85 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
-
-/**
- * Helper to wait for swipe container to be ready with multiple panels.
- * Uses polling to wait for at least N panels (toHaveCount expects exact match).
- */
-async function waitForSwipeReady(page, minPanels = 2) {
-  const container = page.getByTestId('swipe-container');
-  
-  // Verify container is visible first
-  await expect(container).toBeVisible();
-  
-  // Poll for at least minPanels panels to be rendered
-  await page.waitForFunction((min) => {
-    const panels = document.querySelectorAll('[data-testid="swipe-panel"]');
-    return panels.length >= min;
-  }, minPanels, { timeout: 5000 });
-  
-  // Also verify container has rendered dimensions
-  await page.waitForFunction(() => {
-    const el = document.querySelector('[data-testid="swipe-container"]');
-    return el && el.getBoundingClientRect().width > 0;
-  }, { timeout: 5000 });
-}
-
-/**
- * Smooth-scroll the swipe container and wait for the scrollend event.
- * The app updates the URL in response to scrollend, so waiting for this event
- * (rather than polling scrollLeft) ensures the app's handler has been triggered.
- * 
- * Uses a dual strategy: prefers scrollend event, but falls back to position
- * polling if scrollend doesn't fire (e.g. if scroll was already at target).
- */
-async function smoothScrollAndAwaitSettled(container, targetLeft) {
-  await container.evaluate((el, left) => {
-    return new Promise((resolve) => {
-      let settled = false;
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        el.removeEventListener('scrollend', done);
-        resolve();
-      };
-
-      // Primary: listen for scrollend (fires after smooth scroll + snap completes)
-      el.addEventListener('scrollend', done);
-      el.scrollTo({ left, behavior: 'smooth' });
-
-      // Fallback: if scrollend doesn't fire (edge case), poll scroll position.
-      // Start polling after 300ms to give scrollend priority.
-      setTimeout(() => {
-        if (settled) return;
-        const poll = () => {
-          if (settled) return;
-          if (Math.abs(el.scrollLeft - left) < 10) {
-            // Position reached — wait a tick for app event handlers to process
-            setTimeout(done, 50);
-          } else {
-            requestAnimationFrame(poll);
-          }
-        };
-        requestAnimationFrame(poll);
-      }, 300);
-    });
-  }, targetLeft);
-}
-
-/**
- * Wait for the swipe container's scroll position to settle at the expected panel index.
- * This ensures the app has fully processed a goBack/goForward navigation
- * (scroll position updated, React state settled) before proceeding.
- */
-async function waitForScrollAtIndex(page, expectedIndex: number) {
-  await page.waitForFunction((idx) => {
-    const el = document.querySelector('[data-testid="swipe-container"]');
-    if (!el) return false;
-    const width = el.getBoundingClientRect().width;
-    if (width === 0) return false;
-    return Math.round(el.scrollLeft / width) === idx;
-  }, expectedIndex, { timeout: 5000 });
-}
+import { waitForSwipeReady, smoothScrollAndAwaitSettled, waitForScrollAtIndex } from './fixtures/swipe-helpers';
 
 test.describe('Mobile Swipe Viewer', () => {
   // Use mobile viewport for all tests in this file
@@ -113,6 +34,9 @@ test.describe('Mobile Swipe Viewer', () => {
     
     // Wait for initial item to load
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+
+    // Document title should reflect the current (first) story
+    await expect(page).toHaveTitle(/Rust Is the Future.*HackerTok/);
     
     // Get the swipe container
     const container = page.getByTestId('swipe-container');
@@ -128,6 +52,9 @@ test.describe('Mobile Swipe Viewer', () => {
     
     // Web-first assertion: toHaveURL auto-retries until URL matches
     await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
+
+    // Document title should update to the second story after swipe
+    await expect(page).toHaveTitle(/SQLite Does Not Do Full FSYNC.*HackerTok/);
   });
 
   test('scroll-snap behavior works correctly', async ({ page }) => {
@@ -469,6 +396,11 @@ test.describe('Mobile Direct Item Access', () => {
 
     await page.goto('/#/ask');
 
+    // The /ask route auto-navigates to /item/<first-story> once stories load,
+    // which remounts SwipeStoryViewer. Wait for that transition to complete so
+    // we scroll the final instance (not the transient one from /ask).
+    await expect(page).toHaveURL(/\/item\/\d+/);
+
     const container = page.getByTestId('swipe-container');
     await waitForSwipeReady(page, 2);
 
@@ -483,18 +415,25 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
   });
 
-  test('shows "not a story" message and back link when navigating directly to a comment', async ({ page }) => {
+  test('navigating directly to a comment shows comment in swipe viewer', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Should show the non-story message
-    await expect(page.getByText('This item is not a story')).toBeVisible();
+    // Should show the comment content in the swipe viewer (not a "not a story" message)
+    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
 
-    // Should have a "Back to feed" link pointing to the feed
-    const backLink = page.getByRole('link', { name: 'Back to feed' });
-    await expect(backLink).toBeVisible();
+    // URL should remain on the comment
+    await expect(page).toHaveURL(/\/item\/1001/);
+  });
 
-    // Clicking it should navigate to the feed (SwipeStoryViewer updates URL to first story)
-    await backLink.click();
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+  test('shows not-available message for job items', async ({ page }) => {
+    // Job items (type: 'job') are not stories — SwipeStoryViewer shows an error.
+    // Flow: MobileItemResolver fetches item → type is 'job' (not 'comment') →
+    // renders SwipeStoryViewer → it fetches again → detects type === 'job' →
+    // sets injectedError('job') → renders error UI.
+    await page.goto('/#/item/55555');
+
+    await expect(page.getByText('This item is not a story')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('link', { name: /back to feed/i })).toBeVisible();
+    await expect(page).toHaveTitle(/Item not available.*HackerTok/);
   });
 });

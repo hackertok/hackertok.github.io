@@ -114,21 +114,60 @@ test.describe('Item Browsing - Desktop', () => {
   });
 });
 
+test.describe('Item Browsing - Desktop Scroll Restoration', () => {
+  // 350px viewport guarantees the page is scrollable with 6 mock items
+  // (~500px content height). Max scroll ≈ 150px, well above the 50px threshold.
+  test.use({ viewport: { width: 1280, height: 350 } });
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('scroll position restores after back navigation', async ({ page }, testInfo) => {
+    if (testInfo.project.name.startsWith('Mobile')) {
+      test.skip();
+      return;
+    }
+
+    await page.goto('/#/');
+
+    // Wait for pagination items to auto-load (trigger is visible within rootMargin)
+    await expect(page.getByText('WebAssembly 2.0 Reaches W3C Recommendation')).toBeVisible({ timeout: 10000 });
+
+    const thirdCard = page.locator('[data-testid="story-card"][data-story-id="12347"]');
+    await thirdCard.evaluate(el => el.scrollIntoView());
+
+    await page.waitForFunction(() => window.scrollY > 50, { timeout: 5000 });
+
+    // Click the comments link — triggers saveSessionState
+    const commentLink = thirdCard.getByRole('link', { name: /241.*comments?/i });
+    await commentLink.click();
+
+    await expect(page).toHaveURL(/\/item\/12347/);
+    await expect(page.getByText('Why We Moved from React to htmx').first()).toBeVisible();
+
+    // Navigate back
+    await page.goBack();
+
+    // Wait for list to re-render and scroll to restore (rAF-based).
+    // Assert scrollY is meaningfully > 0 (restored, not reset to top).
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await page.waitForFunction(() => window.scrollY > 50, { timeout: 10000 });
+  });
+});
+
 /**
  * Error handling tests use fixtureTest which provides errorMockedPage.
  * This fixture sets up routes on browserContext BEFORE page creation,
  * avoiding the race condition with page.route() + page.goto().
  */
 fixtureTest.describe('Item Browsing - Error Handling', () => {
-  fixtureTest.use({ viewport: { width: 1280, height: 720 } });
+  // Override deviceScaleFactor to 1: mobile projects inherit high DPR (e.g. iPhone 15 = 3x),
+  // which at a 1280x720 viewport means rendering at 3840x2160. Combined with WebKit's slower
+  // video recording, this causes the test to exceed the 30s timeout on Mobile Safari.
+  fixtureTest.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 
-  fixtureTest('shows error state with retry button', async ({ errorMockedPage }, testInfo) => {
-    // Desktop only - mobile project uses WebKit which may behave differently
-    if (testInfo.project.name === 'mobile') {
-      fixtureTest.skip();
-      return;
-    }
-    
+  fixtureTest('shows error state with retry button', async ({ errorMockedPage }) => {
     // Navigate - routes are already set up on the context before page creation
     // Use waitUntil: 'domcontentloaded' to ensure page starts rendering before assertions
     await errorMockedPage.goto('/#/', { waitUntil: 'domcontentloaded' });

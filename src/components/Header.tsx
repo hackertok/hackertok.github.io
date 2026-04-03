@@ -12,12 +12,16 @@ export function Header() {
   const { isSwipeMode } = useScrollContainer();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
+  const isCommentView = locationState?.isComment === true;
   
   // Determine if a nav link should be highlighted:
   // - On its route, or on item detail page when navigated from that list
+  // - Never highlight feed tabs when viewing a comment ("comments" indicator is active instead)
   const isNavActive = (feed: FeedType) =>
-    location.pathname === `/${feed}` || 
-    (location.pathname.startsWith('/item/') && locationState?.from === feed);
+    !isCommentView && (
+      location.pathname === `/${feed}` || 
+      (location.pathname.startsWith('/item/') && locationState?.from === feed)
+    );
 
   // Show "from" tab only when viewing domain stories
   const isFromActive = location.pathname.startsWith('/from/');
@@ -121,6 +125,11 @@ export function Header() {
               {isFromActive && (
                 <span className={navLinkClass(true)} aria-current="page">
                   from
+                </span>
+              )}
+              {isCommentView && (
+                <span className={navLinkClass(true)} aria-current="page">
+                  comments
                 </span>
               )}
             </nav>

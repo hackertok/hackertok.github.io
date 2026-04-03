@@ -8,4 +8,6 @@ export { CommentSkeleton, CommentSkeletonTree, ItemDetailSkeleton } from './Comm
 export { ErrorBoundary } from './ErrorBoundary';
 export { CommentDetail } from './CommentDetail';
 export { FullScreenItem } from './FullScreenItem';
+export { FullScreenComment, FullScreenCommentSkeleton } from './FullScreenComment';
 export { SwipeStoryViewer } from './SwipeStoryViewer';
+export { SwipeCommentViewer } from './SwipeCommentViewer';

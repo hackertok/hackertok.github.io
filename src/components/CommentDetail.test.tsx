@@ -14,47 +14,9 @@ function renderCommentDetail(commentId: number | string, initialData?: { author:
 }
 
 describe('CommentDetail', () => {
-  it('renders comment author and text', async () => {
-    renderCommentDetail(1001);
-
-    await waitFor(() => {
-      expect(screen.getByText('patio11')).toBeInTheDocument();
-    });
-
-    // Comment text contains code tag, check for string presence
-    expect(screen.getByText(/wasm-bindgen/i)).toBeInTheDocument();
-  });
-
-  it('renders parent link', async () => {
-    renderCommentDetail(1001);
-
-    const parentLink = await screen.findByRole('link', { name: 'parent' });
-    expect(parentLink).toBeInTheDocument();
-    expect(parentLink).toHaveAttribute('href', '/item/12345');
-  });
-
-  it('renders "on: Item Title" link', async () => {
-    renderCommentDetail(1001);
-
-    // Wait for item title to load (background fetch)
-    await waitFor(() => {
-      expect(screen.getByText('Rust Is the Future of JavaScript Infrastructure')).toBeInTheDocument();
-    });
-
-    const itemLink = screen.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
-    expect(itemLink).toHaveAttribute('href', '/item/12345');
-  });
-
-  it('renders replies', async () => {
-    renderCommentDetail(1001);
-
-    await waitFor(() => {
-      expect(screen.getByText('tptacek')).toBeInTheDocument();
-    });
-
-    expect(screen.getByText(/DX improvements/i)).toBeInTheDocument();
-    expect(screen.getByText(/1 reply/i)).toBeInTheDocument();
-  });
+  // Content rendering (author, text, parent link, title link, replies) is tested
+  // in FullScreenComment.test.tsx. These tests focus on CommentDetail-specific behavior:
+  // routing integration, progressive rendering, skeleton, and document title.
 
   it('shows skeleton while loading', () => {
     renderCommentDetail(1001);

@@ -114,6 +114,25 @@ test.describe('Domain Filter - Empty domain', () => {
     const homeLink = page.getByRole('link', { name: /Return to Home/i });
     await expect(homeLink).toBeVisible();
     await homeLink.click();
-    await expect(page).toHaveURL(/\/#\/$/);
+    // On mobile, swipe viewer immediately replaces /#/ with /#/item/{id}
+    await expect(page).toHaveURL(/\/#\/(item\/\d+)?$/);
+  });
+});
+
+test.describe('Domain Filter - Pagination', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('loads more domain items on pagination', async ({ page }) => {
+    await page.goto('/#/from/example.com');
+
+    // Page-0 items should be visible (original mockDomainItem is first)
+    await expect(page.getByText('Google Announces Gemini 3.0 with Extended Context')).toBeVisible({ timeout: 10000 });
+
+    // The mock returns nbPages: 2, so DomainStories sees hasMore = true.
+    // The infinite scroll trigger is within rootMargin (200px) on this viewport,
+    // so page 1 auto-loads without manual scrolling.
+    await expect(page.getByText('Advanced CSS Grid Techniques for Modern Layouts')).toBeVisible({ timeout: 10000 });
   });
 });

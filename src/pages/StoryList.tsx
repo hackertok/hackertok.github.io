@@ -60,11 +60,14 @@ export function StoryList({ type }: { type: FeedType }) {
   useEffect(() => {
     if (isFromSession) return; // Don't refetch on back navigation
     
-    // Trigger load if no items, OR if we have cached data that needs revalidation
-    if ((stories.length === 0 || isFromCache) && !loading) {
+    // Trigger load if no items, OR if we have cached data that needs revalidation.
+    // The !error guard prevents an infinite retry loop: without it, loadMore() sets
+    // loading→true then error→msg then loading→false, which re-triggers this effect
+    // (stories still empty, loading now false) creating a rapid error↔loading cycle.
+    if ((stories.length === 0 || isFromCache) && !loading && !error) {
       void loadMore();
     }
-  }, [stories.length, loading, loadMore, isFromCache, isFromSession]);
+  }, [stories.length, loading, loadMore, isFromCache, isFromSession, error]);
 
   // Load more when scrolling near bottom
   useEffect(() => {

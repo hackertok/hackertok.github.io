@@ -16,8 +16,8 @@ export default defineConfig({
   /* Retry flaky tests - 1 locally, 2 on CI */
   retries: process.env.CI ? 2 : 1,
   
-  /* Opt out of parallel tests on CI for now */
-  workers: process.env.CI ? 1 : undefined,
+  /* Use half of available CPU cores on CI (2 workers on 4-core GitHub Actions runner) */
+  workers: process.env.CI ? '50%' : undefined,
   
   /* Reporter to use */
   reporter: [
@@ -30,14 +30,14 @@ export default defineConfig({
     /* Base URL to use in actions like `await page.goto('/')` */
     baseURL: 'http://localhost:5173',
 
-    /* Collect trace - retain on failure locally, on-first-retry in CI */
-    trace: process.env.CI ? 'on-first-retry' : 'retain-on-failure',
+    /* Collect trace on first retry (screenshots still captured on every failure) */
+    trace: 'on-first-retry',
     
     /* Screenshot on failure */
     screenshot: 'only-on-failure',
     
-    /* Video recording - retain on failure for debugging */
-    video: 'retain-on-failure',
+    /* Record video on first retry — avoid per-test recording overhead */
+    video: 'on-first-retry',
     
     /* Consistent action timeout */
     actionTimeout: 10 * 1000,
