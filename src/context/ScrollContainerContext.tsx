@@ -1,8 +1,5 @@
-/* eslint-disable react-refresh/only-export-components -- Context pattern: Provider + hook from same file */
-import { createContext, useContext, useCallback, useState, type ReactNode } from 'react';
-import type { ScrollContainerContextValue } from '../types';
-
-const ScrollContainerContext = createContext<ScrollContainerContextValue | null>(null);
+import { useCallback, useState, type ReactNode } from 'react';
+import { ScrollContainerContext } from './scrollContainerDef';
 
 /**
  * Provider for scroll container context
@@ -13,11 +10,13 @@ export function ScrollContainerProvider({ children }: { children: ReactNode }) {
 
   const enableSwipeMode = useCallback(() => {
     setIsSwipeMode(true);
+    document.documentElement.classList.add('swipe-mode');
     document.body.classList.add('swipe-mode');
   }, []);
 
   const disableSwipeMode = useCallback(() => {
     setIsSwipeMode(false);
+    document.documentElement.classList.remove('swipe-mode');
     document.body.classList.remove('swipe-mode');
   }, []);
 
@@ -32,20 +31,4 @@ export function ScrollContainerProvider({ children }: { children: ReactNode }) {
       {children}
     </ScrollContainerContext.Provider>
   );
-}
-
-/**
- * Hook to access scroll container context
- */
-export function useScrollContainer(): ScrollContainerContextValue {
-  const context = useContext(ScrollContainerContext);
-  if (!context) {
-    // Return default values when not in provider (desktop/tablet)
-    return { 
-      isSwipeMode: false,
-      enableSwipeMode: () => { /* noop */ },
-      disableSwipeMode: () => { /* noop */ }
-    };
-  }
-  return context;
 }

@@ -12,3 +12,10 @@ export const FEED_TYPE_TITLES: Partial<Record<FeedType, string>> = {
   ask: 'Ask',
   show: 'Show',
 };
+
+export const FEED_PATHS: Record<FeedType, string> = {
+  top: '/',
+  show: '/show',
+  ask: '/ask',
+  best: '/best',
+};

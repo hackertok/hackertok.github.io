@@ -23,6 +23,7 @@
   --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
   --pill-glow: 0 2px 8px oklch(0.55 0.195 44 / 0.25);
   --header-height: 53px;
+  --network-bar-height: 0px;
 }
 
 /* Dark mode — soft dark, warm tones */
@@ -210,8 +211,8 @@
   /* Hide scrollbar */
   scrollbar-width: none;
   -ms-overflow-style: none;
-  width: 100vw;
-  height: calc(100dvh - var(--header-height));
+  width: 100%;
+  height: calc(100dvh - var(--header-height) - var(--network-bar-height));
 }
 
 .swipe-snap-container::-webkit-scrollbar {
@@ -219,8 +220,8 @@
 }
 
 .swipe-snap-panel {
-  flex: 0 0 100vw;
-  width: 100vw;
+  flex: 0 0 100%;
+  width: 100%;
   height: 100%;
   scroll-snap-align: start;
   /* scroll-snap-stop: always prevents "passing over" panels on fast swipe,
@@ -234,7 +235,7 @@
 
 .full-screen-item {
   width: 100%;
-  min-height: calc(100dvh - var(--header-height));
+  min-height: 100%;
 }
 
 /* Prevent pull-to-refresh on iOS in swipe mode.
@@ -248,7 +249,178 @@
 }
 
 /* Prevent body scrolling in swipe mode - panels handle their own scrolling.
-   Without this, both body and panel scrollbars appear. */
+   Without this, both body and panel scrollbars appear.
+   html.swipe-mode clips the viewport directly to prevent scrollWidth
+   from reporting the full flex container width (multiple 100%-wide panels). */
+html.swipe-mode {
+  overflow: clip;
+}
 body.swipe-mode {
   overflow: hidden;
+}
+
+/* Full-page centered state (error / not-found / empty) */
+.page-state-center {
+  min-height: calc(100dvh - var(--header-height));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.page-state-center-padded {
+  max-width: 72rem; /* 6xl */
+  margin-inline: auto;
+  padding-inline: 1rem;
+  min-height: calc(100dvh - var(--header-height));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 768px) {
+  .page-state-center-padded { padding-inline: 2rem; }
+}
+@media (min-width: 1024px) {
+  .page-state-center-padded { padding-inline: 4rem; }
+}
+@media (min-width: 1280px) {
+  .page-state-center-padded { padding-inline: 6rem; }
+}
+
+/* ── Network status bar ────────────────────────────────────────────── */
+
+/* Desktop only: pad body so scrollable content isn't hidden behind the bar.
+   Mobile uses height-based calc in swipe containers instead. */
+@media (min-width: 768px) {
+  body {
+    padding-bottom: var(--network-bar-height);
+  }
+}
+
+.network-status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  animation: nsb-slide-up 0.25s ease-out;
+}
+
+.network-status-bar-offline {
+  background: var(--network-bar-offline-bg, #b45309);
+  color: var(--network-bar-offline-fg, #fff);
+}
+
+.network-status-bar-online {
+  background: var(--network-bar-online-bg, #15803d);
+  color: var(--network-bar-online-fg, #fff);
+}
+
+@keyframes nsb-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes nsb-slide-down {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+.network-status-bar-exit {
+  animation: nsb-slide-down 0.25s ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .network-status-bar, .network-status-bar-exit { animation: none; }
+}
+
+/* ── StateView animations ──────────────────────────────────────────── */
+
+@keyframes sv-roam-1 {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(3px, -5px); }
+  50% { transform: translate(-2px, -8px); }
+  75% { transform: translate(5px, -3px); }
+}
+
+@keyframes sv-roam-2 {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(-6px, 3px); }
+  66% { transform: translate(4px, -4px); }
+}
+
+@keyframes sv-roam-3 {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(5px, 4px); }
+  50% { transform: translate(-3px, 6px); }
+  75% { transform: translate(-6px, -2px); }
+}
+
+@keyframes sv-float-slow {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-6px) rotate(2deg); }
+}
+
+@keyframes sv-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+@keyframes sv-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-3deg); }
+  75% { transform: rotate(3deg); }
+}
+
+@keyframes sv-fade-up {
+  0% { transform: translateY(0); opacity: 0.5; }
+  100% { transform: translateY(-20px); opacity: 0; }
+}
+
+@keyframes sv-dissolve-up {
+  0% { transform: translateY(0) scale(1); opacity: 0.6; }
+  50% { opacity: 0.3; }
+  100% { transform: translateY(-24px) scale(0.5); opacity: 0; }
+}
+
+@keyframes sv-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes sv-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.8); opacity: 1; }
+}
+
+@keyframes sv-glitch-1 {
+  0%, 92%, 100% { clip-path: inset(0 0 0 0); transform: translateX(0); }
+  93% { clip-path: inset(20% 0 60% 0); transform: translateX(-3px); }
+  95% { clip-path: inset(50% 0 20% 0); transform: translateX(3px); }
+  97% { clip-path: inset(10% 0 70% 0); transform: translateX(-2px); }
+}
+
+@keyframes sv-glitch-2 {
+  0%, 90%, 100% { clip-path: inset(0 0 0 0); transform: translateX(0); }
+  91% { clip-path: inset(60% 0 10% 0); transform: translateX(4px); }
+  94% { clip-path: inset(30% 0 40% 0); transform: translateX(-4px); }
+  96% { clip-path: inset(70% 0 5% 0); transform: translateX(2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-spinner,
+  .sv-scene,
+  .sv-scene * {
+    animation-duration: 0.01s !important;
+    animation-iteration-count: 1 !important;
+  }
 }

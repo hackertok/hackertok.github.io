@@ -50,7 +50,7 @@ test.describe('Domain Filter - Edge Cases', () => {
     await page.goto('/#/from/unknown-domain.xyz');
     
     // Should show the "No items found" empty state message
-    await expect(page.getByText(/No stories found from unknown-domain\.xyz/i)).toBeVisible();
+    await expect(page.getByText(/No submissions found from.*unknown-domain\.xyz/i)).toBeVisible();
     
     // Document title should reflect the domain
     await expect(page).toHaveTitle(/unknown-domain\.xyz.*HackerTok/);
@@ -134,5 +134,72 @@ test.describe('Domain Filter - Pagination', () => {
     // The infinite scroll trigger is within rootMargin (200px) on this viewport,
     // so page 1 auto-loads without manual scrolling.
     await expect(page.getByText('Advanced CSS Grid Techniques for Modern Layouts')).toBeVisible({ timeout: 10000 });
+  });
+});
+
+test.describe('Domain Filter - Algolia Error Handling', () => {
+  test.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+
+  // Auto-retry exhausts 3 backoff attempts (2s+4s+8s) before showing error
+  test.setTimeout(60000);
+
+  test('shows error state when Algolia returns 503', async ({ page }) => {
+    await setupApiMocks(page);
+
+    // Override search_by_date to return 503 Service Unavailable
+    await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
+      await route.fulfill({ status: 503, json: { message: 'Service unavailable' } });
+    });
+
+    await page.goto('/#/from/example.com');
+
+    // Auto-retry exhausts 3 backoff attempts (2s+4s+8s ≈ 14s), then shows error UI.
+    await expect(page.getByText(/Failed to load items/)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText(/try again/i)).toBeVisible();
+  });
+
+  test('recovers after retry when Algolia temporarily fails', async ({ page }) => {
+    await setupApiMocks(page);
+
+    let shouldFail = true;
+    // Fail all requests until we flip the flag after auto-retry exhausts
+    await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
+      if (shouldFail) {
+        await route.fulfill({ status: 503, json: { message: 'Service unavailable' } });
+      } else {
+        await route.fulfill({
+          json: {
+            hits: [{
+              objectID: '77777',
+              title: 'Google Announces Gemini 3.0 with Extended Context',
+              url: 'https://example.com/gemini-3',
+              author: 'mfiguiere',
+              points: 195,
+              created_at_i: Math.floor(Date.now() / 1000) - 5400,
+              num_comments: 83,
+              _tags: ['story'],
+            }],
+            nbHits: 1,
+            page: 0,
+            nbPages: 1,
+            hitsPerPage: 50,
+          },
+        });
+      }
+    });
+
+    await page.goto('/#/from/example.com');
+
+    // Wait for auto-retry to fully exhaust (2s+4s+8s ≈ 14s) → stable error state
+    await expect(page.getByText(/Failed to load items/)).toBeVisible({ timeout: 30000 });
+    const retryButton = page.getByText(/try again/i);
+    await expect(retryButton).toBeVisible();
+
+    // Stop failing before clicking retry
+    shouldFail = false;
+    await retryButton.click();
+
+    // Items should load successfully
+    await expect(page.getByText('Google Announces Gemini 3.0 with Extended Context')).toBeVisible({ timeout: 10000 });
   });
 });

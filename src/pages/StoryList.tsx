@@ -1,8 +1,10 @@
 import { useEffect, useRef, useLayoutEffect } from 'react';
 import { useInView } from 'react-intersection-observer';
-import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
+import { StoryCard, Spinner, StoryCardSkeletonList, StateView } from '../components';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useAutoRetry } from '../hooks/useAutoRetry';
 import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import type { FeedType } from '../types';
 
@@ -22,6 +24,12 @@ export function StoryList({ type }: { type: FeedType }) {
     initialScrollY,
     saveSessionState,
   } = useInfiniteStories(type);
+  const { isOnline } = useNetworkStatus();
+  const { isRetrying, resetRetry } = useAutoRetry({
+    error,
+    retryFn: () => void loadMore(),
+    isOnline,
+  });
   const { ref, inView } = useInView({
     threshold: 0,
     rootMargin: '200px',
@@ -69,23 +77,29 @@ export function StoryList({ type }: { type: FeedType }) {
     }
   }, [stories.length, loading, loadMore, isFromCache, isFromSession, error]);
 
-  // Load more when scrolling near bottom
+  // Load more when scrolling near bottom (don't auto-retry on error — user clicks Retry)
   useEffect(() => {
-    if (inView && !loading && hasMore) {
+    if (inView && !loading && hasMore && !error) {
       void loadMore();
     }
-  }, [inView, loading, hasMore, loadMore]);
+  }, [inView, loading, hasMore, loadMore, error]);
 
-  if (error && stories.length === 0) {
+  if (error && stories.length === 0 && !isRetrying) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p className="text-destructive mb-4">Failed to load stories: {error}</p>
-        <button
-          onClick={loadMore}
-          className="px-4 md:px-8 lg:px-12 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
-        >
-          Try Again
-        </button>
+      <StateView
+        variant="error"
+        title="Failed to load items"
+        description={error}
+        action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore(); } }}
+        className="page-state-center"
+      />
+    );
+  }
+
+  if (error && stories.length === 0 && isRetrying) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
+        <StoryCardSkeletonList count={12} />
       </div>
     );
   }
@@ -110,20 +124,20 @@ export function StoryList({ type }: { type: FeedType }) {
           )}
 
           {!hasMore && stories.length > 0 && (
-            <p className="text-center text-sm text-muted-foreground py-8">
-              You&apos;ve reached the end
-            </p>
+            <div className="py-8">
+              <StateView variant="end" />
+            </div>
           )}
 
-          {error && stories.length > 0 && (
-            <div className="text-center py-4">
-              <p className="text-destructive mb-2">{error}</p>
-              <button
-                onClick={loadMore}
-                className="px-4 md:px-8 lg:px-12 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
-              >
-                Retry
-              </button>
+          {error && stories.length > 0 && !isRetrying && (
+            <div className="pb-4">
+              <StateView variant="error" compact description={error} action={{ label: 'Retry', onClick: () => { resetRetry(); void loadMore(); } }} className="flex items-center justify-center gap-3 py-4 text-center" />
+            </div>
+          )}
+
+          {isRetrying && stories.length > 0 && (
+            <div className="py-4 flex justify-center">
+              <Spinner />
             </div>
           )}
         </>

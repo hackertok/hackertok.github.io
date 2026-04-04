@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
 import { useCommentDetail } from '../hooks/useCommentDetail';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useAutoRetry } from '../hooks/useAutoRetry';
 import { CommentArticle } from './CommentArticle';
 import { CommentSkeletonTree } from './CommentSkeleton';
+import { StateView } from './StateView';
 
 export function FullScreenCommentSkeleton() {
   return (
-    <div className="animate-pulse px-4 py-4 min-h-screen">
+    <div className="animate-pulse px-4 py-4 min-h-full">
       <div className="h-4 bg-skeleton rounded w-48 mb-2" />
       <div className="h-3 bg-skeleton rounded w-64 mb-4" />
       <div className="h-4 bg-skeleton rounded w-full mb-2" />
@@ -21,7 +24,14 @@ interface FullScreenCommentProps {
 }
 
 export function FullScreenComment({ commentId, onAuthorLoaded }: FullScreenCommentProps) {
-  const { comment, replies, itemId, itemTitle, loading, error } = useCommentDetail(commentId);
+  const { comment, replies, itemId, itemTitle, loading, error, retry } = useCommentDetail(commentId);
+
+  const { isOnline } = useNetworkStatus();
+  const { isRetrying } = useAutoRetry({
+    error,
+    retryFn: retry,
+    isOnline,
+  });
 
   useEffect(() => {
     if (comment?.author && onAuthorLoaded) {
@@ -37,22 +47,26 @@ export function FullScreenComment({ commentId, onAuthorLoaded }: FullScreenComme
     );
   }
 
-  if (error) {
+  if (error && !isRetrying) {
     return (
       <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
-        <div className="text-center px-4">
-          <p className="text-destructive mb-4">Failed to load comment</p>
-          <p className="text-muted-foreground text-sm">{error}</p>
-        </div>
+        <StateView variant="error" title="Failed to load comment" description={error} action={{ label: 'Retry', onClick: retry }} />
       </div>
     );
   }
 
-  // Dead/deleted comment
+  if (error && isRetrying) {
+    return (
+      <div className="full-screen-item">
+        <FullScreenCommentSkeleton />
+      </div>
+    );
+  }
+
   if (!comment || (!comment.author && !comment.text)) {
     return (
       <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
-        <p className="text-muted-foreground">Comment deleted</p>
+        <StateView variant="deleted" />
       </div>
     );
   }

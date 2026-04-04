@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { renderHook, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { ScrollContainerProvider, useScrollContainer } from './ScrollContainerContext';
+import { ScrollContainerProvider } from './ScrollContainerContext';
+import { useScrollContainer } from '../hooks/useScrollContainer';
 
 describe('ScrollContainerContext', () => {
   describe('useScrollContainer without provider', () => {

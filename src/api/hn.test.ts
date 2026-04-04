@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { 
-  formatTimeAgo, 
+  formatTimeAgo,
+  formatAbsoluteTime,
   getHostname, 
   normalizeAlgoliaHit,
   fetchShowStories, 
@@ -91,6 +92,43 @@ describe('hn API utilities', () => {
       expect(formatTimeAgo(now - 2 * 60 * 1000)).toBe('2 minutes ago');
       expect(formatTimeAgo(now - 2 * 60 * 60 * 1000)).toBe('2 hours ago');
       expect(formatTimeAgo(now - 2 * 24 * 60 * 60 * 1000)).toBe('2 days ago');
+    });
+  });
+
+  describe('formatAbsoluteTime', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-02-21T12:00:00Z'));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('returns empty string for null/undefined/zero', () => {
+      expect(formatAbsoluteTime(null as unknown as number)).toBe('');
+      expect(formatAbsoluteTime(undefined as unknown as number)).toBe('');
+      expect(formatAbsoluteTime(0)).toBe('');
+    });
+
+    it('returns empty string for NaN', () => {
+      expect(formatAbsoluteTime(NaN)).toBe('');
+    });
+
+    it('returns a localized date string for a valid timestamp', () => {
+      const ts = new Date('2026-02-21T14:30:00Z').getTime();
+      const result = formatAbsoluteTime(ts);
+      expect(result).toContain('2026');
+      expect(result).toContain('Feb');
+      expect(result).toContain('21');
+    });
+
+    it('handles timestamps from different years', () => {
+      const ts = new Date('2024-12-25T08:00:00Z').getTime();
+      const result = formatAbsoluteTime(ts);
+      expect(result).toContain('2024');
+      expect(result).toContain('Dec');
+      expect(result).toContain('25');
     });
   });
 

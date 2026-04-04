@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { formatTimeAgo } from '../api/hn';
+import { formatTimeAgo, formatAbsoluteTime, safeISOString } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
+import { StateView } from './StateView';
 import type { Comment as CommentType } from '../types';
 
 interface CommentProps {
@@ -30,7 +31,7 @@ export function Comment({ comment }: CommentProps) {
         <span className="text-accent/80 text-base leading-none">›</span>
         <span className="font-medium text-foreground">{comment.author}</span>
         <span className="text-muted-foreground">·</span>
-        <span>{formatTimeAgo(comment.createdAt)}</span>
+        <time dateTime={safeISOString(comment.createdAt)} title={formatAbsoluteTime(comment.createdAt)}>{formatTimeAgo(comment.createdAt)}</time>
       </div>
 
       {hasChildren ? (
@@ -39,6 +40,7 @@ export function Comment({ comment }: CommentProps) {
             <button
               className="tree-trunk-collapse"
               onClick={() => setRepliesExpanded(false)}
+              aria-expanded={true}
               aria-label="Collapse replies"
             />
           )}
@@ -50,6 +52,7 @@ export function Comment({ comment }: CommentProps) {
               <button
                 onClick={() => setRepliesExpanded(true)}
                 className="text-sm text-muted-foreground hover:text-accent"
+                aria-expanded={false}
               >
                 <span className="inline-block rotate-90 text-accent/80 text-base" aria-hidden="true">›</span>{' '}
                 {comment.children.length} {comment.children.length === 1 ? 'reply' : 'replies'}
@@ -79,9 +82,7 @@ interface CommentTreeProps {
 
 export function CommentTree({ comments }: CommentTreeProps) {
   if (!comments || comments.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm py-4">No comments yet.</p>
-    );
+    return <StateView variant="empty" compact title="No comments yet." />;
   }
 
   return (

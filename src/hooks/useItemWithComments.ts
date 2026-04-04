@@ -1,7 +1,8 @@
-import { useState, useEffect, useEffectEvent, useCallback } from 'react';
-import { fetchItemOnly, fetchCommentsForItem } from '../api/hn';
+import { useState, useEffect, useRef, useEffectEvent, useCallback } from 'react';
+import { fetchItemOnly, fetchCommentsForItem, NotFoundError } from '../api/hn';
 import { getCachedItem, setCachedItem } from '../utils/itemCache';
 import { registerPriorityFetch, unregisterPriorityFetch } from '../utils/fetchPriority';
+import { useNetworkStatus } from './useNetworkStatus';
 import type { Item, Comment } from '../types';
 
 /**
@@ -27,6 +28,8 @@ interface UseItemWithCommentsResult {
   itemLoading: boolean;
   commentsLoading: boolean;
   error: string | null;
+  isNotFound: boolean;
+  commentsError: string | null;
   refresh: () => Promise<void>;
 }
 
@@ -42,6 +45,11 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   const [itemLoading, setItemLoading] = useState(!initialItem && !initialCache?.item);
   const [commentsLoading, setCommentsLoading] = useState(!initialCache?.comments);
   const [error, setError] = useState<string | null>(null);
+  const [isNotFound, setIsNotFound] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+
+  // Ref to the main effect's AbortController so the reconnect handler can abort stale fetches
+  const controllerRef = useRef<AbortController | null>(null);
 
   // Effect Events: read values without triggering effect re-run
   // These allow reading current props/state in effects and cleanup without adding them as dependencies
@@ -113,6 +121,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       setItemLoading(!validInitialItem);
       setComments(null);
       setCommentsLoading(true);
+      setCommentsError(null);
     }
     
     // Determine if we need to fetch: either no cache, stale cache, or partial ordering
@@ -128,6 +137,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     // Track if we registered priority (for cleanup)
     let didRegister = false;
     const controller = new AbortController();
+    controllerRef.current = controller;
     
     // SYNC: Priority panels register immediately (before any async work)
     // This ensures non-priority panels will wait even if their effect runs first
@@ -157,6 +167,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       } catch (err) {
         if (!controller.signal.aborted && !(err instanceof Error && err.name === 'AbortError')) {
           setError(err instanceof Error ? err.message : String(err));
+          setIsNotFound(err instanceof NotFoundError);
           setItemLoading(false);
           setCommentsLoading(false);
           
@@ -185,6 +196,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
         if (!controller.signal.aborted) {
           setComments(commentsData);
           setCommentsLoading(false);
+          setCommentsError(null);
           
           // Cache the complete item with comments and full ordering
           if (itemData) {
@@ -200,8 +212,9 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
         }
       } catch (err) {
         if (!controller.signal.aborted && !(err instanceof Error && err.name === 'AbortError')) {
-          // Comments failed but item succeeded - still usable
+          // Comments failed but item succeeded - still usable, but surface the error
           setCommentsLoading(false);
+          setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
           console.warn('Failed to load comments:', err);
           
           // Unregister priority even on failure so prefetchers aren't blocked forever
@@ -215,6 +228,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
 
     async function load() {
       setError(null);
+      setIsNotFound(false);
       
       if (needsOrderingCompletion && hasItem) {
         // We have cached/initial data with partial ordering - show it immediately
@@ -241,11 +255,65 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       
       // Cleanup due to itemId change, unmount, or becoming non-deferred - abort the fetch
       controller.abort();
+      controllerRef.current = null;
       if (didRegister) {
         unregisterPriorityFetch();
       }
     };
   }, [itemId, deferComments]); // All other values read via Effect Events
+
+  // Reconnect: when going online with a stale comment fetch hanging, abort it and retry.
+  // The main effect's fetch may be pending indefinitely (TCP doesn't fail instantly on
+  // network loss). useAutoRetry in CommentsSection can't help because no error has fired.
+  const { isOnline } = useNetworkStatus();
+  const wasOnlineRef = useRef(isOnline);
+
+  const getReconnectSnapshot = useEffectEvent(() => ({
+    commentsLoading,
+    comments,
+    commentsError,
+    item,
+    deferComments,
+  }));
+
+  useEffect(() => {
+    const wasOffline = !wasOnlineRef.current;
+    wasOnlineRef.current = isOnline;
+
+    if (!wasOffline || !isOnline) return;
+
+    const { commentsLoading, comments, commentsError, item, deferComments } = getReconnectSnapshot();
+
+    // Only act when comments are stuck loading (hanging fetch, no error surfaced)
+    if (!commentsLoading || comments || commentsError || !item || item.type === 'comment' || deferComments) return;
+
+    // Abort the hanging fetch so its promise settles (AbortError, swallowed by the effect)
+    controllerRef.current?.abort();
+
+    // Re-fetch comments directly
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setCommentsLoading(true);
+
+    void fetchCommentsForItem(itemId, controller.signal)
+      .then(commentsData => {
+        if (controller.signal.aborted) return;
+        setComments(commentsData);
+        setCommentsLoading(false);
+        setCommentsError(null);
+        if (item) setCachedItem(itemId, item, commentsData, 3);
+      })
+      .catch(err => {
+        if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
+        setCommentsLoading(false);
+        setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
+      });
+
+    return () => {
+      controller.abort();
+      if (controllerRef.current === controller) controllerRef.current = null;
+    };
+  }, [isOnline, itemId]);
 
   // Combined loading state for backward compatibility
   const loading = itemLoading && commentsLoading;
@@ -253,6 +321,10 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   // Refresh function for pull-to-refresh
   const refresh = useCallback(async () => {
     setError(null);
+    setIsNotFound(false);
+    setCommentsError(null);
+    setItemLoading(true);
+    setCommentsLoading(true);
     
     try {
       const itemData = await fetchItemOnly(itemId);
@@ -266,6 +338,10 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setIsNotFound(err instanceof NotFoundError);
+    } finally {
+      setItemLoading(false);
+      setCommentsLoading(false);
     }
   }, [itemId]);
 
@@ -276,6 +352,8 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     itemLoading,
     commentsLoading,
     error,
+    isNotFound,
+    commentsError,
     refresh
   };
 }

@@ -1,15 +1,17 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 import { useSwipeScroll } from '../hooks/useSwipeScroll';
 import { usePrefetchItems } from '../hooks/usePrefetchItem';
 import { usePrefetchSections } from '../hooks/usePrefetchSections';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import { fetchItemOnly } from '../api/hn';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useAutoRetry } from '../hooks/useAutoRetry';
+import { fetchItemOnly, NotFoundError } from '../api/hn';
 import { getRecentlyViewedIds, getSessionViewedIds, markViewedWithTime } from '../utils/viewedItems';
-import { FEED_TYPE_TITLES } from '../config/feedTypes';
+import { FEED_TYPE_TITLES, FEED_PATHS } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeleton } from './FullScreenItem';
-import { Spinner } from './Spinner';
+import { StateView } from './StateView';
 import type { StoryItem, FeedType, LocationState } from '../types';
 
 interface SwipeStoryViewerProps {
@@ -40,6 +42,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
   const [injectedStory, setInjectedStory] = useState<StoryItem | null>(null);
   const [injectedLoading, setInjectedLoading] = useState(false);
   const [injectedError, setInjectedError] = useState<string | null>(null);
+  const [isInjectedItemNotFound, setIsInjectedItemNotFound] = useState(false);
   // anchorStoryId: The story that should be at index 0.
   // Only set on FRESH direct links (shared/bookmarked URLs with no location.state).
   // When returning from external URL, location.state is preserved from our earlier navigation,
@@ -124,7 +127,22 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
   // Get current story for document title (updates as user swipes)
   const currentStory = mergedStories[currentIndex];
   const isNonStoryError = injectedError === 'job' || injectedError === 'comment';
-  const documentTitle = injectedError ? (isNonStoryError ? 'Item not available' : 'Story not found') : (currentStory?.title || FEED_TYPE_TITLES[type]);
+  const isInjectedNotFound = injectedError && (isNonStoryError || isInjectedItemNotFound);
+  const isAtEndError = error && !loading && mergedStories.length > 0 && currentIndex === mergedStories.length - 1;
+
+  const { isOnline } = useNetworkStatus();
+  const { isRetrying, giveUp, resetRetry } = useAutoRetry({
+    error,
+    retryFn: () => void loadMore(),
+    isOnline,
+    enabled: !injectedError,
+  });
+
+  const documentTitle = injectedError
+    ? (isInjectedNotFound ? (isNonStoryError ? 'Item not available' : 'Item not found') : 'Failed to load item')
+    : (error && mergedStories.length === 0) ? 'Failed to load item'
+    : isOnline && isAtEndError && giveUp ? 'Failed to load item'
+    : (currentStory?.title || FEED_TYPE_TITLES[type]);
   useDocumentTitle(documentTitle);
   
   // Prefetch other sections in background for instant tab switching
@@ -145,9 +163,9 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     // Don't wait for stories to load - fetch immediately if this is a direct navigation
     const storyInList = stories.some(s => s.id === initialItemIdNum);
     if (storyInList) {
-      // Story found in feed, clear any injected story (use rAF to avoid sync setState)
+      // Story found in feed, clear injected story and stale error state
       if (injectedStory && injectedStory.id === initialItemIdNum) {
-        requestAnimationFrame(() => setInjectedStory(null));
+        setInjectedStory(null);
       }
       // Clear stale state from a previous failed navigation (e.g. back from /item/99999999).
       // Reset fetchedStoryIdRef so navigating forward to the failed story re-fetches it.
@@ -162,11 +180,9 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     
     // Mark that we're fetching this story
     fetchedStoryIdRef.current = initialItemIdNum ?? null;
-    // Use queueMicrotask to avoid sync setState in effect (per eslint rule)
-    queueMicrotask(() => {
-      setInjectedLoading(true);
-      setInjectedError(null); // Clear stale error from previous fetch
-    });
+    setInjectedLoading(true);
+    setInjectedError(null);
+    setIsInjectedItemNotFound(false);
     
     const controller = new AbortController();
     let fetchCompleted = false;
@@ -197,6 +213,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
         if (initialItemIdNum === fetchedStoryIdRef.current) {
           setInjectedLoading(false);
           setInjectedError(err instanceof Error ? err.message : 'Story not found');
+          setIsInjectedItemNotFound(err instanceof NotFoundError);
         }
       });
     
@@ -344,9 +361,11 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     if (idx >= 0) {
       pendingScrollToStoryIdRef.current = null;
       hasInitializedScrollRef.current = true;
-      scrollToIndex(idx);
+      if (idx !== currentIndexRef.current) {
+        scrollToIndex(idx);
+      }
     }
-  }, [mergedStories, initialItemId, initialItemIdNum, anchorStoryId, scrollToIndex]);
+  }, [mergedStories, initialItemId, initialItemIdNum, anchorStoryId, scrollToIndex, currentIndexRef]);
   
   // Prefetch next 3 stories
   usePrefetchItems(currentIndex, mergedStories, 6);
@@ -360,15 +379,15 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     }
   }, [currentIndex, mergedStories]);
   
-  // Load more stories when approaching the end
+  // Load more stories when approaching the end (don't auto-retry on error — user taps Retry)
   useEffect(() => {
     const storiesAhead = mergedStories.length - 1 - currentIndex;
     const needsMore = storiesAhead < 5 || mergedStories.length < 10;
     
-    if (needsMore && hasMore && !loading) {
+    if (needsMore && hasMore && !loading && !error) {
       void loadMore();
     }
-  }, [currentIndex, mergedStories.length, hasMore, loading, loadMore]);
+  }, [currentIndex, mergedStories.length, hasMore, loading, loadMore, error]);
   
   // Update URL when currentIndex changes
   useEffect(() => {
@@ -412,22 +431,15 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     }
   }, [currentIndex, mergedStories, navigate, location.pathname, type, injectedError, initialItemId, initialItemIdNum, injectedStory, isScrollingProgrammaticallyRef]);
   
-  // Error state (direct navigation to non-existent or non-story item)
   if (injectedError) {
-    const isNonStory = injectedError === 'job' || injectedError === 'comment';
     return (
-      <div className="swipe-snap-container flex items-center justify-center min-h-screen" data-testid="swipe-container">
-        <div className="text-center px-4">
-          <p className="text-muted-foreground mb-4">
-            {isNonStory ? 'This item is not a story' : 'Story not found'}
-          </p>
-          <Link
-            to="/"
-            className="text-accent hover:underline"
-          >
-            Back to feed
-          </Link>
-        </div>
+      <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
+        <StateView
+          variant={isInjectedNotFound ? 'not-found' : 'error'}
+          title={isNonStoryError ? 'This item is not a story' : isInjectedNotFound ? undefined : 'Failed to load item'}
+          description={isInjectedNotFound ? undefined : injectedError}
+          action={isInjectedNotFound ? { label: 'Back to feed', to: FEED_PATHS[type] } : { label: 'Try Again', onClick: () => void navigate(0) }}
+        />
       </div>
     );
   }
@@ -464,18 +476,19 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     );
   }
   
-  // Error state
-  if (error && mergedStories.length === 0) {
+  if (error && mergedStories.length === 0 && !isRetrying) {
     return (
       <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
-        <div className="text-center px-4">
-          <p className="text-destructive mb-4">Failed to load stories</p>
-          <button
-            onClick={loadMore}
-            className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
-          >
-            Try Again
-          </button>
+        <StateView variant="error" title="Failed to load item" action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore(); } }} />
+      </div>
+    );
+  }
+  
+  if (error && mergedStories.length === 0 && isRetrying) {
+    return (
+      <div className="swipe-snap-container" data-testid="swipe-container">
+        <div className="swipe-snap-panel" data-testid="swipe-panel">
+          <FullScreenItemSkeleton />
         </div>
       </div>
     );
@@ -524,10 +537,23 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
         );
       })}
       
-      {/* Loading indicator at the end */}
-      {loading && mergedStories.length > 0 && (
-        <div className="swipe-snap-panel flex items-center justify-center" data-testid="swipe-panel-loading">
-          <Spinner />
+      {/* Loading indicator at the end — only when online (offline: scroll stops at last loaded story,
+           auto-retry extends feed in background once connectivity returns) */}
+      {isOnline && ((loading && mergedStories.length > 0) || (isRetrying && mergedStories.length > 0 && !loading)) && (
+        <div className="swipe-snap-panel" data-testid="swipe-panel-loading">
+          <FullScreenItemSkeleton />
+        </div>
+      )}
+
+      {/* Error panel at the end — only when online and retries exhausted */}
+      {isOnline && error && !loading && !isRetrying && mergedStories.length > 0 && (
+        <div className="swipe-snap-panel flex items-center justify-center" data-testid="swipe-panel">
+          <StateView
+            variant="error"
+            title="Failed to load item"
+            description={error}
+            action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore(); } }}
+          />
         </div>
       )}
     </div>

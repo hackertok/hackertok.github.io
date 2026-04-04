@@ -49,8 +49,7 @@ test.describe('Mobile Swipe Viewer', () => {
     
     // Smooth scroll and wait for scrollend event (which triggers app URL update)
     await smoothScrollAndAwaitSettled(container, panelWidth);
-    
-    // Web-first assertion: toHaveURL auto-retries until URL matches
+    await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
 
     // Document title should update to the second story after swipe
@@ -158,6 +157,8 @@ test.describe('Mobile Swipe Viewer', () => {
     const container = page.getByTestId('swipe-container');
     await expect(container).toBeVisible();
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    // Wait for the initial URL update (/ → /item/12345) to settle before swiping
+    await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
     
     // Wait for container AND at least 2 panels to be ready
     await waitForSwipeReady(page, 2);
@@ -167,14 +168,12 @@ test.describe('Mobile Swipe Viewer', () => {
     
     // Swipe forward to second item and wait for scrollend
     await smoothScrollAndAwaitSettled(container, width);
-    
-    // Web-first assertion: toHaveURL auto-retries until URL matches
+    await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
     
     // Swipe back to first item and wait for scrollend
     await smoothScrollAndAwaitSettled(container, 0);
-    
-    // Web-first assertion: toHaveURL auto-retries until URL matches
+    await waitForScrollAtIndex(page, 0);
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
   });
 
@@ -184,15 +183,20 @@ test.describe('Mobile Swipe Viewer', () => {
     await page.goto('/#/');
 
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    // Wait for the initial URL update (/ → /item/12345) to settle before swiping,
+    // ensuring React's scroll-init cycle and programmatic-scroll flag have cleared.
+    await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
     const container = page.getByTestId('swipe-container');
     await waitForSwipeReady(page, 3);
     const width = await container.evaluate((el) => el.getBoundingClientRect().width);
 
-    // Swipe through multiple items — URL updates but no history entries created
+    // Swipe through multiple items — scroll position updates, no history entries created
     await smoothScrollAndAwaitSettled(container, width);
+    await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
 
     await smoothScrollAndAwaitSettled(container, width * 2);
+    await waitForScrollAtIndex(page, 2);
     await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
 
     // Verify history length hasn't grown (goto creates 1 entry, replaces keep it at 1)
@@ -248,7 +252,7 @@ test.describe('Mobile Direct Item Access', () => {
     await page.evaluate(() => window.location.hash = '#/item/99999999');
     await expect(page.getByText(/not found/i)).toBeVisible();
     // Document title should reflect the error, not stale item title
-    await expect(page).toHaveTitle(/Story not found.*HackerTok/);
+    await expect(page).toHaveTitle(/Item not found.*HackerTok/);
 
     // Press browser back — valid item should render
     await page.goBack();
@@ -274,7 +278,7 @@ test.describe('Mobile Direct Item Access', () => {
 
     // Swipe to index 1 (item 12346 — "SQLite Does Not Do Full FSYNC by Default")
     await smoothScrollAndAwaitSettled(container, panelWidth);
-    await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
+    await waitForScrollAtIndex(page, 1);
 
     // Navigate to non-existent item
     await page.evaluate(() => window.location.hash = '#/item/99999999');
@@ -288,11 +292,10 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default').first()).toBeVisible();
 
     // Verify scroll position is actually at index 1 (not just that element exists in DOM).
-    // Playwright's toBeVisible() doesn't check if an element is scrolled into view.
-    const scrollIndex = await container.evaluate(
+    // Use expect.poll to tolerate brief Firefox scroll-snap drift after goBack.
+    await expect.poll(() => container.evaluate(
       (el) => Math.round(el.scrollLeft / el.getBoundingClientRect().width)
-    );
-    expect(scrollIndex).toBe(1);
+    ), { timeout: 5000 }).toBe(1);
   });
 
   test('restores swipe position at last index after back from not-found item', async ({ page }) => {
@@ -308,9 +311,9 @@ test.describe('Mobile Direct Item Access', () => {
 
     // Swipe to index 1, then index 2 (item 12347 — "Why We Moved from React to htmx")
     await smoothScrollAndAwaitSettled(container, panelWidth);
-    await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
+    await waitForScrollAtIndex(page, 1);
     await smoothScrollAndAwaitSettled(container, panelWidth * 2);
-    await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
+    await waitForScrollAtIndex(page, 2);
 
     // Navigate to non-existent item
     await page.evaluate(() => window.location.hash = '#/item/99999999');
@@ -324,11 +327,10 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText('Why We Moved from React to htmx').first()).toBeVisible();
 
     // Verify scroll position is actually at index 2 (not just that element exists in DOM).
-    // Playwright's toBeVisible() doesn't check if an element is scrolled into view.
-    const scrollIndex = await container.evaluate(
+    // Use expect.poll to tolerate brief Firefox scroll-snap drift after goBack.
+    await expect.poll(() => container.evaluate(
       (el) => Math.round(el.scrollLeft / el.getBoundingClientRect().width)
-    );
-    expect(scrollIndex).toBe(2);
+    ), { timeout: 5000 }).toBe(2);
   });
 
   test('back from best section shows top items, not best items', async ({ page }) => {
@@ -342,7 +344,7 @@ test.describe('Mobile Direct Item Access', () => {
 
     // Swipe to index 1 so we have a non-trivial position
     await smoothScrollAndAwaitSettled(container, panelWidth);
-    await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
+    await waitForScrollAtIndex(page, 1);
 
     // Navigate to best section via header
     const bestLink = page.getByRole('link', { name: /best/i });
@@ -374,13 +376,11 @@ test.describe('Mobile Direct Item Access', () => {
 
     // Swipe to the last item in the initial batch
     await smoothScrollAndAwaitSettled(container, panelWidth * 2);
+    await waitForScrollAtIndex(page, 2);
     await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
 
     // Wait for more panels to be loaded (pagination items should appear)
-    await page.waitForFunction((min) => {
-      const panels = document.querySelectorAll('[data-testid="swipe-panel"]');
-      return panels.length > min;
-    }, 3, { timeout: 10000 });
+    await expect(page.locator('[data-testid="swipe-panel"]').nth(3)).toBeAttached({ timeout: 10000 });
 
     // The total panel count should be more than the initial 3
     const panelCount = await page.locator('[data-testid="swipe-panel"]').count();
@@ -408,7 +408,7 @@ test.describe('Mobile Direct Item Access', () => {
     // item1 (88888, has story_text) is second. Swipe to the second panel.
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
     await smoothScrollAndAwaitSettled(container, panelWidth);
-    await expect(page).toHaveURL(/\/item\/88888/, { timeout: 5000 });
+    await waitForScrollAtIndex(page, 1);
 
     // The body text should be visible — this comes from Algolia's story_text
     // field, NOT from a Firebase re-fetch (which is the point of the test).

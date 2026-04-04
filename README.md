@@ -6,20 +6,20 @@
 
 ## Overview
 
-HackerTok reimagines Hacker News with a modern, fluid interface. Swipe or scroll through stories, read comments,
-and discover content — all in a snappy, installable PWA.
+HackerTok reimagines Hacker News with a fluid, adaptive UI. Swipe or scroll through stories and comments — fast,
+private, and installable.
 
 ## ✨ Features
 
-| Feature                | Description                                     |
-|------------------------|-------------------------------------------------|
-| ♾️ **Endless Stories** | Swipe on mobile, scroll on desktop              |
-| 🌙 **Dark/Light Mode** | Toggle themes or use system preference          |
-| 📱 **Responsive**      | Works beautifully on any device                 |
-| 🔒 **Privacy First**   | No ads, no tracking                             |
-| 🎯 **Focused Feed**    | Filters out job posts and hiring threads        |
-| ⚡ **Blazingly Fast**   | Stories and comments load before you even click |
-| ⚖️ **Open Source**     | Free as in freedom                              |
+| Feature                       | Description                                                    |
+|-------------------------------|----------------------------------------------------------------|
+| 🎨 **Modern and Adaptive UI** | Responds to your screen size, theme, and system preferences    |
+| ⚡ **Blazingly Fast**          | Multi-layer caching and predictive prefetching                 |
+| 🔒 **Secure and Private**     | No ads, no tracking, secure by default                         |
+| ♾️ **Infinite Feed**          | Swipe or scroll endlessly — no job posts, no hiring threads    |
+| 📲 **Installable PWA**        | Add to home screen for a native app experience                 |
+| ♿ **Accessible**              | WCAG-tested with keyboard navigation and screen reader support |
+| ⚖️ **Open Source**            | Free as in freedom, licensed under AGPL-3.0                    |
 
 ## 📦 Scripts
 
@@ -30,6 +30,8 @@ and discover content — all in a snappy, installable PWA.
 | `npm run preview`       | Preview production build locally    |
 | `npm run test`          | Run tests in watch mode             |
 | `npm run test:coverage` | Run tests with coverage report      |
+| `npm run typecheck`     | Type-check with TypeScript          |
+| `npm run e2e`           | Run end-to-end tests                |
 | `npm run icons`         | Generate PNG icons from SVG sources |
 | `npm run lint`          | Lint code with ESLint               |
 

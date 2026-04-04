@@ -2,6 +2,7 @@ import { expect } from '@playwright/test';
 import { test as baseTest } from '@playwright/test';
 import { test as fixtureTest } from './fixtures/test';
 import { setupApiMocks, setupApiMocksWithDelay } from './fixtures/api-mocks';
+import { ALGOLIA_API } from './fixtures/mock-data';
 
 // Use base test for most tests
 const test = baseTest;
@@ -134,12 +135,12 @@ test.describe('Item Browsing - Desktop Scroll Restoration', () => {
     // Wait for pagination items to auto-load (trigger is visible within rootMargin)
     await expect(page.getByText('WebAssembly 2.0 Reaches W3C Recommendation')).toBeVisible({ timeout: 10000 });
 
+    // Scroll down explicitly — the 350px viewport guarantees the page is scrollable
+    await page.evaluate(() => window.scrollTo({ top: 100, behavior: 'instant' }));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(100);
+
+    // Click the comments link on the third card — triggers saveSessionState(scrollY)
     const thirdCard = page.locator('[data-testid="story-card"][data-story-id="12347"]');
-    await thirdCard.evaluate(el => el.scrollIntoView());
-
-    await page.waitForFunction(() => window.scrollY > 50, { timeout: 5000 });
-
-    // Click the comments link — triggers saveSessionState
     const commentLink = thirdCard.getByRole('link', { name: /241.*comments?/i });
     await commentLink.click();
 
@@ -149,10 +150,14 @@ test.describe('Item Browsing - Desktop Scroll Restoration', () => {
     // Navigate back
     await page.goBack();
 
-    // Wait for list to re-render and scroll to restore (rAF-based).
-    // Assert scrollY is meaningfully > 0 (restored, not reset to top).
+    // Wait for list to re-render and scroll position to restore (rAF-based).
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
-    await page.waitForFunction(() => window.scrollY > 50, { timeout: 10000 });
+
+    // The scroll position should be restored to approximately where we were
+    await expect.poll(
+      () => page.evaluate(() => window.scrollY),
+      { timeout: 10000 }
+    ).toBeGreaterThanOrEqual(80);
   });
 });
 
@@ -167,13 +172,93 @@ fixtureTest.describe('Item Browsing - Error Handling', () => {
   // video recording, this causes the test to exceed the 30s timeout on Mobile Safari.
   fixtureTest.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 
+  // Auto-retry exhausts 3 backoff attempts (2s+4s+8s) before showing error — needs longer timeout
+  fixtureTest.setTimeout(60000);
+
   fixtureTest('shows error state with retry button', async ({ errorMockedPage }) => {
     // Navigate - routes are already set up on the context before page creation
     // Use waitUntil: 'domcontentloaded' to ensure page starts rendering before assertions
     await errorMockedPage.goto('/#/', { waitUntil: 'domcontentloaded' });
     
-    // Verify error UI is shown
-    await expect(errorMockedPage.getByText(/Failed to load stories/)).toBeVisible({ timeout: 10000 });
+    // Auto-retry exhausts 3 backoff attempts (2s+4s+8s ≈ 14s), then shows error UI.
+    await expect(errorMockedPage.getByText(/Failed to load items/)).toBeVisible({ timeout: 30000 });
     await expect(errorMockedPage.getByRole('button', { name: /try again/i })).toBeVisible();
+  });
+});
+
+test.describe('End of Feed', () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('shows end-of-feed indicator when all best items are loaded', async ({ page }, testInfo) => {
+    // Desktop only — mobile uses swipe viewer which doesn't render the end-of-feed StateView
+    if (testInfo.project.name.startsWith('Mobile')) {
+      test.skip();
+      return;
+    }
+
+    await page.goto('/#/best');
+
+    // Wait for best items to load (only 3 in mock, all fit in a single page of 30)
+    await expect(page.getByText('The Art of Finishing Projects')).toBeVisible();
+    await expect(page.getByText('How We Scaled to 1M Users with PostgreSQL')).toBeVisible();
+    await expect(page.getByText('A Visual Guide to SSH Tunnels')).toBeVisible();
+
+    // With only 3 items and a page size of 30, hasMore = false → end-of-feed shown
+    await expect(page.getByText("You've reached the end")).toBeVisible({ timeout: 5000 });
+
+    // The infinite scroll trigger should NOT be present
+    await expect(page.locator('.py-4 .animate-spin')).toHaveCount(0);
+  });
+
+  test('shows end-of-feed indicator on domain page after last page', async ({ page }, testInfo) => {
+    if (testInfo.project.name.startsWith('Mobile')) {
+      test.skip();
+      return;
+    }
+
+    // Override search_by_date to return a single page (nbPages: 1)
+    await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
+      const url = new URL(route.request().url());
+      const query = url.searchParams.get('query') || '';
+
+      if (query) {
+        await route.fulfill({
+          json: {
+            hits: [
+              {
+                objectID: '77777',
+                title: 'Google Announces Gemini 3.0 with Extended Context',
+                url: 'https://example.com/gemini-3',
+                author: 'mfiguiere',
+                points: 195,
+                created_at_i: Math.floor(Date.now() / 1000) - 5400,
+                num_comments: 83,
+                _tags: ['story'],
+              },
+            ],
+            nbHits: 1,
+            page: 0,
+            nbPages: 1,
+            hitsPerPage: 50,
+          },
+        });
+      } else {
+        await route.fulfill({
+          json: { hits: [], nbHits: 0, page: 0, nbPages: 0, hitsPerPage: 50 },
+        });
+      }
+    });
+
+    await page.goto('/#/from/example.com');
+
+    // Domain item loads
+    await expect(page.getByText('Google Announces Gemini 3.0 with Extended Context')).toBeVisible({ timeout: 10000 });
+
+    // nbPages=1 means page 0 is the only page → hasMore = false → end state
+    await expect(page.getByText("You've reached the end")).toBeVisible({ timeout: 5000 });
   });
 });

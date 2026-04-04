@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
+import { ALGOLIA_API } from './fixtures/mock-data';
 
 test.describe('Comment Detail', () => {
   // Comment detail only renders on desktop (ItemDetail); on mobile, SwipeStoryViewer is used
@@ -104,5 +105,67 @@ test.describe('Comment Detail - Desktop', () => {
     // Desktop should not show swipe viewer
     const swipeContainer = page.locator('.swipe-snap-container');
     await expect(swipeContainer).not.toBeVisible();
+  });
+});
+
+test.describe('Comment Detail - Error + Retry', () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+
+  // Auto-retry exhausts 3 backoff attempts (2s+4s+8s) before showing error
+  test.setTimeout(60000);
+
+  test('shows error state with retry button when Algolia fails', async ({ page }) => {
+    await setupApiMocks(page);
+
+    // Override Algolia items endpoint for comment 1001 to return 500
+    await page.route(`${ALGOLIA_API}/items/1001`, async (route) => {
+      await route.fulfill({ status: 500, json: { error: 'Server Error' } });
+    });
+
+    await page.goto('/#/item/1001');
+
+    // Auto-retry exhausts 3 backoff attempts (2s+4s+8s ≈ 14s), then shows error UI
+    await expect(page.getByText('Failed to load comment')).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('button', { name: /retry/i })).toBeVisible();
+  });
+
+  test('recovers after retry when Algolia temporarily fails', async ({ page }) => {
+    await setupApiMocks(page);
+
+    let shouldFail = true;
+    // Override Algolia items endpoint for comment 1001
+    await page.route(`${ALGOLIA_API}/items/1001`, async (route) => {
+      if (shouldFail) {
+        await route.fulfill({ status: 500, json: { error: 'Server Error' } });
+      } else {
+        await route.fulfill({
+          json: {
+            id: 1001,
+            author: 'patio11',
+            text: 'The <code>wasm-bindgen</code> approach is really interesting.',
+            created_at_i: Math.floor(Date.now() / 1000) - 1800,
+            parent_id: 12345,
+            story_id: 12345,
+            children: [],
+            type: 'comment',
+          },
+        });
+      }
+    });
+
+    await page.goto('/#/item/1001');
+
+    // Wait for auto-retry to exhaust (2s+4s+8s ≈ 14s) → error state
+    await expect(page.getByText('Failed to load comment')).toBeVisible({ timeout: 30000 });
+    const retryButton = page.getByRole('button', { name: /retry/i });
+    await expect(retryButton).toBeVisible();
+
+    // Stop failing before clicking retry
+    shouldFail = false;
+    await retryButton.click();
+
+    // Comment should load successfully
+    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/wasm-bindgen/i).first()).toBeVisible();
   });
 });

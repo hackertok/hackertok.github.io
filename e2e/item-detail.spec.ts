@@ -152,6 +152,113 @@ test.describe('Item Detail', () => {
   });
 });
 
+test.describe('Item Detail - Deep Nested Comments', () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+
+  test('renders 4-level deep comment nesting', async ({ page }) => {
+    await setupApiMocks(page);
+
+    const now = Math.floor(Date.now() / 1000);
+
+    // Override the Algolia search to return 4-level deep flat comments
+    // buildCommentTree assembles the tree from parent_id references
+    await page.route('**/search*', async (route) => {
+      const url = new URL(route.request().url());
+      const tags = url.searchParams.get('tags') || '';
+
+      if (tags.includes('comment') && tags.includes('story_12345')) {
+        await route.fulfill({
+          json: {
+            hits: [
+              { objectID: '3001', author: 'level1_user', comment_text: 'Top-level insight', created_at_i: now - 3600, parent_id: 12345, story_id: 12345 },
+              { objectID: '3002', author: 'level2_user', comment_text: 'Reply to top-level', created_at_i: now - 3000, parent_id: 3001, story_id: 12345 },
+              { objectID: '3003', author: 'level3_user', comment_text: 'Deeply nested thought', created_at_i: now - 2400, parent_id: 3002, story_id: 12345 },
+              { objectID: '3004', author: 'level4_user', comment_text: 'Fourth level response', created_at_i: now - 1800, parent_id: 3003, story_id: 12345 },
+            ],
+            nbHits: 4,
+            page: 0,
+            nbPages: 1,
+            hitsPerPage: 30,
+          },
+        });
+        return;
+      }
+
+      await route.continue();
+    });
+
+    await page.goto('/#/item/12345');
+
+    // Level 1: visible immediately
+    await expect(page.getByText('level1_user').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Top-level insight')).toBeVisible();
+
+    // Level 2: hidden behind "1 reply" toggle
+    await expect(page.getByText('level2_user')).not.toBeVisible();
+    await page.getByText(/1 reply/i).first().click();
+    await expect(page.getByText('level2_user')).toBeVisible();
+    await expect(page.getByText('Reply to top-level')).toBeVisible();
+
+    // Level 3: hidden behind another "1 reply" toggle
+    await expect(page.getByText('level3_user')).not.toBeVisible();
+    await page.getByText(/1 reply/i).first().click();
+    await expect(page.getByText('level3_user')).toBeVisible();
+    await expect(page.getByText('Deeply nested thought')).toBeVisible();
+
+    // Level 4: hidden behind yet another "1 reply" toggle
+    await expect(page.getByText('level4_user')).not.toBeVisible();
+    await page.getByText(/1 reply/i).first().click();
+    await expect(page.getByText('level4_user')).toBeVisible();
+    await expect(page.getByText('Fourth level response')).toBeVisible();
+  });
+
+  test('collapsing a parent hides all nested descendants', async ({ page }) => {
+    await setupApiMocks(page);
+
+    const now = Math.floor(Date.now() / 1000);
+
+    await page.route('**/search*', async (route) => {
+      const url = new URL(route.request().url());
+      const tags = url.searchParams.get('tags') || '';
+
+      if (tags.includes('comment') && tags.includes('story_12345')) {
+        await route.fulfill({
+          json: {
+            hits: [
+              { objectID: '3001', author: 'ancestor', comment_text: 'Root comment', created_at_i: now - 3600, parent_id: 12345, story_id: 12345 },
+              { objectID: '3002', author: 'child_user', comment_text: 'Child reply', created_at_i: now - 3000, parent_id: 3001, story_id: 12345 },
+              { objectID: '3003', author: 'grandchild', comment_text: 'Grandchild reply', created_at_i: now - 2400, parent_id: 3002, story_id: 12345 },
+            ],
+            nbHits: 3,
+            page: 0,
+            nbPages: 1,
+            hitsPerPage: 30,
+          },
+        });
+        return;
+      }
+
+      await route.continue();
+    });
+
+    await page.goto('/#/item/12345');
+    await expect(page.getByText('ancestor')).toBeVisible({ timeout: 10000 });
+
+    // Expand both levels
+    await page.getByText(/1 reply/i).first().click();
+    await expect(page.getByText('child_user')).toBeVisible();
+    await page.getByText(/1 reply/i).first().click();
+    await expect(page.getByText('Grandchild reply')).toBeVisible();
+
+    // Collapse the top-level comment's replies via trunk line
+    await page.getByRole('button', { name: /collapse replies/i }).first().click();
+
+    // Both child and grandchild should be hidden
+    await expect(page.getByText('child_user')).not.toBeVisible();
+    await expect(page.getByText('Grandchild reply')).not.toBeVisible();
+  });
+});
+
 test.describe('Item Detail - Desktop', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 

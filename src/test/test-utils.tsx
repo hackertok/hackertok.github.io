@@ -2,6 +2,7 @@
 import { render, type RenderOptions } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '../context/ThemeContext';
+import { NetworkStatusProvider } from '../context/NetworkStatusContext';
 import type { ReactElement, ReactNode } from 'react';
 import type { InitialEntry } from 'react-router';
 
@@ -11,9 +12,11 @@ import type { InitialEntry } from 'react-router';
 function AllProviders({ children, initialEntries = ['/'] }: { children: ReactNode; initialEntries?: InitialEntry[] }) {
   return (
     <ThemeProvider>
-      <MemoryRouter initialEntries={initialEntries}>
-        {children}
-      </MemoryRouter>
+      <NetworkStatusProvider>
+        <MemoryRouter initialEntries={initialEntries}>
+          {children}
+        </MemoryRouter>
+      </NetworkStatusProvider>
     </ThemeProvider>
   );
 }

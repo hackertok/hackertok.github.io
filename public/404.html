@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Redirecting…</title>
+    <script>
+      // GitHub Pages serves this for unknown paths (e.g. /item/123).
+      // Redirect into the SPA's HashRouter: /path → /#/path
+      var p = window.location.pathname;
+      window.location.replace('/#' + p + window.location.search);
+    </script>
+  </head>
+  <body></body>
+</html>

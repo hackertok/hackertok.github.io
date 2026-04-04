@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { CommentTree } from './Comment';
 import { CommentSkeletonTree } from './CommentSkeleton';
-import { formatTimeAgo } from '../api/hn';
+import { StateView } from './StateView';
+import { formatTimeAgo, formatAbsoluteTime, safeISOString } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
 import type { Comment } from '../types';
 
@@ -40,7 +41,7 @@ export function CommentArticle({
           <span className="text-accent/80 text-base leading-none">›</span>
           <span className="font-medium text-foreground">{comment.author}</span>
           <span className="text-muted-foreground">·</span>
-          <span>{formatTimeAgo(comment.createdAt)}</span>
+          <time dateTime={safeISOString(comment.createdAt)} title={formatAbsoluteTime(comment.createdAt)}>{formatTimeAgo(comment.createdAt)}</time>
         </div>
 
         <div className="text-sm text-muted-foreground mb-3">
@@ -91,7 +92,7 @@ export function CommentArticle({
         ) : replies.length > 0 ? (
           <CommentTree comments={replies} />
         ) : (
-          <p className="text-muted-foreground text-sm py-4">No replies yet.</p>
+          <StateView variant="empty" compact title="No replies yet." />
         )}
       </section>
     </>

@@ -1,10 +1,13 @@
 import { HashRouter, Routes, Route, useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
-import { ScrollContainerProvider, useScrollContainer } from './context/ScrollContainerContext';
-import { Header, ErrorBoundary, SwipeStoryViewer, SwipeCommentViewer, FullScreenCommentSkeleton } from './components';
+import { ScrollContainerProvider } from './context/ScrollContainerContext';
+import { useScrollContainer } from './hooks/useScrollContainer';
+import { Header, ErrorBoundary, SwipeStoryViewer, SwipeCommentViewer, FullScreenCommentSkeleton, StateView, NetworkStatusBar } from './components';
 import { StoryList, ItemDetail, DomainStories } from './pages';
 import { useIsMobile } from './hooks/useIsMobile';
+import { useDocumentTitle } from './hooks/useDocumentTitle';
+import { NetworkStatusProvider } from './context/NetworkStatusContext';
 import { fetchItemOnly } from './api/hn';
 import type { FeedType, LocationState } from './types';
 
@@ -92,23 +95,40 @@ function MobileItemResolver({ id }: { id: string }) {
 function MainContent({ children }: { children: React.ReactNode }) {
   const { isSwipeMode } = useScrollContainer();
   
-  // No top padding in swipe mode (header is relative) or on desktop
-  // Only apply pt-14 on mobile when NOT in swipe mode (fixed header)
+  // In swipe mode: position fixed removes content from document flow,
+  // preventing the swipe container's internal scroll width from expanding
+  // the viewport's scrollable area (which causes the horizontal overflow bug
+  // when transitioning from desktop to mobile while offline).
   return (
-    <main className={isSwipeMode ? '' : 'pt-14 md:pt-0'}>
+    <main className={`overflow-x-clip ${isSwipeMode ? 'fixed inset-0 top-[var(--header-height)]' : 'pt-14 md:pt-0'}`}>
       {children}
     </main>
+  );
+}
+
+function NotFoundPage() {
+  useDocumentTitle('Page not found');
+  return (
+    <StateView
+      variant="not-found"
+      title="Lost in the feed"
+      description="This page doesn't exist, or it wandered off somewhere we can't find it."
+      action={{ label: 'Back to Home', to: '/' }}
+      className="page-state-center p-6"
+    />
   );
 }
 
 function App() {
   return (
     <ThemeProvider>
+      <NetworkStatusProvider>
       <ScrollContainerProvider>
         <HashRouter>
           <ErrorBoundary>
             <div className="min-h-screen bg-background text-foreground">
               <Header />
+              <NetworkStatusBar />
               <MainContent>
                 <Routes>
                   <Route path="/" element={<MobileStoryListWrapper type="top" />} />
@@ -117,12 +137,14 @@ function App() {
                   <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
                   <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
                   <Route path="/from/*" element={<DomainStories />} />
+                  <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </MainContent>
             </div>
           </ErrorBoundary>
         </HashRouter>
       </ScrollContainerProvider>
+      </NetworkStatusProvider>
     </ThemeProvider>
   );
 }

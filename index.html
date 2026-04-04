@@ -44,6 +44,16 @@
     <link rel="dns-prefetch" href="https://hacker-news.firebaseio.com" />
     
     <script>
+      // Redirect non-hash paths into HashRouter (e.g. /item/123 → /#/item/123)
+      // Handles: Vite SPA fallback in dev, direct URL entry, shared links without hash
+      (function() {
+        var p = window.location.pathname;
+        if (p !== '/' && p !== '/index.html') {
+          window.location.replace('/#' + p + window.location.search);
+        }
+      })();
+    </script>
+    <script>
       // Prevent flash of wrong theme
       (function() {
         const theme = localStorage.getItem('theme');
@@ -63,6 +73,7 @@
         // Swipe routes: /, /show, /ask, /best, /item/*
         var isSwipeRoute = /^#\/(show|ask|best|item\/)?/.test(hash);
         if (isMobile && isSwipeRoute) {
+          document.documentElement.classList.add('swipe-mode');
           document.body.classList.add('swipe-mode');
         }
       })();

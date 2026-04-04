@@ -10,11 +10,12 @@ export function Spinner({ size = 'md' }: SpinnerProps) {
   };
 
   return (
-    <div className="flex justify-center items-center py-6">
+    <div className="flex justify-center items-center py-6" role="status">
       <div className={`${sizeClasses[size]} relative`}>
         <div className="absolute inset-0 rounded-full border-2 border-border" />
         <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-accent refresh-spinner" />
       </div>
+      <span className="sr-only">Loading</span>
     </div>
   );
 }

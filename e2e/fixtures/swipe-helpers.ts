@@ -72,6 +72,12 @@ export async function smoothScrollAndAwaitSettled(container: Locator, targetLeft
 
           if (stableFrames >= 5) {
             clearTimeout(timeout);
+            // Firefox sometimes suppresses native scroll/scrollend events
+            // during programmatic scrollTo with snap toggling. Dispatch
+            // scrollend so the app's updateIndex() handler always fires.
+            // Harmless on browsers that already fired the native event
+            // (updateIndex computes the same index → React no-op).
+            el.dispatchEvent(new Event('scrollend'));
             resolve();
             return;
           }
@@ -102,5 +108,5 @@ export async function waitForScrollAtIndex(page: Page, expectedIndex: number) {
     const width = el.getBoundingClientRect().width;
     if (width === 0) return false;
     return Math.round(el.scrollLeft / width) === idx;
-  }, expectedIndex, { timeout: 5000 });
+  }, expectedIndex, { timeout: 5_000 });
 }

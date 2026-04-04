@@ -1,6 +1,14 @@
 import { ALGOLIA_API, FIREBASE_API } from '../config/api';
 import type { Item, StoryItem, Comment, AlgoliaHit, AlgoliaComment, AlgoliaSearchResponse, FirebaseItem, PrefetchResult, AlgoliaItemResponse, AlgoliaItemChild } from '../types';
 
+/** Thrown when an item does not exist (Firebase returns null). */
+export class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotFoundError';
+  }
+}
+
 // Cache for best story IDs to avoid refetching on every pagination
 let bestStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -467,7 +475,7 @@ export async function fetchItemOnly(id: number | string, signal?: AbortSignal): 
   const item = await fetchFirebaseItem(itemId, signal);
   
   if (!item) {
-    throw new Error(`Item ${id} not found`);
+    throw new NotFoundError(`Item ${id} not found`);
   }
   
   return normalizeFirebaseItem(item);
@@ -586,6 +594,21 @@ export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comm
       parentId: child.parent_id,
       children: normalizeAlgoliaItemChildren(child.children ?? []),
     }));
+}
+
+// Format timestamp as a localized absolute date string for tooltips
+export function formatAbsoluteTime(timestamp: number): string {
+  if (!timestamp || isNaN(timestamp)) return '';
+  return new Date(timestamp).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
+
+// Safe ISO string for <time> dateTime attribute — returns '' for invalid timestamps
+export function safeISOString(timestamp: number): string {
+  if (!timestamp || isNaN(timestamp)) return '';
+  return new Date(timestamp).toISOString();
 }
 
 // Format relative time

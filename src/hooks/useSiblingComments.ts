@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchFirebaseItem } from '../api/hn';
 
 interface UseSiblingCommentsResult {
@@ -6,6 +6,7 @@ interface UseSiblingCommentsResult {
   currentIndex: number;
   loading: boolean;
   error: string | null;
+  retry: () => void;
 }
 
 export function useSiblingComments(commentId: number | string): UseSiblingCommentsResult {
@@ -13,6 +14,8 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const retry = useCallback(() => setRetryCount(c => c + 1), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,7 +64,7 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
 
     void load();
     return () => controller.abort();
-  }, [commentId]);
+  }, [commentId, retryCount]);
 
-  return { siblingIds, currentIndex, loading, error };
+  return { siblingIds, currentIndex, loading, error, retry };
 }

@@ -64,10 +64,11 @@ describe('SwipeCommentViewer', () => {
       initialEntries: [{ pathname: '/item/999', state: { isComment: true } }],
     });
 
+    // Auto-retry retries 3 times with 2s+4s+8s backoff before giving up and showing error
     await waitFor(() => {
       expect(screen.getByText('Failed to load comments')).toBeInTheDocument();
-    });
-  });
+    }, { timeout: 30000 });
+  }, 35000);
 
   it('renders single panel when comment has no parent', async () => {
     server.use(
