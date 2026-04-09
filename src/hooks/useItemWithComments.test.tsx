@@ -8,6 +8,8 @@ import { server } from '../mocks/server';
 import { FIREBASE_API, ALGOLIA_API } from '../config/api';
 import type { Comment } from '../types';
 import { createStoryItem, createComment } from '../test/factories';
+import { NetworkStatusProvider } from '../context/NetworkStatusContext';
+import type { ReactNode } from 'react';
 
 const testItem = createStoryItem({
   id: 12345,
@@ -727,6 +729,259 @@ describe('useItemWithComments', () => {
       // The item should either be null (loading) or be item B
       // NOT item A
       expect(result.current.item?.id).not.toBe(33333);
+    });
+  });
+
+  describe('reconnect handler', () => {
+    const networkWrapper = ({ children }: { children: ReactNode }) => (
+      <NetworkStatusProvider>{children}</NetworkStatusProvider>
+    );
+
+    afterEach(() => {
+      Object.defineProperty(navigator, 'onLine', { value: true, writable: true, configurable: true });
+    });
+
+    it('retries comments when going online with a stuck comment fetch', async () => {
+      // Simulate: item loaded (via initialItem), but comment fetch hangs forever
+      let resolveComments: (() => void) | undefined;
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, async () => {
+          // First call: hang forever (simulates offline TCP stall)
+          await new Promise<void>(resolve => { resolveComments = resolve; });
+          return HttpResponse.json({ hits: [], nbHits: 0, page: 0, nbPages: 0, hitsPerPage: 200 });
+        })
+      );
+
+      const { result } = renderHook(
+        () => useItemWithComments(12345, { initialItem: testItem }),
+        { wrapper: networkWrapper }
+      );
+
+      // Item is available, comments are loading
+      expect(result.current.item).toEqual(testItem);
+      expect(result.current.commentsLoading).toBe(true);
+      expect(result.current.comments).toBeNull();
+
+      // Now make comment fetch succeed on retry
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => {
+          return HttpResponse.json({
+            hits: [{ objectID: '1001', author: 'user1', comment_text: 'Test', created_at_i: 1000, parent_id: 12345, story_id: 12345 }],
+            nbHits: 1, page: 0, nbPages: 1, hitsPerPage: 200,
+          });
+        })
+      );
+
+      // Simulate offline → online
+      act(() => { window.dispatchEvent(new Event('offline')); });
+      act(() => { window.dispatchEvent(new Event('online')); });
+
+      // Resolve the hanging fetch so it doesn't leak
+      resolveComments?.();
+
+      // Comments should load after reconnect
+      await waitFor(() => {
+        expect(result.current.commentsLoading).toBe(false);
+      });
+      expect(result.current.comments).toBeTruthy();
+      expect(result.current.comments!.length).toBeGreaterThan(0);
+    });
+
+    it('does not retry when comments already loaded', async () => {
+      // Pre-cache item + comments so nothing fetches
+      setCachedItem(12345, testItem, testComments, 3);
+
+      const fetchSpy = vi.fn();
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = (...args) => {
+        fetchSpy();
+        return origFetch(...args);
+      };
+
+      const { result } = renderHook(
+        () => useItemWithComments(12345),
+        { wrapper: networkWrapper }
+      );
+
+      expect(result.current.comments).toEqual(testComments);
+      fetchSpy.mockClear();
+
+      // Simulate offline → online
+      act(() => { window.dispatchEvent(new Event('offline')); });
+      act(() => { window.dispatchEvent(new Event('online')); });
+
+      // Wait a tick — no fetch should fire
+      await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      globalThis.fetch = origFetch;
+    });
+
+    it('does not retry when commentsError is set (useAutoRetry handles that)', async () => {
+      // Item loads but comments fail immediately
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => {
+          return HttpResponse.json({ hits: [], nbHits: 0, page: 0, nbPages: 0, hitsPerPage: 200 });
+        })
+      );
+
+      const { result } = renderHook(
+        () => useItemWithComments(12345, { initialItem: testItem }),
+        { wrapper: networkWrapper }
+      );
+
+      // Wait for comments to finish loading (empty list → loading becomes false)
+      await waitFor(() => {
+        expect(result.current.commentsLoading).toBe(false);
+      });
+
+      // Go offline → online: should NOT trigger reconnect since comments aren't stuck
+      const fetchSpy = vi.fn();
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = (...args) => {
+        fetchSpy();
+        return origFetch(...args);
+      };
+
+      act(() => { window.dispatchEvent(new Event('offline')); });
+      act(() => { window.dispatchEvent(new Event('online')); });
+
+      await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      globalThis.fetch = origFetch;
+    });
+
+    it('sets commentsError when reconnect fetch fails', async () => {
+      // Initial comment fetch hangs
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, async () => {
+          await new Promise(resolve => { void resolve; }); // hang forever (resolve never called)
+          return HttpResponse.json({ hits: [], nbHits: 0, page: 0, nbPages: 0, hitsPerPage: 200 });
+        })
+      );
+
+      const { result } = renderHook(
+        () => useItemWithComments(12345, { initialItem: testItem }),
+        { wrapper: networkWrapper }
+      );
+
+      expect(result.current.commentsLoading).toBe(true);
+
+      // Make reconnect fetch fail
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => {
+          return new HttpResponse(null, { status: 500 });
+        }),
+        // Firebase item fetch also needed by fetchCommentsForItem
+        http.get(`${FIREBASE_API}/item/:id.json`, () => {
+          return new HttpResponse(null, { status: 500 });
+        })
+      );
+
+      act(() => { window.dispatchEvent(new Event('offline')); });
+      act(() => { window.dispatchEvent(new Event('online')); });
+
+      await waitFor(() => {
+        expect(result.current.commentsLoading).toBe(false);
+      });
+      expect(result.current.commentsError).toBeTruthy();
+    });
+  });
+
+  describe('refresh loading states', () => {
+    it('sets itemLoading and commentsLoading to true during refresh', async () => {
+      // Start with data already loaded via initialItem + default comment mocks
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: testItem })
+      );
+
+      await waitFor(() => {
+        expect(result.current.commentsLoading).toBe(false);
+      });
+      expect(result.current.itemLoading).toBe(false);
+
+      // Delay the item fetch during refresh so we can observe loading
+      server.use(
+        http.get(`${FIREBASE_API}/item/:id.json`, async () => {
+          await new Promise(r => setTimeout(r, 200));
+          return HttpResponse.json({
+            id: 12345, type: 'story', title: 'Sample HN Post', url: 'https://example.com',
+            score: 100, by: 'testuser', time: Math.floor(Date.now() / 1000), descendants: 3,
+          });
+        })
+      );
+
+      // Start refresh — loading states should flip synchronously
+      let refreshPromise: Promise<void>;
+      act(() => {
+        refreshPromise = result.current.refresh();
+      });
+
+      expect(result.current.itemLoading).toBe(true);
+      expect(result.current.commentsLoading).toBe(true);
+
+      await act(async () => { await refreshPromise!; });
+
+      expect(result.current.itemLoading).toBe(false);
+      expect(result.current.commentsLoading).toBe(false);
+    });
+
+    it('clears error and commentsError during refresh', async () => {
+      // Make item fetch fail to get into error state
+      server.use(
+        http.get(`${FIREBASE_API}/item/:id.json`, () => {
+          return HttpResponse.error();
+        })
+      );
+
+      const { result } = renderHook(() => useItemWithComments(12345));
+
+      await waitFor(() => {
+        expect(result.current.error).toBeTruthy();
+      });
+
+      // Restore working handlers before refresh
+      server.resetHandlers();
+
+      let refreshPromise: Promise<void>;
+      act(() => {
+        refreshPromise = result.current.refresh();
+      });
+
+      // Error should be cleared immediately
+      expect(result.current.error).toBeNull();
+      expect(result.current.itemLoading).toBe(true);
+      expect(result.current.commentsLoading).toBe(true);
+
+      await act(async () => { await refreshPromise!; });
+
+      expect(result.current.item).toBeTruthy();
+      expect(result.current.error).toBeNull();
+    });
+
+    it('sets error when refresh fails', async () => {
+      // Start with data loaded
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: testItem })
+      );
+
+      await waitFor(() => {
+        expect(result.current.commentsLoading).toBe(false);
+      });
+
+      // Make next fetch fail
+      server.use(
+        http.get(`${FIREBASE_API}/item/:id.json`, () => {
+          return HttpResponse.error();
+        })
+      );
+
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      expect(result.current.error).toBeTruthy();
     });
   });
 });

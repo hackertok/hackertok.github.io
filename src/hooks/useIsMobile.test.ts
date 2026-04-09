@@ -29,13 +29,13 @@ describe('useIsMobile', () => {
     currentMatches = false;
   });
 
-  it('returns false when viewport is > 640px', () => {
+  it('returns false when viewport is >= 768px', () => {
     currentMatches = false;
     const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(false);
   });
 
-  it('returns true when viewport is <= 640px', () => {
+  it('returns true when viewport is < 768px', () => {
     currentMatches = true;
     const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(true);

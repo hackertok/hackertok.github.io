@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchAlgoliaItem, fetchFirebaseItem, normalizeAlgoliaItemChildren } from '../api/hn';
 import type { Comment } from '../types';
 
@@ -17,6 +17,7 @@ interface UseCommentDetailResult {
   itemTitle: string | null;
   loading: boolean;
   error: string | null;
+  retry: () => void;
 }
 
 interface InitialData {
@@ -40,6 +41,8 @@ export function useCommentDetail(
   const [itemTitle, setItemTitle] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const retry = useCallback(() => setRetryCount(c => c + 1), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -84,7 +87,7 @@ export function useCommentDetail(
 
     void load();
     return () => controller.abort();
-  }, [commentId]);
+  }, [commentId, retryCount]);
 
-  return { comment, replies, itemId, itemTitle, loading, error };
+  return { comment, replies, itemId, itemTitle, loading, error, retry };
 }

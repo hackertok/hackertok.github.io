@@ -1,8 +1,11 @@
 import { useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useCommentDetail } from '../hooks/useCommentDetail';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useAutoRetry } from '../hooks/useAutoRetry';
 import { CommentSkeletonTree } from './CommentSkeleton';
 import { CommentArticle } from './CommentArticle';
+import { StateView } from './StateView';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import type { LocationState } from '../types';
 
@@ -17,10 +20,17 @@ interface CommentDetailProps {
 }
 
 export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
-  const { comment, replies, itemId, itemTitle, loading, error } = useCommentDetail(commentId, initialData);
+  const { comment, replies, itemId, itemTitle, loading, error, retry } = useCommentDetail(commentId, initialData);
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
+
+  const { isOnline } = useNetworkStatus();
+  const { isRetrying } = useAutoRetry({
+    error,
+    retryFn: retry,
+    isOnline,
+  });
 
   // Set isComment in router state so Header shows "comments" indicator
   useEffect(() => {
@@ -31,16 +41,20 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
 
   useDocumentTitle(comment?.author ? `Comment by ${comment.author}` : undefined);
 
-  if (error) {
+  if (error && !isRetrying) {
     return (
-      <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-8 text-center">
-        <p className="text-destructive mb-4">Failed to load comment: {error}</p>
-        <Link to="/" className="text-accent hover:underline">Back to feed</Link>
+      <div className="page-state-center-padded">
+        <StateView
+          variant="error"
+          title="Failed to load comment"
+          description={error}
+          action={{ label: 'Retry', onClick: retry }}
+        />
       </div>
     );
   }
 
-  if (!comment && loading) {
+  if ((error && isRetrying) || (!comment && loading)) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
         <div className="animate-pulse">

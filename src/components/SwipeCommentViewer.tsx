@@ -2,8 +2,11 @@ import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useSwipeScroll } from '../hooks/useSwipeScroll';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useAutoRetry } from '../hooks/useAutoRetry';
 import { useSiblingComments } from '../hooks/useSiblingComments';
 import { FullScreenComment, FullScreenCommentSkeleton } from './FullScreenComment';
+import { StateView } from './StateView';
 import type { LocationState } from '../types';
 
 interface SwipeCommentViewerProps {
@@ -21,7 +24,14 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
 
   // Track a stable comment ID for fetching — only changes on external navigation, not on swipe URL updates
   const [siblingSourceId, setSiblingSourceId] = useState(initialCommentId);
-  const { siblingIds, currentIndex: initialIndex, loading, error } = useSiblingComments(siblingSourceId);
+  const { siblingIds, currentIndex: initialIndex, loading, error, retry } = useSiblingComments(siblingSourceId);
+
+  const { isOnline } = useNetworkStatus();
+  const { isRetrying } = useAutoRetry({
+    error,
+    retryFn: retry,
+    isOnline,
+  });
 
   const [scrollInitialized, setScrollInitialized] = useState(false);
   const {
@@ -108,13 +118,19 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     );
   }
 
-  // Error state
-  if (error && siblingIds.length <= 1) {
+  if (error && siblingIds.length <= 1 && !isRetrying) {
     return (
       <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
-        <div className="text-center px-4">
-          <p className="text-destructive mb-4">Failed to load comments</p>
-          <p className="text-muted-foreground text-sm mb-4">{error}</p>
+        <StateView variant="error" title="Failed to load comments" description={error} action={{ label: 'Retry', onClick: retry }} />
+      </div>
+    );
+  }
+
+  if (error && siblingIds.length <= 1 && isRetrying) {
+    return (
+      <div className="swipe-snap-container" data-testid="swipe-container">
+        <div className="swipe-snap-panel" data-testid="swipe-panel">
+          <FullScreenCommentSkeleton />
         </div>
       </div>
     );

@@ -1,9 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
-// Mobile breakpoint - matches Tailwind's sm breakpoint
-const MOBILE_BREAKPOINT = 640;
-
-const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+// Below Tailwind's md breakpoint (768px) = mobile
+const mediaQuery = window.matchMedia('(max-width: 767px)');
 
 function subscribe(callback: () => void) {
   mediaQuery.addEventListener('change', callback);
@@ -15,9 +13,9 @@ function getSnapshot() {
 }
 
 /**
- * Hook to detect if the viewport is mobile-sized (≤640px)
+ * Hook to detect if the viewport is mobile-sized (<768px)
  * Reactive to viewport changes via matchMedia
- * @returns {boolean} True if viewport width ≤ 640px
+ * @returns {boolean} True if viewport width < 768px
  */
 export function useIsMobile() {
   return useSyncExternalStore(subscribe, getSnapshot);

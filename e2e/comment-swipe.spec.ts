@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
-import { waitForSwipeReady, smoothScrollAndAwaitSettled } from './fixtures/swipe-helpers';
+import { waitForSwipeReady, smoothScrollAndAwaitSettled, waitForScrollAtIndex } from './fixtures/swipe-helpers';
 
 test.describe('Mobile Comment Swipe Viewer', () => {
   test.use({
@@ -65,8 +65,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
     // Swipe to second sibling (comment 1002)
     await smoothScrollAndAwaitSettled(container, panelWidth);
-
-    // URL should update to the second sibling
+    await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
 
     // Should show the second comment's author
@@ -83,18 +82,22 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
     // Swipe to comment 1002
     await smoothScrollAndAwaitSettled(container, width);
+    await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
 
     // Swipe to comment 1003
     await smoothScrollAndAwaitSettled(container, width * 2);
+    await waitForScrollAtIndex(page, 2);
     await expect(page).toHaveURL(/\/item\/1003/, { timeout: 5000 });
 
     // Swipe back to comment 1002
     await smoothScrollAndAwaitSettled(container, width);
+    await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
 
     // Swipe back to comment 1001
     await smoothScrollAndAwaitSettled(container, 0);
+    await waitForScrollAtIndex(page, 0);
     await expect(page).toHaveURL(/\/item\/1001/, { timeout: 5000 });
   });
 
@@ -132,9 +135,11 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
     // Swipe through siblings
     await smoothScrollAndAwaitSettled(container, width);
+    await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
 
     await smoothScrollAndAwaitSettled(container, width * 2);
+    await waitForScrollAtIndex(page, 2);
     await expect(page).toHaveURL(/\/item\/1003/, { timeout: 5000 });
 
     // History should not have grown (goto = 1 entry, replaces keep it there)
@@ -223,6 +228,8 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   });
 
   test('shows error state when comment fetch fails', async ({ page }) => {
+    // Auto-retry exhausts 3 backoff attempts (2s+4s+8s) before error state appears
+    test.setTimeout(60000);
     // Return a valid comment for 99999 so MobileItemResolver discovers it's a comment,
     // but point its parent to 88888 which will return 500
     await page.route(`**/item/99999.json`, async (route) => {
@@ -250,8 +257,8 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
     await page.goto('/#/item/99999');
 
-    // Should show error state in the swipe viewer
-    await expect(page.getByText('Failed to load comments').first()).toBeVisible({ timeout: 10000 });
+    // Should show error state in the swipe viewer (auto-retry exhausts 3 attempts with 2s+4s+8s backoff before giving up)
+    await expect(page.getByText('Failed to load comments').first()).toBeVisible({ timeout: 30000 });
   });
 
   test('sets document title to "Comment by {author}" for the current comment', async ({ page }) => {
@@ -295,6 +302,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
     // Swipe to second sibling (comment 1002)
     await smoothScrollAndAwaitSettled(container, panelWidth);
+    await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
     await expect(page.getByText('jgrahamc').first()).toBeVisible({ timeout: 10000 });
 

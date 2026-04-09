@@ -69,10 +69,11 @@ describe('FullScreenComment', () => {
 
     render(<FullScreenComment commentId={999999} />);
 
+    // Auto-retry exhausts 3 attempts with 2s+4s+8s backoff before showing error
     await waitFor(() => {
       expect(screen.getByText('Failed to load comment')).toBeInTheDocument();
-    });
-  });
+    }, { timeout: 30000 });
+  }, 35000);
 
   it('shows deleted state for comment with no author or text', async () => {
     server.use(

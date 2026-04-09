@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { useScrollContainer } from '../context/ScrollContainerContext';
+import { useScrollContainer } from './useScrollContainer';
 
 interface UseSwipeScrollOptions {
   itemCount: number;
@@ -51,13 +51,15 @@ export function useSwipeScroll({
     isScrollingProgrammaticallyRef.current = true;
     setCurrentIndex(index);
 
-    const targetLeft = index * window.innerWidth;
-    if (containerRef.current) {
-      containerRef.current.scrollTo({ left: targetLeft, behavior: 'instant' });
+    const el = containerRef.current;
+    const panelWidth = el ? el.clientWidth : window.innerWidth;
+    const targetLeft = index * panelWidth;
+    if (el) {
+      el.scrollTo({ left: targetLeft, behavior: 'instant' });
     }
     requestAnimationFrame(() => {
-      if (containerRef.current && Math.round(containerRef.current.scrollLeft / window.innerWidth) !== index) {
-        containerRef.current.scrollTo({ left: targetLeft, behavior: 'instant' });
+      if (containerRef.current && Math.round(containerRef.current.scrollLeft / (containerRef.current.clientWidth || window.innerWidth)) !== index) {
+        containerRef.current.scrollTo({ left: index * containerRef.current.clientWidth, behavior: 'instant' });
       }
       setTimeout(() => {
         isScrollingProgrammaticallyRef.current = false;
@@ -82,7 +84,7 @@ export function useSwipeScroll({
       }
 
       const scrollLeft = container.scrollLeft;
-      const panelWidth = window.innerWidth;
+      const panelWidth = container.clientWidth;
       const newIndex = Math.round(scrollLeft / panelWidth);
 
       if (newIndex !== currentIndexRef.current && newIndex >= 0 && newIndex < itemCountRef.current) {

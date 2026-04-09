@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import { ThemeToggle } from './ThemeToggle';
 import { useScrollDirection } from '../hooks/useScrollDirection';
-import { useScrollContainer } from '../context/ScrollContainerContext';
+import { useScrollContainer } from '../hooks/useScrollContainer';
 import { clearListSessionState } from '../utils/itemCache';
 import type { FeedType, LocationState } from '../types';
 

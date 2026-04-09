@@ -1,10 +1,12 @@
-import { useParams, Link } from 'react-router-dom';
-import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useInView } from 'react-intersection-observer';
-import { StoryCard, Spinner, StoryCardSkeletonList } from '../components';
+import { StoryCard, Spinner, StoryCardSkeletonList, StateView } from '../components';
 import { ALGOLIA_API } from '../config/api';
 import { normalizeAlgoliaHit } from '../api/hn';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useAutoRetry } from '../hooks/useAutoRetry';
 import type { StoryItem, AlgoliaSearchResponse } from '../types';
 
 export function DomainStories() {
@@ -19,6 +21,7 @@ export function DomainStories() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   const { ref, inView } = useInView({
     threshold: 0,
@@ -26,6 +29,10 @@ export function DomainStories() {
   });
 
   const loadItems = useCallback(async (pageNum = 0, append = false) => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     setError(null);
 
@@ -34,7 +41,7 @@ export function DomainStories() {
       // - restrictSearchableAttributes=url: only search in URL field (not title/author)
       // - search_by_date endpoint: returns newest first, matching HN's /from behavior
       const url = `${ALGOLIA_API}/search_by_date?tags=story&query=${encodeURIComponent(domain)}&restrictSearchableAttributes=url&hitsPerPage=50&page=${pageNum}`;
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: controller.signal });
       
       if (!response.ok) {
         throw new Error(`Failed to fetch stories: ${response.status}`);
@@ -77,11 +84,26 @@ export function DomainStories() {
       setHasMore(data.page < data.nbPages - 1);
       setPage(pageNum);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [domain]);
+
+  const { isOnline } = useNetworkStatus();
+  const retryFn = useCallback(() => {
+    if (stories.length === 0) void loadItems(0, false);
+    else void loadItems(page + 1, true);
+  }, [stories.length, page, loadItems]);
+  const { isRetrying, resetRetry } = useAutoRetry({
+    error,
+    retryFn,
+    isOnline,
+    enabled: !!domain,
+  });
 
   useEffect(() => {
     if (!domain) return;
@@ -89,27 +111,24 @@ export function DomainStories() {
     setPage(0);
     setHasMore(true);
     void loadItems(0, false);
+    return () => abortControllerRef.current?.abort();
   }, [domain, loadItems]);
 
-  // Load more when scrolling near bottom
+  // Load more when scrolling near bottom (don't auto-retry on error — user clicks Retry)
   useEffect(() => {
-    if (inView && !loading && hasMore) {
+    if (inView && !loading && hasMore && !error) {
       void loadItems(page + 1, true);
     }
-  }, [inView, loading, hasMore, page, loadItems]);
+  }, [inView, loading, hasMore, page, loadItems, error]);
 
   if (!domain) {
     return (
-      <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-        <div className="text-center py-8">
-          <p className="text-destructive mb-4">No domain specified</p>
-          <Link
-            to="/"
-            className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
-          >
-            Return to Home
-          </Link>
-        </div>
+      <div className="page-state-center-padded">
+        <StateView
+          variant="not-found"
+          title="No domain specified"
+          action={{ label: 'Return to Home', to: '/' }}
+        />
       </div>
     );
   }
@@ -118,20 +137,22 @@ export function DomainStories() {
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
       {stories.length === 0 && loading ? (
         <StoryCardSkeletonList count={12} />
-      ) : error && stories.length === 0 ? (
-        <div className="text-center py-8">
-          <p className="text-destructive mb-4">Failed to load stories: {error}</p>
-          <button
-            onClick={() => loadItems(0, false)}
-            className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
-          >
-            Try Again
-          </button>
-        </div>
+      ) : error && stories.length === 0 && !isRetrying ? (
+        <StateView
+          variant="error"
+          title="Failed to load items"
+          description={error}
+          action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadItems(0, false); } }}
+          className="page-state-center"
+        />
+      ) : error && stories.length === 0 && isRetrying ? (
+        <StoryCardSkeletonList count={12} />
       ) : stories.length === 0 ? (
-        <p className="text-center text-muted-foreground py-8">
-          No stories found from {domain}
-        </p>
+        <StateView
+          variant="empty"
+          title={`No submissions found from "${domain}"`}
+          className="page-state-center"
+        />
       ) : (
         <>
           <div className="space-y-0 divide-y divide-border">
@@ -148,9 +169,19 @@ export function DomainStories() {
           )}
 
           {!hasMore && stories.length > 0 && (
-            <p className="text-center text-sm text-muted-foreground py-8">
-              You&apos;ve reached the end
-            </p>
+            <StateView variant="end" className="flex flex-col items-center justify-center text-center pt-8" />
+          )}
+
+          {error && stories.length > 0 && !isRetrying && (
+            <div className="pb-4">
+              <StateView variant="error" compact description={error} action={{ label: 'Retry', onClick: () => { resetRetry(); void loadItems(page + 1, true); } }} className="flex items-center justify-center gap-3 py-4 text-center" />
+            </div>
+          )}
+
+          {isRetrying && stories.length > 0 && (
+            <div className="py-4 flex justify-center">
+              <Spinner />
+            </div>
           )}
         </>
       )}

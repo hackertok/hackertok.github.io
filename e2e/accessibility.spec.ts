@@ -192,3 +192,102 @@ test.describe('Accessibility - Dark Mode', () => {
     expect(seriousViolations).toEqual([]);
   });
 });
+
+test.describe('Accessibility - Network Status Bar', () => {
+  test.setTimeout(60000);
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('offline status bar has no critical accessibility violations (light mode)', async ({ page, context, makeAxeBuilder }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/#/');
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+
+    // Go offline to trigger the network status bar
+    await context.setOffline(true);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true });
+      window.dispatchEvent(new Event('offline'));
+    });
+    await expect(page.getByText('No internet connection')).toBeVisible({ timeout: 5000 });
+
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
+
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
+    );
+    expect(seriousViolations).toEqual([]);
+  });
+
+  test('offline status bar has no critical accessibility violations (dark mode)', async ({ page, context, makeAxeBuilder }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/#/');
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+
+    await context.setOffline(true);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true });
+      window.dispatchEvent(new Event('offline'));
+    });
+    await expect(page.getByText('No internet connection')).toBeVisible({ timeout: 5000 });
+
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
+
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
+    );
+    expect(seriousViolations).toEqual([]);
+  });
+});
+
+test.describe('Accessibility - prefers-reduced-motion', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('disables network status bar animations when reduced motion is preferred', async ({ page, context }) => {
+    // Emulate prefers-reduced-motion: reduce
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+
+    await page.goto('/#/');
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+
+    // Go offline to trigger the network status bar
+    await context.setOffline(true);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true });
+      window.dispatchEvent(new Event('offline'));
+    });
+    await expect(page.getByText('No internet connection')).toBeVisible({ timeout: 5000 });
+
+    // The bar should have animation: none (not the slide-up keyframe)
+    const barAnimation = await page.evaluate(() => {
+      const bar = document.querySelector('.network-status-bar');
+      return bar ? getComputedStyle(bar).animationName : null;
+    });
+    expect(barAnimation).toBe('none');
+  });
+
+  test('disables StateView scene animations when reduced motion is preferred', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+
+    // Navigate to a non-existent item to trigger StateView with animated scene
+    await page.goto('/#/item/99999999');
+    await expect(page.getByText(/not found/i)).toBeVisible();
+
+    // The .sv-scene and its children should have animation-iteration-count: 1
+    const sceneAnimation = await page.evaluate(() => {
+      const scene = document.querySelector('.sv-scene');
+      if (!scene) return null;
+      const style = getComputedStyle(scene);
+      return { iterationCount: style.animationIterationCount };
+    });
+    expect(sceneAnimation).toBeTruthy();
+    expect(sceneAnimation!.iterationCount).toBe('1');
+  });
+});

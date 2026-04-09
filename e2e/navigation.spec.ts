@@ -144,3 +144,58 @@ test.describe('Navigation - Header Visibility', () => {
     await expect(header).toBeVisible();
   });
 });
+
+test.describe('Navigation - Viewport Resize Transition', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('switches from desktop list to mobile swipe on resize', async ({ page }) => {
+    // Start on desktop
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/#/');
+
+    // Desktop: list view, no swipe container
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expect(page.getByTestId('swipe-container')).not.toBeVisible();
+
+    // Resize to mobile width
+    await page.setViewportSize({ width: 375, height: 667 });
+
+    // Mobile: swipe container should appear
+    await expect(page.getByTestId('swipe-container')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('switches from mobile swipe to desktop list on resize', async ({ page }) => {
+    // Start on mobile
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto('/#/');
+
+    // Mobile: swipe container visible
+    await expect(page.getByTestId('swipe-container')).toBeVisible({ timeout: 5000 });
+
+    // Resize to desktop width
+    await page.setViewportSize({ width: 1280, height: 720 });
+
+    // Desktop: list view (story cards), no swipe container
+    await expect(page.getByTestId('swipe-container')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+  });
+
+  test('no layout overflow during desktop-to-mobile transition', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/#/');
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+
+    // Resize to mobile
+    await page.setViewportSize({ width: 375, height: 667 });
+    await expect(page.getByTestId('swipe-container')).toBeVisible({ timeout: 5000 });
+
+    // No horizontal overflow
+    const { docWidth, vpWidth } = await page.evaluate(() => ({
+      docWidth: document.documentElement.scrollWidth,
+      vpWidth: window.innerWidth,
+    }));
+    expect(docWidth).toBeLessThanOrEqual(vpWidth);
+  });
+});

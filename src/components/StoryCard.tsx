@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
-import { formatTimeAgo, getHostname } from '../api/hn';
+import { formatTimeAgo, formatAbsoluteTime, safeISOString, getHostname } from '../api/hn';
 import { usePrefetchItem, cancelAllPrefetches } from '../hooks/usePrefetchItem';
 import { useIsViewed, markViewedWithTime } from '../utils/viewedItems';
 import type { StoryItem } from '../types';
@@ -142,7 +142,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
           <span>{story.points ?? 0} points</span>
           <span> by </span>
           <span>{story.author || 'unknown'}</span>
-          <span> {formatTimeAgo(story.createdAt)}</span>
+          {' '}<time dateTime={safeISOString(story.createdAt)} title={formatAbsoluteTime(story.createdAt)}>{formatTimeAgo(story.createdAt)}</time>
           <span className="mx-1.5">|</span>
           <Link
             to={`/item/${story.id}`}
