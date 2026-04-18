@@ -290,6 +290,28 @@ export async function setupApiMocks(page: Page) {
 }
 
 /**
+ * Stub the Algolia `search_by_date` endpoint to return an empty result for a
+ * specific domain query. Any other query is passed through to whatever mock
+ * is already installed (e.g. the default handler from {@link setupApiMocks}).
+ *
+ * Shared by the desktop list and mobile swipe empty-state tests so a single
+ * helper owns the empty-response shape.
+ */
+export async function stubEmptyDomainSearch(page: Page, domain: string) {
+  await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
+    const url = new URL(route.request().url());
+    const query = url.searchParams.get('query') ?? '';
+    if (query.includes(domain)) {
+      await route.fulfill({
+        json: { hits: [], nbHits: 0, page: 0, nbPages: 0, hitsPerPage: 50 },
+      });
+    } else {
+      await route.continue();
+    }
+  });
+}
+
+/**
  * Mock an empty items response
  */
 export async function mockEmptyItems(page: Page) {

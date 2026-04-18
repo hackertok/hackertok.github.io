@@ -105,6 +105,12 @@ export default defineConfig([
     rules: {
       ...vitest.configs.recommended.rules,
       '@typescript-eslint/unbound-method': 'off',
+      // Allow `expect*`-prefixed helpers to count as assertions so tests can
+      // delegate to shared helpers (e.g. `expectRemountHitsCache`) without
+      // the rule complaining about missing `expect(...)` in the test body.
+      'vitest/expect-expect': ['error', {
+        assertFunctionNames: ['expect', 'expect*'],
+      }],
     },
   },
   // e2e tests: TS parser without type-checking (not in tsconfig)

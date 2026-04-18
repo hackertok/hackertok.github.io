@@ -1,19 +1,26 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { formatTimeAgo, formatAbsoluteTime, safeISOString, getHostname } from '../api/hn';
 import { usePrefetchItem, cancelAllPrefetches } from '../hooks/usePrefetchItem';
 import { useIsViewed, markViewedWithTime } from '../utils/viewedItems';
-import type { StoryItem } from '../types';
+import type { StoryItem, LocationState, FeedType } from '../types';
 
 interface StoryCardProps {
   story: StoryItem;
   index?: number;
   listType?: string;
+  /**
+   * When set, internal links (title for text posts, comments) write
+   * `{ fromDomain }` into location.state instead of `{ from: listType }`.
+   * This keeps the Header's "from" indicator active and ItemDetail's
+   * back link pointing at the domain page across navigation.
+   */
+  fromDomain?: string;
   onBeforeNavigate?: () => void;
 }
 
-export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate }: StoryCardProps) {
+export function StoryCard({ story, index = 0, listType = 'top', fromDomain, onBeforeNavigate }: StoryCardProps) {
   const hostname = getHostname(story.url);
   const { startPrefetch, stopPrefetch } = usePrefetchItem();
   const isPrefetchingRef = useRef(false);
@@ -37,6 +44,15 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
   
   // Reactive viewed status from localStorage store
   const viewed = useIsViewed(story.id);
+
+  // When rendered from a domain list, prefer fromDomain so the Header's
+  // "from" indicator stays active on the item detail page and the back
+  // action in ItemDetail resolves to /from/:domain instead of the default
+  // feed. Otherwise fall back to the list-type feed name.
+  const linkState: LocationState = useMemo(
+    () => (fromDomain ? { fromDomain } : { from: listType as FeedType }),
+    [fromDomain, listType],
+  );
   
   // Handle internal title click: mark as viewed, save session state and cancel prefetches
   const handleTitleClick = () => {
@@ -114,7 +130,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
           ) : (
             <Link
               to={`/item/${story.id}`}
-              state={{ from: listType }}
+              state={linkState}
               onClick={handleTitleClick}
               className={`hover:text-accent transition-colors ${
                 viewed
@@ -146,7 +162,7 @@ export function StoryCard({ story, index = 0, listType = 'top', onBeforeNavigate
           <span className="mx-1.5">|</span>
           <Link
             to={`/item/${story.id}`}
-            state={{ from: listType }}
+            state={linkState}
             onClick={handleCommentsClick}
             className="hover:text-accent transition-colors"
           >

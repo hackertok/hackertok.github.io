@@ -1,125 +1,56 @@
 import { useParams } from 'react-router-dom';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { StoryCard, Spinner, StoryCardSkeletonList, StateView } from '../components';
-import { ALGOLIA_API } from '../config/api';
-import { normalizeAlgoliaHit } from '../api/hn';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
-import type { StoryItem, AlgoliaSearchResponse } from '../types';
+import {
+  useDomainInfiniteStories,
+  canonicalizeDomain,
+  formatNoSubmissionsTitle,
+} from '../hooks/useDomainInfiniteStories';
 
 export function DomainStories() {
   // Use wildcard param to capture paths like github.com/foo
   const params = useParams();
-  const domain = params['*'] ?? '';
-  
+  const rawDomain = params['*'] ?? '';
+  // Canonicalize so the title, empty state, and the `fromDomain` prop
+  // propagated into `location.state` via StoryCard all agree with the hook's
+  // internal cache key. Without this, a desktop visit to `/from/WWW.Foo.com`
+  // would write `state.fromDomain: 'WWW.Foo.com'` onto item navigations, and
+  // a subsequent back nav would land on a non-canonical URL.
+  const domain = canonicalizeDomain(rawDomain);
+
   // Set document title to show which domain (falls back to default "HackerTok" when empty)
   useDocumentTitle(domain ? `Submissions from ${domain}` : undefined);
-  const [stories, setStories] = useState<StoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  
+
+  const { stories, loading, error, hasMore, loadMore } = useDomainInfiniteStories(domain);
+
   const { ref, inView } = useInView({
     threshold: 0,
     rootMargin: '200px',
   });
 
-  const loadItems = useCallback(async (pageNum = 0, append = false) => {
-    abortControllerRef.current?.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Use Algolia search_by_date to find items from this domain
-      // - restrictSearchableAttributes=url: only search in URL field (not title/author)
-      // - search_by_date endpoint: returns newest first, matching HN's /from behavior
-      const url = `${ALGOLIA_API}/search_by_date?tags=story&query=${encodeURIComponent(domain)}&restrictSearchableAttributes=url&hitsPerPage=50&page=${pageNum}`;
-      const response = await fetch(url, { signal: controller.signal });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch stories: ${response.status}`);
-      }
-
-      const data = await response.json() as AlgoliaSearchResponse;
-      
-      // Filter to only include stories actually from this domain/path
-      // domain can be "github.com" or "github.com/foo"
-      const domainStories: StoryItem[] = data.hits
-        .filter((hit) => {
-          if (!hit.url) return false;
-          try {
-            const parsed = new URL(hit.url);
-            const hostname = parsed.hostname.replace(/^www\./, '');
-            const fullPath = hostname + parsed.pathname;
-            
-            // Check if URL starts with our domain filter
-            // e.g., domain="github.com/microsoft" matches "github.com/microsoft/foo"
-            return fullPath.startsWith(domain) || 
-                   hostname === domain || 
-                   hostname.endsWith(`.${domain}`);
-          } catch {
-            return false;
-          }
-        })
-        .map(normalizeAlgoliaHit);
-
-      if (append) {
-        // Deduplicate when appending
-        setStories(prev => {
-          const existingIds = new Set(prev.map(s => s.id));
-          const newStories = domainStories.filter(s => !existingIds.has(s.id));
-          return [...prev, ...newStories];
-        });
-      } else {
-        setStories(domainStories);
-      }
-
-      setHasMore(data.page < data.nbPages - 1);
-      setPage(pageNum);
-    } catch (err) {
-      if (controller.signal.aborted) return;
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
-    }
-  }, [domain]);
-
   const { isOnline } = useNetworkStatus();
-  const retryFn = useCallback(() => {
-    if (stories.length === 0) void loadItems(0, false);
-    else void loadItems(page + 1, true);
-  }, [stories.length, page, loadItems]);
   const { isRetrying, resetRetry } = useAutoRetry({
     error,
-    retryFn,
+    retryFn: () => void loadMore(),
     isOnline,
     enabled: !!domain,
   });
 
-  useEffect(() => {
-    if (!domain) return;
-    setStories([]);
-    setPage(0);
-    setHasMore(true);
-    void loadItems(0, false);
-    return () => abortControllerRef.current?.abort();
-  }, [domain, loadItems]);
-
   // Load more when scrolling near bottom (don't auto-retry on error — user clicks Retry)
   useEffect(() => {
     if (inView && !loading && hasMore && !error) {
-      void loadItems(page + 1, true);
+      void loadMore();
     }
-  }, [inView, loading, hasMore, page, loadItems, error]);
+  }, [inView, loading, hasMore, error, loadMore]);
+
+  const retryLoadMore = useCallback(() => {
+    resetRetry();
+    void loadMore();
+  }, [resetRetry, loadMore]);
 
   if (!domain) {
     return (
@@ -142,7 +73,7 @@ export function DomainStories() {
           variant="error"
           title="Failed to load items"
           description={error}
-          action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadItems(0, false); } }}
+          action={{ label: 'Try Again', onClick: retryLoadMore }}
           className="page-state-center"
         />
       ) : error && stories.length === 0 && isRetrying ? (
@@ -150,14 +81,14 @@ export function DomainStories() {
       ) : stories.length === 0 ? (
         <StateView
           variant="empty"
-          title={`No submissions found from "${domain}"`}
+          title={formatNoSubmissionsTitle(domain)}
           className="page-state-center"
         />
       ) : (
         <>
           <div className="space-y-0 divide-y divide-border">
             {stories.map(story => (
-              <StoryCard key={story.id} story={story} />
+              <StoryCard key={story.id} story={story} fromDomain={domain} />
             ))}
           </div>
 
@@ -174,7 +105,7 @@ export function DomainStories() {
 
           {error && stories.length > 0 && !isRetrying && (
             <div className="pb-4">
-              <StateView variant="error" compact description={error} action={{ label: 'Retry', onClick: () => { resetRetry(); void loadItems(page + 1, true); } }} className="flex items-center justify-center gap-3 py-4 text-center" />
+              <StateView variant="error" compact description={error} action={{ label: 'Retry', onClick: retryLoadMore }} className="flex items-center justify-center gap-3 py-4 text-center" />
             </div>
           )}
 

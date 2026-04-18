@@ -153,4 +153,68 @@ describe('Header', () => {
       expect(askLink).not.toHaveClass('bg-accent');
     });
   });
+
+  describe('from indicator', () => {
+    const fromIndicator = () =>
+      screen.queryByText('from', { selector: 'header nav span' });
+
+    it('shows "from" indicator on /from/:domain list/swipe route', () => {
+      render(<Header />, { initialEntries: ['/from/example.com'] });
+
+      const indicator = fromIndicator();
+      expect(indicator).not.toBeNull();
+      expect(indicator).toHaveClass('bg-accent');
+    });
+
+    it('keeps "from" visible on item detail when navigated from a domain', () => {
+      // Covers both (a) the mobile swipe viewer rewriting /from/:domain to
+      // /item/:id with state.fromDomain and (b) desktop StoryCard writing
+      // state.fromDomain on internal navigation from a domain list.
+      render(<Header />, {
+        initialEntries: [
+          { pathname: '/item/12345', state: { fromDomain: 'example.com' } },
+        ],
+      });
+
+      const indicator = fromIndicator();
+      expect(indicator).not.toBeNull();
+      expect(indicator).toHaveClass('bg-accent');
+    });
+
+    it('hides "from" on item detail without fromDomain state', () => {
+      render(<Header />, {
+        initialEntries: [{ pathname: '/item/12345', state: { from: 'best' } }],
+      });
+
+      expect(fromIndicator()).toBeNull();
+    });
+
+    it('hides "from" on item detail with no navigation state at all', () => {
+      render(<Header />, { initialEntries: ['/item/12345'] });
+
+      expect(fromIndicator()).toBeNull();
+    });
+
+    it('hides "from" when viewing a comment even if fromDomain is present', () => {
+      // Comment view has its own "comments" indicator; suppress "from" to
+      // mirror how feed tabs deactivate in comment view and avoid two
+      // highlighted indicators competing for the same slot.
+      render(<Header />, {
+        initialEntries: [
+          {
+            pathname: '/item/12345',
+            state: { fromDomain: 'example.com', isComment: true },
+          },
+        ],
+      });
+
+      expect(fromIndicator()).toBeNull();
+    });
+
+    it('hides "from" on feed pages', () => {
+      render(<Header />, { initialEntries: ['/best'] });
+
+      expect(fromIndicator()).toBeNull();
+    });
+  });
 });

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
-import { Header, ErrorBoundary, SwipeStoryViewer, SwipeCommentViewer, FullScreenCommentSkeleton, StateView, NetworkStatusBar } from './components';
+import { Header, ErrorBoundary, SwipeStoryViewer, SwipeDomainStoryViewer, SwipeCommentViewer, FullScreenCommentSkeleton, StateView, NetworkStatusBar } from './components';
 import { StoryList, ItemDetail, DomainStories } from './pages';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
@@ -22,6 +22,23 @@ function MobileStoryListWrapper({ type }: { type: FeedType }) {
   return <StoryList type={type} />;
 }
 
+// Mobile wrapper for domain filter pages - shows SwipeDomainStoryViewer on mobile, DomainStories list on desktop.
+// Falls through to the desktop list when the URL has no domain (empty `/from/`) so the
+// "No domain specified" fallback in DomainStories handles it consistently on both platforms.
+function MobileDomainStoriesWrapper() {
+  const params = useParams();
+  const domain = params['*'] ?? '';
+  const isMobile = useIsMobile();
+
+  if (isMobile && domain) {
+    // key={domain} forces a clean remount on domain change so the hook's lazy
+    // useState init re-reads the module-level cache for the new domain.
+    return <SwipeDomainStoryViewer key={domain} domain={domain} />;
+  }
+
+  return <DomainStories />;
+}
+
 // Mobile wrapper for item detail - routes to correct viewer based on item type
 function MobileItemDetailWrapper() {
   const { id } = useParams();
@@ -36,13 +53,21 @@ function MobileItemDetailWrapper() {
       return <SwipeCommentViewer initialCommentId={id} />;
     }
 
-    // Branch 2: Known story feed → SwipeStoryViewer (existing zero-latency path)
+    // Branch 2: Known domain swipe → SwipeDomainStoryViewer.
+    // Ordered before the `from` branch so /item/:id with fromDomain picks up
+    // the domain viewer; `from` and `fromDomain` are written mutually
+    // exclusively by their respective viewers today.
+    if (state?.fromDomain) {
+      return <SwipeDomainStoryViewer key={state.fromDomain} domain={state.fromDomain} initialItemId={id} />;
+    }
+
+    // Branch 3: Known story feed → SwipeStoryViewer (existing zero-latency path)
     if (state?.from) {
       const type = state.from;
       return <SwipeStoryViewer key={type} type={type} initialItemId={id} />;
     }
 
-    // Branch 3: Direct URL (no state) → resolve type first
+    // Branch 4: Direct URL (no state) → resolve type first
     return <MobileItemResolver id={id ?? ''} />;
   }
   
@@ -136,7 +161,7 @@ function App() {
                   <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
                   <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
                   <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
-                  <Route path="/from/*" element={<DomainStories />} />
+                  <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </MainContent>

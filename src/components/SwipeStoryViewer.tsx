@@ -14,31 +14,56 @@ import { FullScreenItem, FullScreenItemSkeleton } from './FullScreenItem';
 import { StateView } from './StateView';
 import type { StoryItem, FeedType, LocationState } from '../types';
 
-interface SwipeStoryViewerProps {
-  type: FeedType;
+interface SwipeStoryViewerCoreProps {
+  /** Story data from the consumer's data source (feed, domain, etc.) */
+  stories: StoryItem[];
+  loading: boolean;
+  error: string | null;
+  hasMore: boolean;
+  loadMore: () => Promise<void>;
+  /** ID of the story landed on via /item/:id — triggers anchor/scroll-init */
   initialItemId?: string;
+  /** LocationState written to per-item URL via navigate(..., { state }). Also used
+   *  to detect history-navigation vs fresh direct link (determines anchor behavior). */
+  backState: LocationState;
+  /** Target of the "Back to feed" action in the injected-error UI */
+  backHref: string;
+  /** Document-title fallback when no current story is selected */
+  titleFallback?: string;
+  /** When provided, a "no results" state is rendered after the fetch completes
+   *  with zero stories and no initialItemId. Feeds omit this to preserve the
+   *  existing fall-through behavior (they are never truly empty). */
+  emptyTitle?: string;
 }
 
 /**
- * Full-screen horizontal swipe item viewer for mobile
- * Uses CSS Scroll Snap for native, smooth horizontal swiping
+ * Data-source-agnostic full-screen horizontal swipe viewer.
+ * Uses CSS Scroll Snap for native, smooth horizontal swiping.
  * - Horizontal swipe: CSS Scroll Snap handles navigation natively
  * - Vertical scroll: Each item panel scrolls independently
- * - URL updates on each item change
+ * - URL updates on each item change (carries `backState`)
+ *
+ * All feed-specific wiring (data source, prefetch sections, back link, URL state)
+ * is injected via props so both `SwipeStoryViewer` (feeds) and
+ * `SwipeDomainStoryViewer` (domain-filtered) can share this implementation.
  */
-export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps) {
+export function SwipeStoryViewerCore({
+  stories,
+  loading,
+  error,
+  hasMore,
+  loadMore,
+  initialItemId,
+  backState,
+  backHref,
+  titleFallback,
+  emptyTitle,
+}: SwipeStoryViewerCoreProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
   const initialItemIdNum = initialItemId != null ? Number(initialItemId) : undefined;
-  const { 
-    stories, 
-    loading, 
-    error, 
-    hasMore, 
-    loadMore 
-  } = useInfiniteStories(type);
-  
+
   const [injectedStory, setInjectedStory] = useState<StoryItem | null>(null);
   const [injectedLoading, setInjectedLoading] = useState(false);
   const [injectedError, setInjectedError] = useState<string | null>(null);
@@ -47,8 +72,10 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
   // Only set on FRESH direct links (shared/bookmarked URLs with no location.state).
   // When returning from external URL, location.state is preserved from our earlier navigation,
   // so we DON'T reorder (user expects to return to same position).
+  // Recognizes both `from` (feed context) and `fromDomain` (domain context).
   const [anchorStoryId, setAnchorStoryId] = useState<number | null>(() => {
-    return locationState?.from ? null : initialItemIdNum ?? null;
+    const isHistoryNav = !!(locationState?.from ?? locationState?.fromDomain);
+    return isHistoryNav ? null : initialItemIdNum ?? null;
   });
   const lastInitialStoryIdRef = useRef(initialItemId);
   const didInitialLoadRef = useRef(false);
@@ -142,11 +169,8 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     ? (isInjectedNotFound ? (isNonStoryError ? 'Item not available' : 'Item not found') : 'Failed to load item')
     : (error && mergedStories.length === 0) ? 'Failed to load item'
     : isOnline && isAtEndError && giveUp ? 'Failed to load item'
-    : (currentStory?.title || FEED_TYPE_TITLES[type]);
+    : (currentStory?.title || titleFallback);
   useDocumentTitle(documentTitle);
-  
-  // Prefetch other sections in background for instant tab switching
-  usePrefetchSections(type);
   
   // Trigger initial load when stories are empty or low
   useEffect(() => {
@@ -312,8 +336,10 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
       lastInitialStoryIdRef.current = initialItemId;
       
       if (initialItemId) {
-        // Check if this is a fresh direct link (no location.state) or history navigation
-        const isHistoryNavigation = !!locationState?.from;
+        // Check if this is a fresh direct link (no location.state) or history navigation.
+        // History navigation carries our previously-written state (`from` for feeds,
+        // `fromDomain` for domain swipe) — either signals "don't reorder".
+        const isHistoryNavigation = !!(locationState?.from ?? locationState?.fromDomain);
         
         if (isHistoryNavigation) {
           // History navigation (browser back/forward, return from external)
@@ -425,11 +451,11 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
         // section instead.
         void navigate(newPath, { 
           replace: true, 
-          state: { from: type }
+          state: backState,
         });
       }
     }
-  }, [currentIndex, mergedStories, navigate, location.pathname, type, injectedError, initialItemId, initialItemIdNum, injectedStory, isScrollingProgrammaticallyRef]);
+  }, [currentIndex, mergedStories, navigate, location.pathname, backState, injectedError, initialItemId, initialItemIdNum, injectedStory, isScrollingProgrammaticallyRef]);
   
   if (injectedError) {
     return (
@@ -438,7 +464,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
           variant={isInjectedNotFound ? 'not-found' : 'error'}
           title={isNonStoryError ? 'This item is not a story' : isInjectedNotFound ? undefined : 'Failed to load item'}
           description={isInjectedNotFound ? undefined : injectedError}
-          action={isInjectedNotFound ? { label: 'Back to feed', to: FEED_PATHS[type] } : { label: 'Try Again', onClick: () => void navigate(0) }}
+          action={isInjectedNotFound ? { label: 'Back to feed', to: backHref } : { label: 'Try Again', onClick: () => void navigate(0) }}
         />
       </div>
     );
@@ -490,6 +516,26 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
         <div className="swipe-snap-panel" data-testid="swipe-panel">
           <FullScreenItemSkeleton />
         </div>
+      </div>
+    );
+  }
+
+  // No-results state: fetch completed, nothing came back, and we're not waiting on
+  // a direct-link injection. Gated on `emptyTitle` so feeds (which never pass one)
+  // keep falling through to the existing rendering. Domain wrappers pass an explicit
+  // title so users see a meaningful message instead of an empty snap container.
+  if (
+    emptyTitle &&
+    mergedStories.length === 0 &&
+    !loading &&
+    !injectedLoading &&
+    !error &&
+    !injectedError &&
+    !initialItemId
+  ) {
+    return (
+      <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
+        <StateView variant="empty" title={emptyTitle} />
       </div>
     );
   }
@@ -557,5 +603,39 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
         </div>
       )}
     </div>
+  );
+}
+
+interface SwipeStoryViewerProps {
+  type: FeedType;
+  initialItemId?: string;
+}
+
+/**
+ * Feed-backed swipe viewer. Thin wrapper over {@link SwipeStoryViewerCore}
+ * that sources data from `useInfiniteStories(type)` and triggers the
+ * cross-section prefetch warm-up.
+ */
+export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps) {
+  const { stories, loading, error, hasMore, loadMore } = useInfiniteStories(type);
+
+  // Prefetch other sections in background for instant tab switching
+  usePrefetchSections(type);
+
+  // Stable identity so SwipeStoryViewerCore's URL-sync effect does not re-run on every parent re-render.
+  const backState = useMemo(() => ({ from: type }), [type]);
+
+  return (
+    <SwipeStoryViewerCore
+      stories={stories}
+      loading={loading}
+      error={error}
+      hasMore={hasMore}
+      loadMore={loadMore}
+      initialItemId={initialItemId}
+      backState={backState}
+      backHref={FEED_PATHS[type]}
+      titleFallback={FEED_TYPE_TITLES[type]}
+    />
   );
 }
