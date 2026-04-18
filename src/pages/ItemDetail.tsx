@@ -11,8 +11,17 @@ import type { LocationState } from '../types';
 export function ItemDetail() {
   const { id } = useParams();
   const location = useLocation();
-  const feedFrom = (location.state as LocationState | null)?.from;
-  const feedPath = feedFrom ? FEED_PATHS[feedFrom] : '/';
+  const locationState = location.state as LocationState | null;
+  // Back target for the "Back to feed" action on error/not-found states.
+  // Prefer fromDomain (domain-filtered origin) over feed because the domain
+  // page is a more specific origin; default to home when neither is known.
+  const feedFrom = locationState?.from;
+  const fromDomain = locationState?.fromDomain;
+  const feedPath = fromDomain
+    ? `/from/${fromDomain}`
+    : feedFrom
+      ? FEED_PATHS[feedFrom]
+      : '/';
   const { item, comments, itemLoading, commentsLoading, error, isNotFound, commentsError, refresh } = useItemWithComments(id ?? '');
 
   const { isOnline } = useNetworkStatus();

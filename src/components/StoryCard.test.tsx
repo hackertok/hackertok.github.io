@@ -1,10 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { render } from '../test/test-utils';
 import { StoryCard } from './StoryCard';
 import { clearViewed, markViewedWithTime } from '../utils/viewedItems';
 import { createStoryItem } from '../test/factories';
 import type { StoryItem } from '../types';
+
+// Route consumer that echoes the post-navigation location.state into the DOM
+// so tests can assert what StoryCard wrote into `state` on link click.
+function StateEchoer() {
+  const location = useLocation();
+  return (
+    <div data-testid="echoed-state">
+      {JSON.stringify(location.state)}
+    </div>
+  );
+}
 
 describe('StoryCard', () => {
   const mockStory = createStoryItem({
@@ -192,6 +204,79 @@ describe('StoryCard', () => {
       
       const titleLink = screen.getByRole('link', { name: /Ask HN/i });
       expect(titleLink).toHaveAttribute('href', expect.stringContaining('/item/67890'));
+    });
+
+    it('writes state.fromDomain (not state.from) when fromDomain prop is set', () => {
+      // Mount the card under a Routes tree so we can follow the navigation
+      // and read back what ended up in location.state.
+      render(
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <StoryCard
+                story={mockTextStory}
+                listType="top"
+                fromDomain="example.com"
+              />
+            }
+          />
+          <Route path="/item/:id" element={<StateEchoer />} />
+        </Routes>,
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: /Ask HN/i }));
+
+      const echoed = screen.getByTestId('echoed-state').textContent;
+      expect(echoed).toBeTruthy();
+      const state = JSON.parse(echoed ?? '{}') as {
+        from?: string;
+        fromDomain?: string;
+      };
+      expect(state.fromDomain).toBe('example.com');
+      expect(state.from).toBeUndefined();
+    });
+
+    it('writes state.fromDomain on comments link when fromDomain prop is set', () => {
+      render(
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <StoryCard story={mockStory} fromDomain="example.com" />
+            }
+          />
+          <Route path="/item/:id" element={<StateEchoer />} />
+        </Routes>,
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: /42 comments/i }));
+
+      const state = JSON.parse(
+        screen.getByTestId('echoed-state').textContent ?? '{}',
+      ) as { from?: string; fromDomain?: string };
+      expect(state.fromDomain).toBe('example.com');
+      expect(state.from).toBeUndefined();
+    });
+
+    it('falls back to state.from when fromDomain is not provided', () => {
+      render(
+        <Routes>
+          <Route
+            path="/"
+            element={<StoryCard story={mockTextStory} listType="best" />}
+          />
+          <Route path="/item/:id" element={<StateEchoer />} />
+        </Routes>,
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: /Ask HN/i }));
+
+      const state = JSON.parse(
+        screen.getByTestId('echoed-state').textContent ?? '{}',
+      ) as { from?: string; fromDomain?: string };
+      expect(state.from).toBe('best');
+      expect(state.fromDomain).toBeUndefined();
     });
   });
 });

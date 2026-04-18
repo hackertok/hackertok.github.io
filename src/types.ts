@@ -173,5 +173,6 @@ export interface ScrollContainerContextValue {
 
 export interface LocationState {
   from?: FeedType;
+  fromDomain?: string;
   isComment?: boolean;
 }

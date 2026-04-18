@@ -23,8 +23,17 @@ export function Header() {
       (location.pathname.startsWith('/item/') && locationState?.from === feed)
     );
 
-  // Show "from" tab only when viewing domain stories
-  const isFromActive = location.pathname.startsWith('/from/');
+  // "from" indicator is active when browsing a domain — either on the
+  // domain list/swipe route itself, or on an item detail page that carries
+  // a `fromDomain` in location state (the mobile swipe viewer rewrites
+  // `/from/:domain` to `/item/:id` per-item with fromDomain preserved, and
+  // StoryCard on desktop writes fromDomain when its parent list is a domain).
+  // Hidden in comment view for consistency with feed tabs, which defer to
+  // the dedicated "comments" indicator.
+  const isFromActive = !isCommentView && (
+    location.pathname.startsWith('/from/') ||
+    (location.pathname.startsWith('/item/') && !!locationState?.fromDomain)
+  );
   
   // On mobile: 
   // - In swipe mode: always visible (like desktop)
