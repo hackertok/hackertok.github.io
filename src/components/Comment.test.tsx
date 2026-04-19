@@ -58,6 +58,21 @@ describe('Comment', () => {
       expect(screen.getByText('Safe text')).toBeInTheDocument();
       expect(screen.queryByText('alert')).not.toBeInTheDocument();
     });
+
+    // Integration smoke test for the sanitize → dangerouslySetInnerHTML path.
+    // The unit suite in `utils/sanitize.test.ts` covers `sanitizeHtml`'s
+    // output; this asserts the rewrite actually reaches the rendered DOM
+    // and isn't bypassed by a future refactor of `Comment.tsx`.
+    it('rewrites HN item links in the rendered DOM', () => {
+      const commentWithHnLink = {
+        ...mockComment,
+        text: '<p>See <a href="https://news.ycombinator.com/item?id=99999">https://news.ycombinator.com/item?id=99999</a></p>',
+      };
+      const { container } = render(<Comment comment={commentWithHnLink} />);
+      const link = container.querySelector('.comment-content a');
+      expect(link?.getAttribute('href')).toBe('#/item/99999');
+      expect(link?.textContent).toBe('item:99999');
+    });
   });
 
   describe('nested comments', () => {

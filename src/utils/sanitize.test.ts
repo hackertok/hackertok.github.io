@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import DOMPurify from 'dompurify';
 import { sanitizeHtml } from './sanitize';
 
 describe('sanitizeHtml', () => {
@@ -145,5 +146,370 @@ describe('sanitizeHtml', () => {
       expect(result).toContain('after');
       expect(result).not.toContain('<script>');
     });
+  });
+
+  describe('HN/self link rewriting', () => {
+    describe('HN item href', () => {
+      it('rewrites canonical https item link', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/item?id=45615867">link</a>');
+        expect(result).toContain('href="#/item/45615867"');
+        expect(result).not.toContain('news.ycombinator.com');
+      });
+
+      it('rewrites http variant', () => {
+        const result = sanitizeHtml('<a href="http://news.ycombinator.com/item?id=45615867">link</a>');
+        expect(result).toContain('href="#/item/45615867"');
+      });
+
+      it('rewrites www subdomain variant', () => {
+        const result = sanitizeHtml('<a href="https://www.news.ycombinator.com/item?id=45615867">link</a>');
+        expect(result).toContain('href="#/item/45615867"');
+      });
+
+      it('prefers numeric URL fragment over id query param (?id=A#B)', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/item?id=111#222">link</a>');
+        expect(result).toContain('href="#/item/222"');
+      });
+
+      it('falls back to id query param when fragment is non-numeric', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/item?id=111#non-numeric">link</a>');
+        expect(result).toContain('href="#/item/111"');
+      });
+
+      it('leaves /item with no id unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/item">link</a>');
+        expect(result).toContain('href="https://news.ycombinator.com/item"');
+      });
+
+      it('rewrites /item/?id=X with trailing slash on path', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/item/?id=45615867">link</a>');
+        expect(result).toContain('href="#/item/45615867"');
+      });
+
+      it('rewrites protocol-relative HN URL using current location as base', () => {
+        const result = sanitizeHtml('<a href="//news.ycombinator.com/item?id=45615867">link</a>');
+        expect(result).toContain('href="#/item/45615867"');
+      });
+    });
+
+    describe('HN from href', () => {
+      it('rewrites simple domain', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/from?site=example.com">link</a>');
+        expect(result).toContain('href="#/from/example.com"');
+      });
+
+      it('preserves single path segment in site param', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/from?site=github.com/torvalds">link</a>');
+        expect(result).toContain('href="#/from/github.com/torvalds"');
+      });
+
+      it('leaves empty site param unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/from?site=">link</a>');
+        expect(result).toContain('href="https://news.ycombinator.com/from?site="');
+      });
+
+      it('leaves site param with disallowed chars unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/from?site=evil%23xss">link</a>');
+        expect(result).not.toContain('href="#/from/');
+      });
+
+      it('leaves /from with no site param unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/from">link</a>');
+        expect(result).toContain('href="https://news.ycombinator.com/from"');
+      });
+
+      it('rewrites /from/?site=X with trailing slash on path', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/from/?site=example.com">link</a>');
+        expect(result).toContain('href="#/from/example.com"');
+      });
+    });
+
+    describe('HN feed href', () => {
+      it('rewrites /show', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/show">link</a>');
+        expect(result).toContain('href="#/show"');
+      });
+
+      it('rewrites /ask', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/ask">link</a>');
+        expect(result).toContain('href="#/ask"');
+      });
+
+      it('rewrites /best', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/best">link</a>');
+        expect(result).toContain('href="#/best"');
+      });
+
+      it('drops query string on feed rewrite', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/show?p=2">link</a>');
+        expect(result).toContain('href="#/show"');
+        expect(result).not.toContain('p=2');
+      });
+    });
+
+    describe('self (HackerTok) href', () => {
+      it('rewrites hash-form item link', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/#/item/47816960">link</a>');
+        expect(result).toContain('href="#/item/47816960"');
+      });
+
+      it('rewrites non-hash item link (skips redirect script)', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/item/47816960">link</a>');
+        expect(result).toContain('href="#/item/47816960"');
+      });
+
+      it('rewrites self /#/from/<site>', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/#/from/example.com">link</a>');
+        expect(result).toContain('href="#/from/example.com"');
+      });
+
+      it('rewrites self non-hash /from/<site>', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/from/example.com">link</a>');
+        expect(result).toContain('href="#/from/example.com"');
+      });
+
+      it('rewrites self /#/show', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/#/show">link</a>');
+        expect(result).toContain('href="#/show"');
+      });
+
+      it('rewrites self non-hash /show', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/show">link</a>');
+        expect(result).toContain('href="#/show"');
+      });
+
+      it('rewrites runtime-host self link (jsdom hostname is localhost)', () => {
+        const result = sanitizeHtml('<a href="http://localhost/#/item/47816960">link</a>');
+        expect(result).toContain('href="#/item/47816960"');
+      });
+
+      // Exercises the host-relative path that `parseSafeUrl`'s base-URL
+      // resolution was added to support (`/item/123` resolved against the
+      // current location). Without the base, `new URL('/item/123')` throws.
+      it('rewrites host-relative item link on self host (jsdom hostname is localhost)', () => {
+        const result = sanitizeHtml('<a href="/item/47816960">link</a>');
+        expect(result).toContain('href="#/item/47816960"');
+      });
+
+      it('leaves self link with unknown route unchanged', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/foo">link</a>');
+        expect(result).toContain('href="https://hackertok.github.io/foo"');
+      });
+
+      // `parseSelf` re-applies SITE_REGEX on its own (not just `parseHnFrom`),
+      // so a future "simplify the from path" refactor needs to fail here.
+      it('leaves self /from/<bad-site> unchanged', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/from/evil%23xss">link</a>');
+        expect(result).toContain('href="https://hackertok.github.io/from/evil%23xss"');
+        expect(result).not.toContain('href="#/from/');
+      });
+
+      it('leaves a non-self *.github.io host unchanged', () => {
+        const result = sanitizeHtml('<a href="https://other.github.io/#/item/47816960">link</a>');
+        expect(result).toContain('href="https://other.github.io/#/item/47816960"');
+      });
+
+      it('rewrites self non-hash item link with trailing slash', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/item/47816960/">link</a>');
+        expect(result).toContain('href="#/item/47816960"');
+      });
+    });
+
+    describe('visible-text replacement', () => {
+      it('replaces auto-linkified HN item URL with item:<id>', () => {
+        const url = 'https://news.ycombinator.com/item?id=45615867';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>item:45615867</a>');
+      });
+
+      it('replaces auto-linkified HN ?id=A#B with item:B (matches rewritten href)', () => {
+        const url = 'https://news.ycombinator.com/item?id=111#222';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>item:222</a>');
+      });
+
+      it('replaces auto-linkified HN /from with from:<site>', () => {
+        const url = 'https://news.ycombinator.com/from?site=example.com';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>from:example.com</a>');
+      });
+
+      it('replaces auto-linkified HN /show with /show', () => {
+        const url = 'https://news.ycombinator.com/show';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>/show</a>');
+      });
+
+      it('replaces auto-linkified HN /ask with /ask', () => {
+        const url = 'https://news.ycombinator.com/ask';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>/ask</a>');
+      });
+
+      it('replaces auto-linkified HN /best with /best', () => {
+        const url = 'https://news.ycombinator.com/best';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>/best</a>');
+      });
+
+      it('replaces auto-linkified self hash item URL with item:<id>', () => {
+        const url = 'https://hackertok.github.io/#/item/47816960';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>item:47816960</a>');
+      });
+
+      it('replaces auto-linkified self non-hash item URL with item:<id>', () => {
+        const url = 'https://hackertok.github.io/item/47816960';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>item:47816960</a>');
+      });
+
+      it('preserves custom anchor text for HN links', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/item?id=45615867">this thread</a>');
+        expect(result).toContain('href="#/item/45615867"');
+        expect(result).toContain('>this thread</a>');
+      });
+
+      it('preserves custom anchor text for self links', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/#/item/47816960">linked above</a>');
+        expect(result).toContain('href="#/item/47816960"');
+        expect(result).toContain('>linked above</a>');
+      });
+
+      it('still triggers replacement when text has surrounding whitespace', () => {
+        const url = 'https://news.ycombinator.com/item?id=45615867';
+        const result = sanitizeHtml(`<a href="${url}">  ${url}  </a>`);
+        expect(result).toContain('>item:45615867</a>');
+      });
+
+      // HN clips long display URLs at a fixed length and appends "..." while
+      // keeping the full URL in href (verified against the real Algolia API
+      // payload for item 26998308, comment 26999694).
+      it('replaces HN-truncated /from URL (text "<prefix>..." vs full href)', () => {
+        const href = 'https://news.ycombinator.com/from?site=scattered-thoughts.net';
+        const text = 'https://news.ycombinator.com/from?site=scattered-thoughts.ne...';
+        const result = sanitizeHtml(`<a href="${href}">${text}</a>`);
+        expect(result).toContain('href="#/from/scattered-thoughts.net"');
+        expect(result).toContain('>from:scattered-thoughts.net</a>');
+      });
+
+      it('replaces HN-truncated /item URL (text "<prefix>..." vs full href)', () => {
+        const href = 'https://news.ycombinator.com/item?id=45615867';
+        const text = 'https://news.ycombinator.com/item?id=4561...';
+        const result = sanitizeHtml(`<a href="${href}">${text}</a>`);
+        expect(result).toContain('href="#/item/45615867"');
+        expect(result).toContain('>item:45615867</a>');
+      });
+
+      // The hook comment in `isAutoLinkifiedText` cites HN's mid-URL `<i>`
+      // truncation as a motivating example. Lock in that this pattern works
+      // so a future "tighten the check to a single text node" refactor would
+      // fail loudly here.
+      it('replaces HN URL split across inline children (mid-URL <i> pattern)', () => {
+        const result = sanitizeHtml(
+          '<a href="https://news.ycombinator.com/item?id=45615867">https://news.y<i>combinator.com/item?id=4561</i>5867</a>',
+        );
+        expect(result).toContain('href="#/item/45615867"');
+        expect(result).toContain('>item:45615867</a>');
+        expect(result).not.toContain('<i>');
+      });
+
+      // Robustness: the check is byte-shape agnostic, so any future HN
+      // truncation strategy (Unicode ellipsis, mid-URL truncation, etc.)
+      // still gets the friendly label as long as the visible text begins
+      // with the original URL's origin.
+      it('replaces HN-truncated URL using Unicode ellipsis', () => {
+        const href = 'https://news.ycombinator.com/from?site=example.com';
+        const text = 'https://news.ycombinator.com/from?site=ex\u2026';
+        const result = sanitizeHtml(`<a href="${href}">${text}</a>`);
+        expect(result).toContain('href="#/from/example.com"');
+        expect(result).toContain('>from:example.com</a>');
+      });
+
+      it('does not replace custom anchor text that ends with "..."', () => {
+        const result = sanitizeHtml(
+          '<a href="https://news.ycombinator.com/item?id=45615867">click here...</a>',
+        );
+        expect(result).toContain('href="#/item/45615867"');
+        expect(result).toContain('>click here...</a>');
+      });
+    });
+
+    describe('negative cases', () => {
+      it('leaves news.ycombinator.com/user?id=foo unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user?id=pg">link</a>');
+        expect(result).toContain('href="https://news.ycombinator.com/user?id=pg"');
+      });
+
+      it('leaves news.ycombinator.com/newest unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/newest">link</a>');
+        expect(result).toContain('href="https://news.ycombinator.com/newest"');
+      });
+
+      it('leaves unrelated hosts unchanged', () => {
+        const result = sanitizeHtml('<a href="https://example.com/item?id=45615867">link</a>');
+        expect(result).toContain('href="https://example.com/item?id=45615867"');
+      });
+
+      it('leaves malformed href values unchanged', () => {
+        const result = sanitizeHtml('<a href="not a url">link</a>');
+        expect(result).toContain('>link</a>');
+        expect(result).not.toContain('href="#/');
+      });
+    });
+
+    describe('regression', () => {
+      it('rewritten HN link still carries rel="noreferrer"', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/item?id=45615867">link</a>');
+        expect(result).toContain('rel="noreferrer"');
+      });
+
+      it('rewritten self link still carries rel="noreferrer"', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/#/item/47816960">link</a>');
+        expect(result).toContain('rel="noreferrer"');
+      });
+    });
+
+    describe('defensive', () => {
+      it('handles <a name="anchor"> with no href as a no-op', () => {
+        const result = sanitizeHtml('<a name="anchor">text</a>');
+        expect(result).toContain('>text</a>');
+        expect(result).not.toContain('href="#/');
+      });
+
+      it('handles <a href=""> as a no-op (resolves to current location root, no route match)', () => {
+        const result = sanitizeHtml('<a href="">text</a>');
+        expect(result).toContain('>text</a>');
+        expect(result).not.toContain('href="#/');
+      });
+
+      it('handles <a href="/relative"> as a no-op', () => {
+        const result = sanitizeHtml('<a href="/relative">text</a>');
+        expect(result).toContain('href="/relative"');
+        expect(result).toContain('>text</a>');
+      });
+
+      it('rewrites href but preserves text when child contains hostile script', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/item?id=45615867"><script>alert(1)</script></a>');
+        expect(result).toContain('href="#/item/45615867"');
+        expect(result).not.toContain('<script>');
+        expect(result).not.toContain('alert');
+      });
+    });
+  });
+});
+
+// The link-rewriting hook lives on a private DOMPurify instance so it does
+// not leak to the default singleton that other code might import. If this
+// test ever fails, the hook has been re-attached to the global instance and
+// is silently affecting every consumer that calls `DOMPurify.sanitize`.
+describe('module-level isolation', () => {
+  it('does not register the hook on the default DOMPurify singleton', () => {
+    const result = DOMPurify.sanitize(
+      '<a href="https://news.ycombinator.com/item?id=45615867">x</a>',
+    );
+    expect(result).toContain('href="https://news.ycombinator.com/item?id=45615867"');
+    expect(result).not.toContain('href="#/item/');
+    expect(result).not.toContain('rel="noreferrer"');
   });
 });
