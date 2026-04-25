@@ -128,6 +128,27 @@ describe('ItemDetail', () => {
       const link = await screen.findByRole('link', { name: /back to feed/i });
       expect(link).toHaveAttribute('href', '/from/example.com');
     });
+
+    it('points to /submitted/:user when state.fromUser is set', async () => {
+      renderItemDetailWithState(99999999, { fromUser: 'pg' });
+
+      const link = await screen.findByRole('link', { name: /back to feed/i });
+      expect(link).toHaveAttribute('href', '/submitted/pg');
+    });
+
+    it('prefers fromUser over fromDomain when both are present', async () => {
+      // fromUser is the most specific origin (one author per story vs many
+      // domains/feeds), so it wins over fromDomain and from. This locks the
+      // priority decision so a future co-write doesn't silently flip it.
+      renderItemDetailWithState(99999999, {
+        from: 'best',
+        fromDomain: 'example.com',
+        fromUser: 'pg',
+      });
+
+      const link = await screen.findByRole('link', { name: /back to feed/i });
+      expect(link).toHaveAttribute('href', '/submitted/pg');
+    });
   });
 
   describe('comment detection', () => {

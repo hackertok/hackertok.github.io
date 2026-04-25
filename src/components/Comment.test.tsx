@@ -59,6 +59,13 @@ describe('Comment', () => {
       expect(screen.queryByText('alert')).not.toBeInTheDocument();
     });
 
+    it('wraps the author byline in a link to /user/:author', () => {
+      render(<Comment comment={mockComment} />);
+
+      const authorLink = screen.getByRole('link', { name: 'testuser' });
+      expect(authorLink).toHaveAttribute('href', '/user/testuser');
+    });
+
     // Integration smoke test for the sanitize → dangerouslySetInnerHTML path.
     // The unit suite in `utils/sanitize.test.ts` covers `sanitizeHtml`'s
     // output; this asserts the rewrite actually reaches the rendered DOM
@@ -72,6 +79,32 @@ describe('Comment', () => {
       const link = container.querySelector('.comment-content a');
       expect(link?.getAttribute('href')).toBe('#/item/99999');
       expect(link?.textContent).toBe('item:99999');
+    });
+
+    // Companion to the `item:` smoke test above — pins that `user:` and
+    // `submitted:` rewrites also reach the rendered DOM, not just
+    // `sanitizeHtml`'s output. Catches a regression where `Comment.tsx`
+    // bypasses `sanitizeHtml` for any branch of HN URL handling.
+    it('rewrites HN user links in the rendered DOM', () => {
+      const commentWithUserLink = {
+        ...mockComment,
+        text: '<p>See <a href="https://news.ycombinator.com/user?id=pg">https://news.ycombinator.com/user?id=pg</a></p>',
+      };
+      const { container } = render(<Comment comment={commentWithUserLink} />);
+      const link = container.querySelector('.comment-content a');
+      expect(link?.getAttribute('href')).toBe('#/user/pg');
+      expect(link?.textContent).toBe('user:pg');
+    });
+
+    it('rewrites HN submitted links in the rendered DOM', () => {
+      const commentWithSubmittedLink = {
+        ...mockComment,
+        text: '<p>See <a href="https://news.ycombinator.com/submitted?id=pg">https://news.ycombinator.com/submitted?id=pg</a></p>',
+      };
+      const { container } = render(<Comment comment={commentWithSubmittedLink} />);
+      const link = container.querySelector('.comment-content a');
+      expect(link?.getAttribute('href')).toBe('#/submitted/pg');
+      expect(link?.textContent).toBe('submitted:pg');
     });
   });
 

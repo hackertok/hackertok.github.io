@@ -316,3 +316,44 @@ export const mockDomainPaginationItem2 = {
   num_comments: 41,
   _tags: ['story'],
 };
+
+// User profile (Firebase /user/:id.json shape).
+// Exported for tests that build alternate variants (e.g. an "old" account with
+// a different `created` timestamp); the default handler in `setupApiMocks`
+// returns this for `/user/pg.json`. Fields mirror the Firebase API and the
+// `UserProfile` interface in `src/types.ts`.
+export const mockUserProfile = {
+  id: 'pg',
+  // 2006-10-09 — Hacker News launch day. Pinned (not now()-relative) so the
+  // "X years ago" assertion in tests stays stable across calendar months.
+  created: 1160418092,
+  karma: 155555,
+  about: '<p>Bug fixer.</p>',
+  submitted: [66666, 66667],
+};
+
+// User-submitted stories (Algolia format) returned by the
+// `tags=story,author_pg` branch of `search_by_date`. Distinct objectIDs (66666,
+// 66667) so tests asserting URL rewrites or back-navigation can pin specific
+// indices without colliding with top/best/show/ask/domain mock IDs.
+export const mockUserStory1 = {
+  objectID: '66666',
+  title: 'Beating the Averages',
+  url: 'https://www.paulgraham.com/avg.html',
+  author: 'pg',
+  points: 412,
+  created_at_i: now() - 3600,
+  num_comments: 187,
+  _tags: ['story'],
+};
+
+export const mockUserStory2 = {
+  objectID: '66667',
+  title: 'Hackers and Painters',
+  url: 'https://www.paulgraham.com/hp.html',
+  author: 'pg',
+  points: 298,
+  created_at_i: now() - 7200,
+  num_comments: 124,
+  _tags: ['story'],
+};

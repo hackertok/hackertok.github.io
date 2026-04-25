@@ -174,5 +174,20 @@ export interface ScrollContainerContextValue {
 export interface LocationState {
   from?: FeedType;
   fromDomain?: string;
+  fromUser?: string;
   isComment?: boolean;
+}
+
+// --- User profile types ---
+
+// Firebase /user/:id.json shape. `delay` is intentionally omitted (vestigial
+// HN field never read by the UI). The `submitted` array is a raw activity
+// feed mixing story + comment + ask IDs; UserProfile never reads it (HN's
+// own profile page also doesn't render its size).
+export interface UserProfile {
+  id: string;
+  created: number;       // unix seconds
+  karma: number;
+  about?: string;        // HTML; sanitize before rendering
+  submitted: number[];
 }

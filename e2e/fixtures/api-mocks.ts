@@ -30,6 +30,9 @@ import {
   mockJobItem,
   mockDomainPaginationItem1,
   mockDomainPaginationItem2,
+  mockUserProfile,
+  mockUserStory1,
+  mockUserStory2,
 } from './mock-data';
 
 /**
@@ -125,6 +128,30 @@ export async function setupApiMocks(page: Page) {
       },
       // Job item (not a story — triggers "not a story" error in SwipeStoryViewer)
       55555: mockJobItem,
+      // User-submitted stories. Provided so desktop tests that click a comments
+      // link from /submitted/pg land on a fully-mocked /item/:id rather than
+      // the generic fallback below — the title assertions then read the real
+      // mock title instead of a synthesized one.
+      66666: {
+        id: 66666,
+        title: mockUserStory1.title,
+        url: mockUserStory1.url,
+        by: mockUserStory1.author,
+        score: mockUserStory1.points,
+        time: mockUserStory1.created_at_i,
+        descendants: mockUserStory1.num_comments,
+        type: 'story',
+      },
+      66667: {
+        id: 66667,
+        title: mockUserStory2.title,
+        url: mockUserStory2.url,
+        by: mockUserStory2.author,
+        score: mockUserStory2.points,
+        time: mockUserStory2.created_at_i,
+        descendants: mockUserStory2.num_comments,
+        type: 'story',
+      },
     };
 
     if (items[id]) {
@@ -249,16 +276,57 @@ export async function setupApiMocks(page: Page) {
     await route.fulfill({ status: 404, json: { status: 404, error: 'Item not found' } });
   });
 
-  // Algolia: Search by date endpoint (used by DomainStories page for domain-filtered results)
+  // Algolia: Search by date endpoint. Two callers share this URL:
+  //  - `useDomainInfiniteStories` issues `?query=<domain>` (no `tags`)
+  //  - `useUserInfiniteStories` issues `?tags=story,author_<username>` (no `query`)
+  // The author branch is matched FIRST so the absence of a `tags` substring
+  // can never be mis-routed to the domain branch.
   await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
     const url = new URL(route.request().url());
+    const tags = url.searchParams.get('tags') || '';
     const query = url.searchParams.get('query') || '';
     const pageNum = parseInt(url.searchParams.get('page') || '0', 10);
 
     let hits: object[] = [];
     let nbPages = 0;
 
-    if (query) {
+    if (tags.includes('author_')) {
+      // Algolia's `author_X` tag is an exact, server-side author match — every
+      // hit is guaranteed to belong to the user. The hook calls
+      // `encodeURIComponent` on the username, so decode here to round-trip
+      // case-sensitive usernames like `PaulG`.
+      const authorMatch = /author_([^,]+)/.exec(tags);
+      const author = authorMatch ? decodeURIComponent(authorMatch[1]) : '';
+
+      if (author === 'pg') {
+        // Two distinct stories: enough to assert swipe-next URL rewrites and
+        // user→user reset behavior without needing pagination plumbing.
+        hits = [mockUserStory1, mockUserStory2];
+        nbPages = 1;
+      } else if (author === 'noresults') {
+        // Pinned empty user — exercises the "No submissions found by ..."
+        // empty state on both desktop list and mobile swipe viewer without
+        // requiring a per-test route override.
+        hits = [];
+        nbPages = 0;
+      } else {
+        // Synthetic story for any other author so the user→user reset test
+        // (pg → dang) sees a deterministic, distinct title without us having
+        // to mint per-user constants in mock-data.ts.
+        const safeAuthor = author || 'unknown';
+        hits = [{
+          objectID: '99000',
+          title: `Story by ${safeAuthor}`,
+          url: `https://example.com/${safeAuthor}`,
+          author: safeAuthor,
+          points: 1,
+          created_at_i: Math.floor(Date.now() / 1000) - 3600,
+          num_comments: 0,
+          _tags: ['story'],
+        }];
+        nbPages = 1;
+      }
+    } else if (query) {
       if (pageNum === 0) {
         // Page 0: original item + 4 generated clones (5 total for scrollability)
         hits = [
@@ -286,6 +354,73 @@ export async function setupApiMocks(page: Page) {
         hitsPerPage: 50,
       },
     });
+  });
+
+  // Firebase: user profile (`/user/:id.json`)
+  // Returns `mockUserProfile` for `pg`, `null` for `nope` (HN's "no such user"
+  // signal — `useUserProfile` translates this to NotFoundError → isNotFound=true),
+  // and a synthesized profile for everything else so author-byline links from
+  // arbitrary fixtures (e.g. `leerob`) don't 404 in tests that don't pin them.
+  await page.route(`${FIREBASE_API}/user/*.json`, async (route) => {
+    const url = route.request().url();
+    const idMatch = /\/user\/([^/]+)\.json/.exec(url);
+    const id = idMatch ? decodeURIComponent(idMatch[1]) : '';
+
+    if (id === 'pg') {
+      await route.fulfill({ json: mockUserProfile });
+      return;
+    }
+
+    if (id === 'nope') {
+      await route.fulfill({ json: null });
+      return;
+    }
+
+    await route.fulfill({
+      json: {
+        id,
+        created: 1160418092,
+        karma: 1,
+        submitted: [],
+      },
+    });
+  });
+}
+
+/**
+ * Stub the Algolia `search_by_date` endpoint to return an empty result for a
+ * specific user (matched by `author_<username>` tag). Any other request is
+ * passed through to whatever mock is already installed.
+ *
+ * Mirrors {@link stubEmptyDomainSearch} so the desktop list and mobile swipe
+ * empty-state tests for `/submitted/:id` share the same shape.
+ */
+export async function stubEmptyUserSubmissions(page: Page, username: string) {
+  await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
+    const url = new URL(route.request().url());
+    const tags = url.searchParams.get('tags') ?? '';
+    if (tags.includes(`author_${encodeURIComponent(username)}`)) {
+      await route.fulfill({
+        json: { hits: [], nbHits: 0, page: 0, nbPages: 0, hitsPerPage: 50 },
+      });
+    } else {
+      await route.continue();
+    }
+  });
+}
+
+/**
+ * Stub the Firebase `/user/:id.json` endpoint to return `null` for a specific
+ * username (HN's "no such user" signal). Any other request is passed through.
+ */
+export async function stubNotFoundUser(page: Page, username: string) {
+  await page.route(`${FIREBASE_API}/user/*.json`, async (route) => {
+    const url = route.request().url();
+    if (url.includes(`/user/${encodeURIComponent(username)}.json`)) {
+      await route.fulfill({ json: null });
+    } else {
+      await route.continue();
+    }
   });
 }
 

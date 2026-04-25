@@ -39,7 +39,12 @@ export function CommentArticle({
       <article className={`${articleClassName} pb-4 border-b border-border`}>
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-0.5">
           <span className="text-accent/80 text-base leading-none">›</span>
-          <span className="font-medium text-foreground">{comment.author}</span>
+          <Link
+            to={`/user/${comment.author}`}
+            className="font-medium text-foreground hover:text-accent transition-colors"
+          >
+            {comment.author}
+          </Link>
           <span className="text-muted-foreground">·</span>
           <time dateTime={safeISOString(comment.createdAt)} title={formatAbsoluteTime(comment.createdAt)}>{formatTimeAgo(comment.createdAt)}</time>
         </div>

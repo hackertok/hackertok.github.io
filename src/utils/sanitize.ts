@@ -32,6 +32,13 @@ const PURIFY_CONFIG: Config = {
 // fragments, query strings, multi-segment paths, spaces, and empty input.
 const SITE_REGEX = /^[a-z0-9.-]+(?:\/[a-z0-9._-]+)?$/i;
 
+// HN's allowed username pattern: 2–15 chars, alphanumeric plus `_` and `-`.
+// Case is preserved verbatim — Firebase, Algolia, and HN itself all treat
+// usernames as case-sensitive (e.g. `pg` and `PG` are distinct accounts).
+// Used at 4 callsites: parseHnUser, parseHnSubmitted, and the two self-host
+// matches in parseSelf — keep them in sync via this single source.
+const USERNAME_REGEX = /^[a-zA-Z0-9_-]{2,15}$/;
+
 // Single source of truth for the supported HN feeds and their friendly labels.
 // Feeds are nullary destinations (no value), so their labels are the route
 // path itself rather than the operator-style `kind:value` shape used for
@@ -84,6 +91,18 @@ function parseHnFrom(parsed: URL): RouteTarget | null {
   return { route: `#/from/${site}`, label: `from:${site}` };
 }
 
+function parseHnUser(parsed: URL): RouteTarget | null {
+  const id = parsed.searchParams.get('id');
+  if (!id || !USERNAME_REGEX.test(id)) return null;
+  return { route: `#/user/${id}`, label: `user:${id}` };
+}
+
+function parseHnSubmitted(parsed: URL): RouteTarget | null {
+  const id = parsed.searchParams.get('id');
+  if (!id || !USERNAME_REGEX.test(id)) return null;
+  return { route: `#/submitted/${id}`, label: `submitted:${id}` };
+}
+
 const TRAILING_SLASHES = /\/+$/;
 
 // Strip trailing slashes so `/item/` and `/item` (or `/show/` and `/show`)
@@ -100,6 +119,10 @@ function parseHn(parsed: URL): RouteTarget | null {
       return parseHnItem(parsed);
     case '/from':
       return parseHnFrom(parsed);
+    case '/user':
+      return parseHnUser(parsed);
+    case '/submitted':
+      return parseHnSubmitted(parsed);
     default: {
       const feed = FEED_LABELS.get(path);
       if (feed) {
@@ -131,6 +154,24 @@ function parseSelf(parsed: URL): RouteTarget | null {
     const site = fromMatch[1];
     if (SITE_REGEX.test(site)) {
       return { route: `#/from/${site}`, label: `from:${site}` };
+    }
+    return null;
+  }
+
+  const userMatch = /^\/user\/(.+)$/.exec(inAppPath);
+  if (userMatch) {
+    const id = userMatch[1];
+    if (USERNAME_REGEX.test(id)) {
+      return { route: `#/user/${id}`, label: `user:${id}` };
+    }
+    return null;
+  }
+
+  const submittedMatch = /^\/submitted\/(.+)$/.exec(inAppPath);
+  if (submittedMatch) {
+    const id = submittedMatch[1];
+    if (USERNAME_REGEX.test(id)) {
+      return { route: `#/submitted/${id}`, label: `submitted:${id}` };
     }
     return null;
   }

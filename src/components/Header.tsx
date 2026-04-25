@@ -23,14 +23,26 @@ export function Header() {
       (location.pathname.startsWith('/item/') && locationState?.from === feed)
     );
 
+  // "user" indicator is active when browsing user pages — either on the
+  // /user/:id profile or /submitted/:id list, or on an item detail page
+  // that carries `fromUser` in location state (mobile swipe viewer rewrites
+  // /submitted/:id to /item/:id per-item with fromUser preserved, and
+  // StoryCard on desktop writes fromUser when its parent list is a user).
+  // Hidden in comment view (the dedicated "comments" indicator wins).
+  const isUserActive = !isCommentView && (
+    location.pathname.startsWith('/user/') ||
+    location.pathname.startsWith('/submitted/') ||
+    (location.pathname.startsWith('/item/') && !!locationState?.fromUser)
+  );
+
   // "from" indicator is active when browsing a domain — either on the
   // domain list/swipe route itself, or on an item detail page that carries
   // a `fromDomain` in location state (the mobile swipe viewer rewrites
   // `/from/:domain` to `/item/:id` per-item with fromDomain preserved, and
   // StoryCard on desktop writes fromDomain when its parent list is a domain).
-  // Hidden in comment view for consistency with feed tabs, which defer to
-  // the dedicated "comments" indicator.
-  const isFromActive = !isCommentView && (
+  // Hidden in comment view AND when isUserActive wins, so only one
+  // contextual pill ever renders. Priority: comments > user > from.
+  const isFromActive = !isCommentView && !isUserActive && (
     location.pathname.startsWith('/from/') ||
     (location.pathname.startsWith('/item/') && !!locationState?.fromDomain)
   );
@@ -134,6 +146,11 @@ export function Header() {
               {isFromActive && (
                 <span className={navLinkClass(true)} aria-current="page">
                   from
+                </span>
+              )}
+              {isUserActive && (
+                <span className={navLinkClass(true)} aria-current="page">
+                  user
                 </span>
               )}
               {isCommentView && (

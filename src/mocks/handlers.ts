@@ -162,6 +162,38 @@ export const mockAskHNItem2 = {
 // Top item IDs
 export const mockTopItemIds = [12345, 12346, 12347, 12348, 12349];
 
+// User profile (Firebase /user/:id.json format)
+export const mockUserProfile = {
+  id: 'leerob',
+  created: 1160418092,
+  karma: 12345,
+  about: 'Engineer at Vercel. <a href="https://leerob.io">leerob.io</a>',
+  submitted: [12345, 99999, 88888],
+};
+
+// Algolia hits authored by `leerob` — used by the search_by_date author_ branch.
+export const mockUserStory1 = {
+  objectID: '12345',
+  title: 'Rust Is the Future of JavaScript Infrastructure',
+  url: 'https://leerob.io/blog/rust',
+  author: 'leerob',
+  points: 284,
+  created_at_i: Math.floor(Date.now() / 1000) - 3600,
+  num_comments: 137,
+  _tags: ['story'],
+};
+
+export const mockUserStory2 = {
+  objectID: '54321',
+  title: 'Edge Functions on the Web Platform',
+  url: 'https://leerob.io/blog/edge',
+  author: 'leerob',
+  points: 132,
+  created_at_i: Math.floor(Date.now() / 1000) - 86400,
+  num_comments: 45,
+  _tags: ['story'],
+};
+
 export const handlers = [
   // Firebase: Get top items
   http.get(`${FIREBASE_API}/topstories.json`, () => {
@@ -257,11 +289,36 @@ export const handlers = [
     });
   }),
 
-  // Algolia: Search by date (used for historical items)
+  // Algolia: Search by date (used for historical items, domain feeds, and user submissions)
   http.get(`${ALGOLIA_API}/search_by_date`, ({ request }) => {
     const url = new URL(request.url);
+    const tags = url.searchParams.get('tags') ?? '';
     const query = url.searchParams.get('query') ?? '';
-    
+
+    // author_X tag (`useUserInfiniteStories`): exact author match. Run before
+    // the query branch because user-submission requests have no `query`.
+    const authorMatch = /author_([^,]+)/.exec(tags);
+    if (authorMatch) {
+      const author = authorMatch[1];
+      if (author === 'leerob') {
+        return HttpResponse.json({
+          hits: [mockUserStory1, mockUserStory2],
+          nbHits: 2,
+          page: 0,
+          nbPages: 1,
+          hitsPerPage: 50,
+        });
+      }
+      // Unknown / lurker user — empty result, no hasMore retries (cap-free path).
+      return HttpResponse.json({
+        hits: [],
+        nbHits: 0,
+        page: 0,
+        nbPages: 0,
+        hitsPerPage: 50,
+      });
+    }
+
     return HttpResponse.json({
       hits: query ? [mockAlgoliaItem1] : [],
       nbHits: query ? 1 : 0,
@@ -269,6 +326,34 @@ export const handlers = [
       nbPages: query ? 1 : 0,
       hitsPerPage: 20,
     });
+  }),
+
+  // Firebase: Get user profile
+  http.get(`${FIREBASE_API}/user/:id.json`, ({ params }) => {
+    const id = params.id as string;
+    if (id === 'leerob') {
+      return HttpResponse.json(mockUserProfile);
+    }
+    if (id === 'pg') {
+      return HttpResponse.json({
+        id: 'pg',
+        created: 1160418092,
+        karma: 155555,
+        about: 'Founder of Y Combinator.',
+        submitted: [12345],
+      });
+    }
+    if (id === 'minimaluser') {
+      // No `about` field — exercises the conditional-render path in UserProfile.
+      return HttpResponse.json({
+        id: 'minimaluser',
+        created: 1160418092,
+        karma: 1,
+        submitted: [],
+      });
+    }
+    // Unknown users → Firebase's "no such user" response is JSON `null`.
+    return HttpResponse.json(null);
   }),
 
   // Algolia: Items endpoint (used for comment detail)
@@ -327,5 +412,10 @@ export const errorHandlers = {
       { message: 'Service temporarily unavailable' },
       { status: 503 }
     );
+  }),
+
+  // Firebase: User not found (returns JSON null per HN convention)
+  userNotFound: http.get(`${FIREBASE_API}/user/:id.json`, () => {
+    return HttpResponse.json(null);
   }),
 };
