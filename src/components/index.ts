@@ -12,6 +12,7 @@ export { ItemArticle } from './ItemArticle';
 export { FullScreenComment, FullScreenCommentSkeleton } from './FullScreenComment';
 export { SwipeStoryViewer } from './SwipeStoryViewer';
 export { SwipeDomainStoryViewer } from './SwipeDomainStoryViewer';
+export { SwipeUserSubmissionsViewer } from './SwipeUserSubmissionsViewer';
 export { SwipeCommentViewer } from './SwipeCommentViewer';
 export { CommentsSection } from './CommentsSection';
 export { StateView } from './StateView';

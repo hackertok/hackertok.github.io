@@ -217,4 +217,111 @@ describe('Header', () => {
       expect(fromIndicator()).toBeNull();
     });
   });
+
+  describe('user indicator', () => {
+    const userIndicator = () =>
+      screen.queryByText('user', { selector: 'header nav span' });
+    const fromIndicator = () =>
+      screen.queryByText('from', { selector: 'header nav span' });
+    const commentsIndicator = () =>
+      screen.queryByText('comments', { selector: 'header nav span' });
+
+    it('shows "user" indicator on /user/:id profile route', () => {
+      render(<Header />, { initialEntries: ['/user/pg'] });
+
+      const indicator = userIndicator();
+      expect(indicator).not.toBeNull();
+      expect(indicator).toHaveClass('bg-accent');
+    });
+
+    it('shows "user" indicator on /submitted/:id list route', () => {
+      render(<Header />, { initialEntries: ['/submitted/pg'] });
+
+      const indicator = userIndicator();
+      expect(indicator).not.toBeNull();
+      expect(indicator).toHaveClass('bg-accent');
+    });
+
+    it('keeps "user" visible on item detail when navigated from user submissions', () => {
+      // Covers (a) the mobile swipe viewer rewriting /submitted/:id to
+      // /item/:id with state.fromUser and (b) desktop StoryCard writing
+      // state.fromUser on internal navigation from a user submissions list.
+      render(<Header />, {
+        initialEntries: [
+          { pathname: '/item/12345', state: { fromUser: 'pg' } },
+        ],
+      });
+
+      const indicator = userIndicator();
+      expect(indicator).not.toBeNull();
+      expect(indicator).toHaveClass('bg-accent');
+    });
+
+    it('hides "user" on item detail without fromUser state', () => {
+      render(<Header />, {
+        initialEntries: [{ pathname: '/item/12345', state: { from: 'best' } }],
+      });
+
+      expect(userIndicator()).toBeNull();
+    });
+
+    it('hides "user" on item detail with no navigation state at all', () => {
+      render(<Header />, { initialEntries: ['/item/12345'] });
+
+      expect(userIndicator()).toBeNull();
+    });
+
+    it('hides "user" on feed pages', () => {
+      render(<Header />, { initialEntries: ['/best'] });
+
+      expect(userIndicator()).toBeNull();
+    });
+
+    it('hides "user" when viewing a comment even if fromUser is present', () => {
+      // Comments view's dedicated indicator wins. Mirrors how `from` and
+      // feed tabs deactivate in comment view so only one contextual pill
+      // ever renders at a time.
+      render(<Header />, {
+        initialEntries: [
+          {
+            pathname: '/item/12345',
+            state: { fromUser: 'pg', isComment: true },
+          },
+        ],
+      });
+
+      expect(userIndicator()).toBeNull();
+    });
+
+    it('prefers "user" over "from" when both fromUser and fromDomain are set', () => {
+      // Priority: comments > user > from. With both fromUser and fromDomain,
+      // user wins and from is suppressed so the nav row stays uncluttered.
+      render(<Header />, {
+        initialEntries: [
+          {
+            pathname: '/item/12345',
+            state: { fromUser: 'pg', fromDomain: 'example.com' },
+          },
+        ],
+      });
+
+      expect(userIndicator()).not.toBeNull();
+      expect(fromIndicator()).toBeNull();
+    });
+
+    it('prefers "comments" over "user" when both apply', () => {
+      // The full priority chain in one assertion: comments > user.
+      render(<Header />, {
+        initialEntries: [
+          {
+            pathname: '/item/12345',
+            state: { fromUser: 'pg', isComment: true },
+          },
+        ],
+      });
+
+      expect(commentsIndicator()).not.toBeNull();
+      expect(userIndicator()).toBeNull();
+    });
+  });
 });

@@ -72,9 +72,10 @@ export function SwipeStoryViewerCore({
   // Only set on FRESH direct links (shared/bookmarked URLs with no location.state).
   // When returning from external URL, location.state is preserved from our earlier navigation,
   // so we DON'T reorder (user expects to return to same position).
-  // Recognizes both `from` (feed context) and `fromDomain` (domain context).
+  // Recognizes `from` (feed), `fromDomain` (domain), and `fromUser` (user
+  // submissions) — any of those signals a history nav and suppresses anchoring.
   const [anchorStoryId, setAnchorStoryId] = useState<number | null>(() => {
-    const isHistoryNav = !!(locationState?.from ?? locationState?.fromDomain);
+    const isHistoryNav = !!(locationState?.from ?? locationState?.fromDomain ?? locationState?.fromUser);
     return isHistoryNav ? null : initialItemIdNum ?? null;
   });
   const lastInitialStoryIdRef = useRef(initialItemId);
@@ -338,8 +339,9 @@ export function SwipeStoryViewerCore({
       if (initialItemId) {
         // Check if this is a fresh direct link (no location.state) or history navigation.
         // History navigation carries our previously-written state (`from` for feeds,
-        // `fromDomain` for domain swipe) — either signals "don't reorder".
-        const isHistoryNavigation = !!(locationState?.from ?? locationState?.fromDomain);
+        // `fromDomain` for domain swipe, `fromUser` for user submissions) — any
+        // of those signals "don't reorder, return to the same position".
+        const isHistoryNavigation = !!(locationState?.from ?? locationState?.fromDomain ?? locationState?.fromUser);
         
         if (isHistoryNavigation) {
           // History navigation (browser back/forward, return from external)

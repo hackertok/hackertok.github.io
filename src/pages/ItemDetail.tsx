@@ -13,15 +13,20 @@ export function ItemDetail() {
   const location = useLocation();
   const locationState = location.state as LocationState | null;
   // Back target for the "Back to feed" action on error/not-found states.
-  // Prefer fromDomain (domain-filtered origin) over feed because the domain
-  // page is a more specific origin; default to home when neither is known.
+  // Priority: fromUser > fromDomain > feed > home. The user-submissions
+  // page is the most specific origin (a story is authored by exactly one
+  // user but lives on one domain and may belong to many feeds), so it wins
+  // when set. Default to home when nothing is known.
   const feedFrom = locationState?.from;
   const fromDomain = locationState?.fromDomain;
-  const feedPath = fromDomain
-    ? `/from/${fromDomain}`
-    : feedFrom
-      ? FEED_PATHS[feedFrom]
-      : '/';
+  const fromUser = locationState?.fromUser;
+  const feedPath = fromUser
+    ? `/submitted/${fromUser}`
+    : fromDomain
+      ? `/from/${fromDomain}`
+      : feedFrom
+        ? FEED_PATHS[feedFrom]
+        : '/';
   const { item, comments, itemLoading, commentsLoading, error, isNotFound, commentsError, refresh } = useItemWithComments(id ?? '');
 
   const { isOnline } = useNetworkStatus();

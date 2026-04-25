@@ -224,6 +224,87 @@ describe('sanitizeHtml', () => {
       });
     });
 
+    describe('HN user href', () => {
+      it('rewrites canonical https user link', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user?id=pg">link</a>');
+        expect(result).toContain('href="#/user/pg"');
+        expect(result).not.toContain('news.ycombinator.com');
+      });
+
+      it('preserves username case (HN is case-sensitive)', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user?id=PaulG">link</a>');
+        expect(result).toContain('href="#/user/PaulG"');
+      });
+
+      it('accepts dashes and underscores in username', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user?id=foo_bar-baz">link</a>');
+        expect(result).toContain('href="#/user/foo_bar-baz"');
+      });
+
+      it('rewrites http variant', () => {
+        const result = sanitizeHtml('<a href="http://news.ycombinator.com/user?id=pg">link</a>');
+        expect(result).toContain('href="#/user/pg"');
+      });
+
+      it('rewrites www subdomain variant', () => {
+        const result = sanitizeHtml('<a href="https://www.news.ycombinator.com/user?id=pg">link</a>');
+        expect(result).toContain('href="#/user/pg"');
+      });
+
+      it('rewrites /user/?id=X with trailing slash on path', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user/?id=pg">link</a>');
+        expect(result).toContain('href="#/user/pg"');
+      });
+
+      it('leaves /user with no id unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user">link</a>');
+        expect(result).toContain('href="https://news.ycombinator.com/user"');
+      });
+
+      it('leaves /user with too-short username unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user?id=a">link</a>');
+        expect(result).not.toContain('href="#/user/');
+      });
+
+      it('leaves /user with too-long username unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user?id=abcdefghijklmnop">link</a>');
+        expect(result).not.toContain('href="#/user/');
+      });
+
+      it('leaves /user with illegal chars in username unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user?id=evil%23xss">link</a>');
+        expect(result).not.toContain('href="#/user/');
+      });
+    });
+
+    describe('HN submitted href', () => {
+      it('rewrites canonical https submitted link', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/submitted?id=pg">link</a>');
+        expect(result).toContain('href="#/submitted/pg"');
+        expect(result).not.toContain('news.ycombinator.com');
+      });
+
+      it('preserves username case', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/submitted?id=PaulG">link</a>');
+        expect(result).toContain('href="#/submitted/PaulG"');
+      });
+
+      it('rewrites /submitted/?id=X with trailing slash on path', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/submitted/?id=pg">link</a>');
+        expect(result).toContain('href="#/submitted/pg"');
+      });
+
+      it('leaves /submitted with no id unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/submitted">link</a>');
+        expect(result).toContain('href="https://news.ycombinator.com/submitted"');
+      });
+
+      it('leaves /submitted with illegal chars in username unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/submitted?id=evil%23xss">link</a>');
+        expect(result).not.toContain('href="#/submitted/');
+      });
+    });
+
     describe('HN feed href', () => {
       it('rewrites /show', () => {
         const result = sanitizeHtml('<a href="https://news.ycombinator.com/show">link</a>');
@@ -276,6 +357,40 @@ describe('sanitizeHtml', () => {
       it('rewrites self non-hash /show', () => {
         const result = sanitizeHtml('<a href="https://hackertok.github.io/show">link</a>');
         expect(result).toContain('href="#/show"');
+      });
+
+      it('rewrites self /#/user/<username>', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/#/user/pg">link</a>');
+        expect(result).toContain('href="#/user/pg"');
+      });
+
+      it('rewrites self non-hash /user/<username>', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/user/pg">link</a>');
+        expect(result).toContain('href="#/user/pg"');
+      });
+
+      it('rewrites self /#/submitted/<username>', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/#/submitted/pg">link</a>');
+        expect(result).toContain('href="#/submitted/pg"');
+      });
+
+      it('rewrites self non-hash /submitted/<username>', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/submitted/pg">link</a>');
+        expect(result).toContain('href="#/submitted/pg"');
+      });
+
+      // `parseSelf` re-applies USERNAME_REGEX on its own (not just `parseHnUser`),
+      // so a future "simplify the user path" refactor needs to fail here.
+      it('leaves self /user/<bad-username> unchanged', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/user/evil%23xss">link</a>');
+        expect(result).toContain('href="https://hackertok.github.io/user/evil%23xss"');
+        expect(result).not.toContain('href="#/user/');
+      });
+
+      it('leaves self /submitted/<bad-username> unchanged', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/submitted/evil%23xss">link</a>');
+        expect(result).toContain('href="https://hackertok.github.io/submitted/evil%23xss"');
+        expect(result).not.toContain('href="#/submitted/');
       });
 
       it('rewrites runtime-host self link (jsdom hostname is localhost)', () => {
@@ -364,6 +479,42 @@ describe('sanitizeHtml', () => {
         expect(result).toContain('>item:47816960</a>');
       });
 
+      it('replaces auto-linkified HN /user with user:<username>', () => {
+        const url = 'https://news.ycombinator.com/user?id=pg';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>user:pg</a>');
+      });
+
+      it('replaces auto-linkified HN /submitted with submitted:<username>', () => {
+        const url = 'https://news.ycombinator.com/submitted?id=pg';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>submitted:pg</a>');
+      });
+
+      it('replaces auto-linkified self hash user URL with user:<username>', () => {
+        const url = 'https://hackertok.github.io/#/user/pg';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>user:pg</a>');
+      });
+
+      it('replaces auto-linkified self non-hash user URL with user:<username>', () => {
+        const url = 'https://hackertok.github.io/user/pg';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>user:pg</a>');
+      });
+
+      it('replaces auto-linkified self hash submitted URL with submitted:<username>', () => {
+        const url = 'https://hackertok.github.io/#/submitted/pg';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>submitted:pg</a>');
+      });
+
+      it('replaces auto-linkified self non-hash submitted URL with submitted:<username>', () => {
+        const url = 'https://hackertok.github.io/submitted/pg';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>submitted:pg</a>');
+      });
+
       it('preserves custom anchor text for HN links', () => {
         const result = sanitizeHtml('<a href="https://news.ycombinator.com/item?id=45615867">this thread</a>');
         expect(result).toContain('href="#/item/45615867"');
@@ -436,11 +587,6 @@ describe('sanitizeHtml', () => {
     });
 
     describe('negative cases', () => {
-      it('leaves news.ycombinator.com/user?id=foo unchanged', () => {
-        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user?id=pg">link</a>');
-        expect(result).toContain('href="https://news.ycombinator.com/user?id=pg"');
-      });
-
       it('leaves news.ycombinator.com/newest unchanged', () => {
         const result = sanitizeHtml('<a href="https://news.ycombinator.com/newest">link</a>');
         expect(result).toContain('href="https://news.ycombinator.com/newest"');

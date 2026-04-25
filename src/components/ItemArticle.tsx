@@ -52,7 +52,14 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
       <div className="text-sm text-muted-foreground mb-2">
         <span>{item.points} points</span>
         <span> by </span>
-        <span>{item.author}</span>
+        {item.author ? (
+          <Link
+            to={`/user/${item.author}`}
+            className="font-medium hover:text-accent transition-colors"
+          >
+            {item.author}
+          </Link>
+        ) : null}
         {' '}<time dateTime={safeISOString(item.createdAt)} title={formatAbsoluteTime(item.createdAt)}>{formatTimeAgo(item.createdAt)}</time>
         <span className="mx-1.5">|</span>
         <a

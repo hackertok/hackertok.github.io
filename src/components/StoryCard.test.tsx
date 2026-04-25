@@ -278,5 +278,92 @@ describe('StoryCard', () => {
       expect(state.from).toBe('best');
       expect(state.fromDomain).toBeUndefined();
     });
+
+    it('writes state.fromUser when fromUser prop is set', () => {
+      render(
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <StoryCard
+                story={mockTextStory}
+                listType="top"
+                fromUser="pg"
+              />
+            }
+          />
+          <Route path="/item/:id" element={<StateEchoer />} />
+        </Routes>,
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: /Ask HN/i }));
+
+      const state = JSON.parse(
+        screen.getByTestId('echoed-state').textContent ?? '{}',
+      ) as { from?: string; fromDomain?: string; fromUser?: string };
+      expect(state.fromUser).toBe('pg');
+      expect(state.fromDomain).toBeUndefined();
+      expect(state.from).toBeUndefined();
+    });
+
+    it('prefers fromUser over fromDomain and from when all three are set', () => {
+      // Origin priority: fromUser > fromDomain > from. Pins the decision so a
+      // future co-write doesn't silently flip it.
+      render(
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <StoryCard
+                story={mockStory}
+                listType="best"
+                fromDomain="example.com"
+                fromUser="pg"
+              />
+            }
+          />
+          <Route path="/item/:id" element={<StateEchoer />} />
+        </Routes>,
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: /42 comments/i }));
+
+      const state = JSON.parse(
+        screen.getByTestId('echoed-state').textContent ?? '{}',
+      ) as { from?: string; fromDomain?: string; fromUser?: string };
+      expect(state.fromUser).toBe('pg');
+      expect(state.fromDomain).toBeUndefined();
+      expect(state.from).toBeUndefined();
+    });
+  });
+
+  describe('author byline link', () => {
+    it('wraps the author byline in a link to /user/:author when author is present', () => {
+      render(<StoryCard story={mockStory} />);
+
+      const authorLink = screen.getByRole('link', { name: 'testuser' });
+      expect(authorLink).toHaveAttribute('href', '/user/testuser');
+    });
+
+    it('renders an unlinked "unknown" placeholder when author is empty', () => {
+      const noAuthorStory: StoryItem = { ...mockStory, author: '' };
+      render(<StoryCard story={noAuthorStory} />);
+
+      // The literal "unknown" text should be present and NOT inside an anchor —
+      // we never want to link to /user/unknown (an invalid HN account).
+      const placeholder = screen.getByText('unknown');
+      expect(placeholder.tagName).toBe('SPAN');
+    });
+
+    it('does not link the byline when author is the literal "unknown" string', () => {
+      // Defense-in-depth: the API can populate `author` with the literal
+      // string `'unknown'` (legacy data). Don't link to /user/unknown either.
+      const unknownAuthorStory: StoryItem = { ...mockStory, author: 'unknown' };
+      render(<StoryCard story={unknownAuthorStory} />);
+
+      const placeholder = screen.getByText('unknown');
+      expect(placeholder.tagName).toBe('SPAN');
+      expect(screen.queryByRole('link', { name: 'unknown' })).not.toBeInTheDocument();
+    });
   });
 });

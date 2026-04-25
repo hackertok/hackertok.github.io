@@ -17,10 +17,17 @@ interface StoryCardProps {
    * back link pointing at the domain page across navigation.
    */
   fromDomain?: string;
+  /**
+   * When set, internal links write `{ fromUser }` into location.state.
+   * Wins over `fromDomain` and `from` because user submissions are the
+   * most specific origin (a card may be authored by `fromUser` and live on
+   * `fromDomain`, but the user route is the one we want to return to).
+   */
+  fromUser?: string;
   onBeforeNavigate?: () => void;
 }
 
-export function StoryCard({ story, index = 0, listType = 'top', fromDomain, onBeforeNavigate }: StoryCardProps) {
+export function StoryCard({ story, index = 0, listType = 'top', fromDomain, fromUser, onBeforeNavigate }: StoryCardProps) {
   const hostname = getHostname(story.url);
   const { startPrefetch, stopPrefetch } = usePrefetchItem();
   const isPrefetchingRef = useRef(false);
@@ -45,13 +52,17 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, onBe
   // Reactive viewed status from localStorage store
   const viewed = useIsViewed(story.id);
 
-  // When rendered from a domain list, prefer fromDomain so the Header's
-  // "from" indicator stays active on the item detail page and the back
-  // action in ItemDetail resolves to /from/:domain instead of the default
-  // feed. Otherwise fall back to the list-type feed name.
+  // Origin priority: fromUser > fromDomain > from (list type).
+  // The most specific origin wins so the Header indicator stays active and
+  // ItemDetail's back action resolves to that origin's page instead of
+  // falling through to the default feed.
   const linkState: LocationState = useMemo(
-    () => (fromDomain ? { fromDomain } : { from: listType as FeedType }),
-    [fromDomain, listType],
+    () => (fromUser
+      ? { fromUser }
+      : fromDomain
+        ? { fromDomain }
+        : { from: listType as FeedType }),
+    [fromUser, fromDomain, listType],
   );
   
   // Handle internal title click: mark as viewed, save session state and cancel prefetches
@@ -157,7 +168,28 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, onBe
         <div className="text-sm text-muted-foreground">
           <span>{story.points ?? 0} points</span>
           <span> by </span>
-          <span>{story.author || 'unknown'}</span>
+          {story.author && story.author !== 'unknown' ? (
+            // Byline link styling — list (StoryCard) and item-detail
+            // (ItemArticle) keep the byline muted by inheriting the parent
+            // meta-row color; the byline only differs from surrounding
+            // text by `font-medium` weight. Comment / CommentArticle
+            // deliberately render a brighter byline (`text-foreground`)
+            // for stronger author affordance inside comment threads.
+            // `font-medium` is the non-color distinguisher that satisfies
+            // axe's `link-in-text-block-style` rule via a font-weight
+            // delta vs the surrounding `font-normal` text — the rule
+            // passes via the style branch even though link/parent share
+            // the same color.
+            // E2E coverage: e2e/accessibility.spec.ts (light + dark mode).
+            <Link
+              to={`/user/${story.author}`}
+              className="font-medium hover:text-accent transition-colors"
+            >
+              {story.author}
+            </Link>
+          ) : (
+            <span>{story.author || 'unknown'}</span>
+          )}
           {' '}<time dateTime={safeISOString(story.createdAt)} title={formatAbsoluteTime(story.createdAt)}>{formatTimeAgo(story.createdAt)}</time>
           <span className="mx-1.5">|</span>
           <Link

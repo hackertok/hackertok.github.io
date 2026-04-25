@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
-import { Header, ErrorBoundary, SwipeStoryViewer, SwipeDomainStoryViewer, SwipeCommentViewer, FullScreenCommentSkeleton, StateView, NetworkStatusBar } from './components';
-import { StoryList, ItemDetail, DomainStories } from './pages';
+import { Header, ErrorBoundary, SwipeStoryViewer, SwipeDomainStoryViewer, SwipeUserSubmissionsViewer, SwipeCommentViewer, FullScreenCommentSkeleton, StateView, NetworkStatusBar } from './components';
+import { StoryList, ItemDetail, DomainStories, UserProfile, UserSubmissions } from './pages';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 import { NetworkStatusProvider } from './context/NetworkStatusContext';
@@ -39,6 +39,27 @@ function MobileDomainStoriesWrapper() {
   return <DomainStories />;
 }
 
+// Mobile wrapper for /submitted/:id — shows SwipeUserSubmissionsViewer on
+// mobile, UserSubmissions list on desktop. Falls through to the desktop list
+// when the URL has no username so UserSubmissions' "No user specified" state
+// renders consistently on both platforms.
+//
+// IMPORTANT: do NOT pass `initialItemId` to the swipe viewer here. The route
+// param `:id` is a USERNAME, not a story id; passing it would coerce to NaN
+// inside SwipeStoryViewerCore, trigger a wasteful single-item fetch, and
+// suppress the empty-state UI for users with no submissions.
+function MobileUserSubmissionsWrapper() {
+  const { id } = useParams<{ id: string }>();
+  const username = id ?? '';
+  const isMobile = useIsMobile();
+
+  if (isMobile && username) {
+    return <SwipeUserSubmissionsViewer key={username} username={username} />;
+  }
+
+  return <UserSubmissions />;
+}
+
 // Mobile wrapper for item detail - routes to correct viewer based on item type
 function MobileItemDetailWrapper() {
   const { id } = useParams();
@@ -48,26 +69,37 @@ function MobileItemDetailWrapper() {
   if (isMobile) {
     const state = location.state as LocationState | null;
 
-    // Branch 1: Known comment → SwipeCommentViewer immediately
+    // Branch 1: Known comment → SwipeCommentViewer immediately.
+    // Comments take priority over user/domain/from to match the header pill
+    // priority (comments > user > from).
     if (state?.isComment && id) {
       return <SwipeCommentViewer initialCommentId={id} />;
     }
 
-    // Branch 2: Known domain swipe → SwipeDomainStoryViewer.
+    // Branch 2: Known user submissions → SwipeUserSubmissionsViewer.
+    // Ordered before fromDomain/from so /item/:id with fromUser anchors on
+    // the user's submissions list. Here `id` IS the story id (we're on
+    // /item/:id), so passing it as initialItemId is correct — distinct from
+    // MobileUserSubmissionsWrapper above where `id` is a username.
+    if (state?.fromUser) {
+      return <SwipeUserSubmissionsViewer key={state.fromUser} username={state.fromUser} initialItemId={id} />;
+    }
+
+    // Branch 3: Known domain swipe → SwipeDomainStoryViewer.
     // Ordered before the `from` branch so /item/:id with fromDomain picks up
-    // the domain viewer; `from` and `fromDomain` are written mutually
-    // exclusively by their respective viewers today.
+    // the domain viewer; `from`, `fromDomain`, and `fromUser` are written
+    // mutually exclusively by their respective viewers today.
     if (state?.fromDomain) {
       return <SwipeDomainStoryViewer key={state.fromDomain} domain={state.fromDomain} initialItemId={id} />;
     }
 
-    // Branch 3: Known story feed → SwipeStoryViewer (existing zero-latency path)
+    // Branch 4: Known story feed → SwipeStoryViewer (existing zero-latency path)
     if (state?.from) {
       const type = state.from;
       return <SwipeStoryViewer key={type} type={type} initialItemId={id} />;
     }
 
-    // Branch 4: Direct URL (no state) → resolve type first
+    // Branch 5: Direct URL (no state) → resolve type first
     return <MobileItemResolver id={id ?? ''} />;
   }
   
@@ -162,6 +194,8 @@ function App() {
                   <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
                   <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
                   <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
+                  <Route path="/user/:id" element={<UserProfile />} />
+                  <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </MainContent>

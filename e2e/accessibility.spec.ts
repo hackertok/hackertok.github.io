@@ -143,6 +143,41 @@ test.describe('Accessibility', () => {
     
     expect(seriousViolations).toEqual([]);
   });
+
+  test('user profile page has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
+    await page.goto('/#/user/pg');
+
+    // Wait for the profile to render — covers the username heading, karma /
+    // age meta row, submissions metadata link, and sanitized about text.
+    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'submissions' })).toBeVisible();
+
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
+
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
+    );
+
+    expect(seriousViolations).toEqual([]);
+  });
+
+  test('user submissions page has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
+    await page.goto('/#/submitted/pg');
+
+    // Wait for the submissions list to render so axe scans the StoryCard
+    // byline links (font-medium / accent-hover contrast) for this route.
+    await expect(page.getByText('Beating the Averages')).toBeVisible({ timeout: 10000 });
+
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
+
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
+    );
+
+    expect(seriousViolations).toEqual([]);
+  });
 });
 
 test.describe('Accessibility - Dark Mode', () => {
@@ -189,6 +224,41 @@ test.describe('Accessibility - Dark Mode', () => {
       v => v.impact === 'critical' || v.impact === 'serious'
     );
     
+    expect(seriousViolations).toEqual([]);
+  });
+
+  test('dark mode user profile page has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
+    await page.goto('/#/user/pg');
+
+    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    // Meta row renders in dark mode, including the submissions link that is
+    // distinguished by font weight rather than a standalone button style.
+    await expect(page.getByRole('link', { name: 'submissions' })).toBeVisible();
+
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
+
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
+    );
+
+    expect(seriousViolations).toEqual([]);
+  });
+
+  test('dark mode user submissions page has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
+    await page.goto('/#/submitted/pg');
+
+    await expect(page.getByText('Beating the Averages')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('html')).toHaveClass(/dark/);
+
+    const accessibilityScanResults = await makeAxeBuilder().analyze();
+    attachIncomplete(accessibilityScanResults);
+
+    const seriousViolations = accessibilityScanResults.violations.filter(
+      v => v.impact === 'critical' || v.impact === 'serious'
+    );
+
     expect(seriousViolations).toEqual([]);
   });
 });
