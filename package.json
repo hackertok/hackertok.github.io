@@ -18,7 +18,8 @@
     "e2e:ui": "playwright test --ui",
     "e2e:debug": "playwright test --debug",
     "e2e:headed": "playwright test --headed",
-    "icons": "node scripts/generate-icons.js"
+    "icons": "node scripts/generate-icons.js",
+    "release:draft": "bash scripts/release-draft.sh"
   },
   "dependencies": {
     "dompurify": "^3.4.0",
