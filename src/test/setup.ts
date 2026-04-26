@@ -82,11 +82,13 @@ class MockIntersectionObserver {
   callback: IntersectionObserverCallback;
   root: Element | null;
   rootMargin: string;
+  scrollMargin: string;
   thresholds: readonly number[];
   constructor(callback: IntersectionObserverCallback) {
     this.callback = callback;
     this.root = null;
     this.rootMargin = '';
+    this.scrollMargin = '';
     this.thresholds = [];
   }
   observe() { /* noop */ }
@@ -98,7 +100,7 @@ class MockIntersectionObserver {
 globalThis.IntersectionObserver = MockIntersectionObserver;
 
 // Mock requestAnimationFrame (basic implementation for jsdom)
-globalThis.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16)) as unknown as typeof requestAnimationFrame;
+globalThis.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16));
 globalThis.cancelAnimationFrame = vi.fn((id: number) => clearTimeout(id));
 
 // Start MSW server before all tests
