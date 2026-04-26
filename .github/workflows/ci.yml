@@ -4,6 +4,12 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
   license-check:
@@ -75,11 +81,3 @@ jobs:
 
       - name: Run Playwright tests
         run: npx playwright test
-
-      - name: Upload Playwright Report
-        uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30

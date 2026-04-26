@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const isCI = !!process.env.CI;
+
 /**
  * Playwright E2E test configuration
  * @see https://playwright.dev/docs/test-configuration
@@ -11,13 +13,10 @@ export default defineConfig({
   fullyParallel: true,
   
   /* Fail the build on CI if you accidentally left test.only in the source code */
-  forbidOnly: !!process.env.CI,
+  forbidOnly: isCI,
   
   /* Retry flaky tests - 1 locally, 2 on CI */
-  retries: process.env.CI ? 2 : 1,
-  
-  /* Use half of available CPU cores on CI (2 workers on 4-core GitHub Actions runner) */
-  workers: process.env.CI ? '50%' : undefined,
+  retries: isCI ? 2 : 1,
   
   /* Reporter to use */
   reporter: [
@@ -74,9 +73,11 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'npm run dev',
+    command: isCI
+      ? 'npm run build && npm run preview -- --host 127.0.0.1 --port 5173'
+      : 'npm run dev',
     url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCI,
     timeout: 120 * 1000,
     stdout: 'pipe',
     stderr: 'pipe',
