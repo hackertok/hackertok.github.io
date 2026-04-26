@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAutoRetry } from './useAutoRetry';
 
+type UseAutoRetryProps = Parameters<typeof useAutoRetry>[0];
+
 describe('useAutoRetry', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -63,9 +65,10 @@ describe('useAutoRetry', () => {
 
   it('retries after 500ms when going from offline to online', async () => {
     const retryFn = vi.fn();
+    const initialProps: UseAutoRetryProps = { error: 'fail', retryFn, isOnline: false };
     const { rerender } = renderHook(
-      (props) => useAutoRetry(props),
-      { initialProps: { error: 'fail' as string | null, retryFn, isOnline: false } },
+      (props: UseAutoRetryProps) => useAutoRetry(props),
+      { initialProps },
     );
 
     // Go online
@@ -82,9 +85,10 @@ describe('useAutoRetry', () => {
 
   it('resets attempts when error clears and no retry is in-flight', async () => {
     const retryFn = vi.fn();
+    const initialProps: UseAutoRetryProps = { error: 'fail', retryFn, isOnline: true };
     const { result, rerender } = renderHook(
-      (props) => useAutoRetry(props),
-      { initialProps: { error: 'fail' as string | null, retryFn, isOnline: true } },
+      (props: UseAutoRetryProps) => useAutoRetry(props),
+      { initialProps },
     );
 
     // Advance partway — timer hasn't fired, retryInFlightRef is false
@@ -104,9 +108,10 @@ describe('useAutoRetry', () => {
 
   it('preserves attempts when error clears during in-flight retry', async () => {
     const retryFn = vi.fn();
+    const initialProps: UseAutoRetryProps = { error: 'fail', retryFn, isOnline: true };
     const { rerender } = renderHook(
-      (props) => useAutoRetry(props),
-      { initialProps: { error: 'fail' as string | null, retryFn, isOnline: true } },
+      (props: UseAutoRetryProps) => useAutoRetry(props),
+      { initialProps },
     );
 
     // 1st retry fires — retryInFlightRef becomes true

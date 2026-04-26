@@ -95,7 +95,7 @@ class MockIntersectionObserver {
   takeRecords() { return []; }
 }
 
-globalThis.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
+globalThis.IntersectionObserver = MockIntersectionObserver;
 
 // Mock requestAnimationFrame (basic implementation for jsdom)
 globalThis.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16)) as unknown as typeof requestAnimationFrame;
