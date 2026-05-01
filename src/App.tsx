@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
 import { Header, ErrorBoundary, SwipeStoryViewer, SwipeDomainStoryViewer, SwipeUserSubmissionsViewer, SwipeCommentViewer, FullScreenCommentSkeleton, StateView, NetworkStatusBar } from './components';
+import { TooltipProvider } from './components/ui';
 import { StoryList, ItemDetail, DomainStories, UserProfile, UserSubmissions } from './pages';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
@@ -179,31 +180,33 @@ function NotFoundPage() {
 function App() {
   return (
     <ThemeProvider>
-      <NetworkStatusProvider>
-      <ScrollContainerProvider>
-        <HashRouter>
-          <ErrorBoundary>
-            <div className="min-h-screen bg-background text-foreground">
-              <Header />
-              <NetworkStatusBar />
-              <MainContent>
-                <Routes>
-                  <Route path="/" element={<MobileStoryListWrapper type="top" />} />
-                  <Route path="/show" element={<MobileStoryListWrapper type="show" />} />
-                  <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
-                  <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
-                  <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
-                  <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
-                  <Route path="/user/:id" element={<UserProfile />} />
-                  <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
-                  <Route path="*" element={<NotFoundPage />} />
-                </Routes>
-              </MainContent>
-            </div>
-          </ErrorBoundary>
-        </HashRouter>
-      </ScrollContainerProvider>
-      </NetworkStatusProvider>
+      <TooltipProvider delayDuration={250}>
+        <NetworkStatusProvider>
+          <ScrollContainerProvider>
+            <HashRouter>
+              <ErrorBoundary>
+                <div className="min-h-screen bg-background text-foreground">
+                  <Header />
+                  <NetworkStatusBar />
+                  <MainContent>
+                    <Routes>
+                      <Route path="/" element={<MobileStoryListWrapper type="top" />} />
+                      <Route path="/show" element={<MobileStoryListWrapper type="show" />} />
+                      <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
+                      <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
+                      <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
+                      <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
+                      <Route path="/user/:id" element={<UserProfile />} />
+                      <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
+                  </MainContent>
+                </div>
+              </ErrorBoundary>
+            </HashRouter>
+          </ScrollContainerProvider>
+        </NetworkStatusProvider>
+      </TooltipProvider>
     </ThemeProvider>
   );
 }

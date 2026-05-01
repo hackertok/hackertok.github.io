@@ -198,4 +198,41 @@ test.describe('Navigation - Viewport Resize Transition', () => {
     }));
     expect(docWidth).toBeLessThanOrEqual(vpWidth);
   });
+
+  test('header "More" button toggles in/out as the viewport crosses the packing threshold', async ({ page }) => {
+    // Drives the ResizeObserver-backed `usePackedNav` integration end-to-
+    // end. The unit suite mocks the hook (no real layout in jsdom), so
+    // this is the only place we exercise the actual repacking pipeline:
+    // measure → setState → re-derive visible/hidden → re-render.
+    //
+    // Use /user/pg because the User pill at index 0 takes up enough width
+    // that even a moderately-narrow viewport pushes feed tabs into the
+    // overflow menu. On a wide viewport everything fits, so the More
+    // button must be entirely absent (we don't want it leaking into
+    // desktop layouts).
+
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/#/user/pg');
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'pg' }),
+    ).toBeVisible();
+
+    const moreBtn = page.getByRole('button', { name: 'More tabs' });
+    // Wide viewport: User + Best + Show + Ask all fit alongside the logo
+    // and theme toggle; no More button is rendered.
+    await expect(moreBtn).toHaveCount(0);
+
+    // Shrink to a viewport where the packer has to overflow at least one
+    // feed tab. 320×568 ≈ iPhone SE — the smallest viewport we still
+    // need to support.
+    await page.setViewportSize({ width: 320, height: 568 });
+    await expect(moreBtn).toBeVisible({ timeout: 5000 });
+
+    // Grow back to wide → packer re-runs and removes the More button.
+    // This is the assertion that catches "stuck overflow" regressions
+    // (e.g. forgetting to disconnect the observer or to recompute on a
+    // grow event).
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await expect(moreBtn).toHaveCount(0);
+  });
 });

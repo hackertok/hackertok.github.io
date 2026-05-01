@@ -40,30 +40,41 @@ export default defineConfig({
     
     /* Consistent action timeout */
     actionTimeout: 10 * 1000,
+
+    /* Pin locale + timezone so any rendered date/number is deterministic
+       across CI runs and contributor machines. UserProfile renders an
+       absolute creation date via formatAbsoluteDate (e.g. "October 9, 2006"),
+       which would otherwise drift by host TZ/locale. NOTE: per-project `use`
+       overrides top-level `use` for any field the device descriptor sets, so
+       the same pair is also added inside each per-project block below. */
+    locale: 'en-US',
+    timezoneId: 'UTC',
   },
 
   /* Configure projects for major browsers */
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], locale: 'en-US', timezoneId: 'UTC' },
     },
     {
       name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
+      use: { ...devices['Desktop Firefox'], locale: 'en-US', timezoneId: 'UTC' },
     },
     {
       name: 'Mobile Safari',
       use: { 
         ...devices['iPhone 15'],
-        hasTouch: true,
+        locale: 'en-US',
+        timezoneId: 'UTC',
       },
     },
     {
       name: 'Mobile Chrome',
       use: { 
         ...devices['Pixel 7'],
-        hasTouch: true,
+        locale: 'en-US',
+        timezoneId: 'UTC',
       },
     },
   ],

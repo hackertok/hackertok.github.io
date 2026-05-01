@@ -1,11 +1,13 @@
 import { useLayoutEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Award, Calendar, FileText } from 'lucide-react';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useScrollContainer } from '../hooks/useScrollContainer';
 import { sanitizeHtml } from '../utils/sanitize';
-import { formatTimeAgo, formatAbsoluteTime, safeISOString } from '../api/hn';
+import { formatAbsoluteDate, formatTimeAgo, safeISOString } from '../api/hn';
 import { StateView, Spinner } from '../components';
+import { metaItemClass, metaPillClass } from '../lib/classes';
 
 export function UserProfile() {
   const { id } = useParams<{ id: string }>();
@@ -103,21 +105,36 @@ export function UserProfile() {
       <article>
         <header className="mb-6 pb-4 border-b border-border">
           <h1 className="text-2xl font-semibold text-foreground mb-2">{profile.id}</h1>
-          <div className="text-sm text-muted-foreground">
-            <span>{profile.karma.toLocaleString()} karma</span>
-            <span className="mx-1.5">|</span>
-            <span>created </span>
-            <time
-              dateTime={safeISOString(createdAtMs)}
-              title={formatAbsoluteTime(createdAtMs)}
-            >
-              {formatTimeAgo(createdAtMs)}
-            </time>
-            <span className="mx-1.5">|</span>
+          {/* Stat row — flex with leading icons, NO pipe separators (gap only).
+              Visible date is absolute (`October 9, 2006`) via `formatAbsoluteDate`;
+              the relative `X years ago` lives in the `<time title>` attribute so
+              users get both views — the visible primary, the hover surfaces age.
+              Submissions link uses CSS `capitalize` so DOM textContent stays
+              lowercase `submissions` (preserves accessible-name assertions). */}
+          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground">
+            <span className={metaItemClass}>
+              <Award aria-hidden className="size-3.5" />
+              <span>{profile.karma.toLocaleString()} karma</span>
+            </span>
+
+            <span className={metaItemClass}>
+              <Calendar aria-hidden className="size-3.5" />
+              <time
+                dateTime={safeISOString(createdAtMs)}
+                title={formatTimeAgo(createdAtMs)}
+              >
+                {formatAbsoluteDate(createdAtMs)}
+              </time>
+            </span>
+
+            {/* Submissions: nav-pill hover pattern (see `src/lib/classes.ts`
+                for the full rationale on the negative-margin trick + axe
+                compliance via font-medium weight delta). */}
             <Link
               to={`/submitted/${profile.id}`}
-              className="font-medium hover:text-accent transition-colors"
+              className={`${metaPillClass} capitalize font-medium`}
             >
+              <FileText aria-hidden className="size-3.5" />
               submissions
             </Link>
           </div>

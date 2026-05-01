@@ -46,16 +46,6 @@ describe('FullScreenItem', () => {
     });
   });
 
-  describe('past link', () => {
-    it('links to Algolia with type=story', async () => {
-      render(<FullScreenItem itemId={12345} />);
-
-      const pastLink = await screen.findByRole('link', { name: 'past' });
-      expect(pastLink).toHaveAttribute('href', expect.stringContaining('type=story'));
-      expect(pastLink).toHaveAttribute('rel', 'noreferrer');
-    });
-  });
-
   describe('comment handling', () => {
     it('shows "Item not found" when item type is comment', async () => {
       // Override Firebase to return a comment item

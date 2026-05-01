@@ -21,6 +21,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
 
+    /* Path aliases (mirror vite.config.js resolve.alias and components.json aliases).
+       TS 5+ allows path mapping without baseUrl using relative paths;
+       baseUrl is deprecated in TS 6 and removed in TS 7 (TS5101). */
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

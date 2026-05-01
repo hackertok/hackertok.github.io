@@ -1,9 +1,13 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
-import { formatTimeAgo, formatAbsoluteTime, safeISOString, getHostname } from '../api/hn';
+import { ChevronUp, Clock, Globe, MessageSquare } from 'lucide-react';
+import { getHostname } from '../api/hn';
 import { usePrefetchItem, cancelAllPrefetches } from '../hooks/usePrefetchItem';
 import { useIsViewed, markViewedWithTime } from '../utils/viewedItems';
+import { metaItemClass, metaPillClass } from '../lib/classes';
+import { AuthorByline } from './AuthorByline';
+import { RelativeTime } from './RelativeTime';
 import type { StoryItem, LocationState, FeedType } from '../types';
 
 interface StoryCardProps {
@@ -122,8 +126,9 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
 
   return (
     <article ref={setRefs} className="py-3 first:pt-0" data-testid="story-card" data-story-id={story.id} data-viewed={viewed}>
-      <div className="space-y-1">
-        {/* Title with hostname */}
+      <div className="space-y-1.5">
+        {/* Title — hostname now lives in the meta row below as `[Globe] domain`,
+            so the title stays paren-free and reads clean. */}
         <h2 className="text-base leading-snug font-semibold">
           {story.url ? (
             <a
@@ -152,52 +157,48 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
               {story.title}
             </Link>
           )}
-          {hostname && (
-            <span className="ml-1.5 text-sm text-muted-foreground font-normal">
-              (<Link
-                to={`/from/${hostname}`}
-                className="hover:text-accent transition-colors"
-              >
-                {hostname}
-              </Link>)
-            </span>
-          )}
         </h2>
 
-        {/* Meta info: "58 points by pocksuppet 3 hours ago | 17 comments" */}
-        <div className="text-sm text-muted-foreground">
-          <span>{story.points ?? 0} points</span>
-          <span> by </span>
-          {story.author && story.author !== 'unknown' ? (
-            // Byline link styling — list (StoryCard) and item-detail
-            // (ItemArticle) keep the byline muted by inheriting the parent
-            // meta-row color; the byline only differs from surrounding
-            // text by `font-medium` weight. Comment / CommentArticle
-            // deliberately render a brighter byline (`text-foreground`)
-            // for stronger author affordance inside comment threads.
-            // `font-medium` is the non-color distinguisher that satisfies
-            // axe's `link-in-text-block-style` rule via a font-weight
-            // delta vs the surrounding `font-normal` text — the rule
-            // passes via the style branch even though link/parent share
-            // the same color.
-            // E2E coverage: e2e/accessibility.spec.ts (light + dark mode).
-            <Link
-              to={`/user/${story.author}`}
-              className="font-medium hover:text-accent transition-colors"
-            >
-              {story.author}
+        {/* Meta row — flex with leading icons, NO dot/pipe separators (gap only).
+            Order: points → domain → time → user → comments. Points / domain /
+            time form a quick-scan header (score, source, recency) so a user
+            can triage the card without parsing an author name first; user
+            follows for attribution; comments lands last as the explicit
+            "click to read the discussion" action.
+
+            Layout: `metaItemClass` for non-clickable spans, `metaPillClass`
+            for the link variants. See `src/lib/classes.ts` for the full
+            rationale on the negative-margin pill trick + axe compliance via
+            font-medium. AuthorByline + RelativeTime collapse the
+            byline-and-time-stamp pair shared with ItemArticle / CommentArticle
+            into a single source of truth. */}
+        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground">
+          <span className={metaItemClass}>
+            <ChevronUp aria-hidden className="size-3.5" />
+            <span>{story.points ?? 0} points</span>
+          </span>
+
+          {hostname && (
+            <Link to={`/from/${hostname}`} className={metaPillClass}>
+              <Globe aria-hidden className="size-3.5" />
+              {hostname}
             </Link>
-          ) : (
-            <span>{story.author || 'unknown'}</span>
           )}
-          {' '}<time dateTime={safeISOString(story.createdAt)} title={formatAbsoluteTime(story.createdAt)}>{formatTimeAgo(story.createdAt)}</time>
-          <span className="mx-1.5">|</span>
+
+          <span className={metaItemClass}>
+            <Clock aria-hidden className="size-3.5" />
+            <RelativeTime timestamp={story.createdAt} />
+          </span>
+
+          <AuthorByline author={story.author} />
+
           <Link
             to={`/item/${story.id}`}
             state={linkState}
             onClick={handleCommentsClick}
-            className="hover:text-accent transition-colors"
+            className={metaPillClass}
           >
+            <MessageSquare aria-hidden className="size-3.5" />
             {story.commentCount ?? 0} comments
           </Link>
         </div>

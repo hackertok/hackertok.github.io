@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -6,6 +7,15 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: '/',
+  resolve: {
+    // Mirrors tsconfig.json paths and components.json aliases so `@/...`
+    // imports resolve at build time, dev time, AND test time. This is the
+    // unified Vite + Vitest config (see the `test:` block below) — the alias
+    // automatically applies to test runs without a separate vitest.config.
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

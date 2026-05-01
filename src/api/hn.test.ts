@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { 
   formatTimeAgo,
   formatAbsoluteTime,
+  formatAbsoluteDate,
+  safeISOString,
   getHostname, 
   normalizeAlgoliaHit,
   fetchShowStories, 
@@ -34,6 +36,19 @@ describe('hn API utilities', () => {
     it('returns empty string for invalid timestamp', () => {
       expect(formatTimeAgo(NaN)).toBe('');
       expect(formatTimeAgo('invalid' as unknown as number)).toBe('');
+    });
+
+    it('returns empty string for ±Infinity (consistent with the absolute formatters)', () => {
+      // Infinity slips through both `!timestamp` and `isNaN` — without an
+      // explicit `!isFinite` guard, the function would compute against a
+      // non-finite arithmetic result and emit nonsense like
+      // "Infinity years ago". The other timestamp formatters
+      // (formatAbsoluteTime / formatAbsoluteDate / safeISOString) already
+      // gate on isFinite; pinning the same contract here prevents a
+      // future "the absolute label is empty but the relative label says
+      // 'Infinity years ago'" mismatch on a degraded payload.
+      expect(formatTimeAgo(Infinity)).toBe('');
+      expect(formatTimeAgo(-Infinity)).toBe('');
     });
 
     it('returns "just now" for very recent times', () => {
@@ -115,20 +130,101 @@ describe('hn API utilities', () => {
       expect(formatAbsoluteTime(NaN)).toBe('');
     });
 
+    it('returns empty string for non-finite timestamps (Infinity, -Infinity)', () => {
+      // The `!isFinite()` guard exists because `new Date(Infinity)` produces
+      // an "Invalid Date" whose `toLocaleString` is locale-dependent garbage
+      // ("Invalid Date" / "Date invalide" / "无效日期"). Returning '' lets
+      // the consumer fall back cleanly without leaking that string.
+      expect(formatAbsoluteTime(Infinity)).toBe('');
+      expect(formatAbsoluteTime(-Infinity)).toBe('');
+    });
+
     it('returns a localized date string for a valid timestamp', () => {
       const ts = new Date('2026-02-21T14:30:00Z').getTime();
       const result = formatAbsoluteTime(ts);
+      // toLocaleString(undefined, …) renders in the host's default locale, so
+      // we only assert locale-invariant pieces: year, day-of-month, and a
+      // clock segment H:MM / HH:MM. The exact month spelling ("Feb" vs "Fév"
+      // vs "2月") differs by locale and is not part of the contract.
       expect(result).toContain('2026');
-      expect(result).toContain('Feb');
       expect(result).toContain('21');
+      expect(result).toMatch(/\d{1,2}:\d{2}/);
     });
 
     it('handles timestamps from different years', () => {
       const ts = new Date('2024-12-25T08:00:00Z').getTime();
       const result = formatAbsoluteTime(ts);
+      // Locale-invariant: year + day-of-month. Month text would be "Dec" /
+      // "Dez." / "déc." / "12月" depending on host locale.
       expect(result).toContain('2024');
-      expect(result).toContain('Dec');
       expect(result).toContain('25');
+    });
+  });
+
+  describe('formatAbsoluteDate', () => {
+    it('returns empty string for null/undefined/zero', () => {
+      expect(formatAbsoluteDate(null as unknown as number)).toBe('');
+      expect(formatAbsoluteDate(undefined as unknown as number)).toBe('');
+      expect(formatAbsoluteDate(0)).toBe('');
+    });
+
+    it('returns empty string for NaN', () => {
+      expect(formatAbsoluteDate(NaN)).toBe('');
+    });
+
+    it('returns empty string for non-finite timestamps (Infinity, -Infinity)', () => {
+      // Same `!isFinite()` rationale as formatAbsoluteTime.
+      expect(formatAbsoluteDate(Infinity)).toBe('');
+      expect(formatAbsoluteDate(-Infinity)).toBe('');
+    });
+
+    it('returns a localized long-month date string and omits time-of-day', () => {
+      const ts = new Date('2026-02-21T14:30:00Z').getTime();
+      const result = formatAbsoluteDate(ts);
+      // toLocaleString(undefined, …) renders in the host's default locale, so
+      // we only assert locale-invariant pieces: year and day-of-month present,
+      // no clock parts. The "long-month" stylistic choice ("February" vs
+      // "Februar" vs "février") is verified visually. The `H:MM`/`HH:MM`
+      // negative match guards the date-only contract — the formatter must
+      // never surface clock parts even when the underlying Date has them.
+      expect(result).toContain('2026');
+      expect(result).toContain('21');
+      expect(result).not.toMatch(/\d+:\d+/);
+    });
+  });
+
+  describe('safeISOString', () => {
+    // safeISOString feeds the `<time dateTime="…">` attribute on every
+    // story / item / comment row, so a single bad input would surface as a
+    // raw "Invalid Date" string (or worse, throw inside React render and
+    // blow up the whole list). The helper guards against null / undefined /
+    // 0 / NaN / non-finite inputs and returns '' so the consumer can omit
+    // the attribute entirely.
+
+    it('returns empty string for null/undefined/zero', () => {
+      expect(safeISOString(null as unknown as number)).toBe('');
+      expect(safeISOString(undefined as unknown as number)).toBe('');
+      expect(safeISOString(0)).toBe('');
+    });
+
+    it('returns empty string for NaN', () => {
+      expect(safeISOString(NaN)).toBe('');
+    });
+
+    it('returns empty string for non-finite timestamps (Infinity, -Infinity)', () => {
+      // Without the `!isFinite()` guard, `new Date(Infinity).toISOString()`
+      // throws `RangeError: Invalid time value` — which would crash any
+      // CommentArticle / ItemArticle row whose API timestamp went haywire.
+      expect(safeISOString(Infinity)).toBe('');
+      expect(safeISOString(-Infinity)).toBe('');
+    });
+
+    it('returns a parseable ISO 8601 string for a valid timestamp', () => {
+      const ts = new Date('2026-02-21T14:30:00Z').getTime();
+      const iso = safeISOString(ts);
+      expect(iso).not.toBe('');
+      // Round-trip: the returned string parses back to the same instant.
+      expect(Date.parse(iso)).toBe(ts);
     });
   });
 

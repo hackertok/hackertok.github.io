@@ -13,7 +13,7 @@ test.describe('User Profile - Desktop', () => {
     await setupApiMocks(page);
   });
 
-  test('renders profile with id, karma, account age, and about section', async ({ page }) => {
+  test('renders profile with id, karma, account creation date, and about section', async ({ page }) => {
     await page.goto('/#/user/pg');
 
     // Username heading (h1)
@@ -22,12 +22,13 @@ test.describe('User Profile - Desktop', () => {
     // Karma value formatted with thousands separator (Intl.NumberFormat)
     await expect(page.getByText('155,555 karma')).toBeVisible();
 
-    // Account age — "created" and "X years ago" are rendered in adjacent
-    // <span> + <time> elements (no single element wraps the whole phrase),
-    // so each part is asserted separately. The fixture pins `created` to
-    // 2006-10-09, so "years ago" is stable across calendar months.
-    await expect(page.getByText('created', { exact: false })).toBeVisible();
-    await expect(page.getByText(/\d+\s+years? ago/i)).toBeVisible();
+    // Account creation date — visible label is now an absolute long-month
+    // date via formatAbsoluteDate (relative `X years ago` lives in the
+    // <time title> tooltip). Fixture pins `created: 1160418092` =
+    // 2006-10-09T20:21:32Z; under UTC + en-US (pinned in playwright.config.ts
+    // per-project use blocks) this renders deterministically as
+    // "October 9, 2006".
+    await expect(page.getByText('October 9, 2006')).toBeVisible();
 
     // About section — sanitized HTML rendered into .comment-content
     await expect(page.getByText('Bug fixer.')).toBeVisible();
