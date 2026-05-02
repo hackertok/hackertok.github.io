@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { RefreshCw } from 'lucide-react';
+import { Button } from './ui';
 
 /* ── Scene components (animated SVG illustrations) ─────────────────── */
 
@@ -245,29 +247,49 @@ export function StateView({ variant, title, description, action, compact, classN
 }
 
 function ActionElement({ action, isButtonStyle }: { action: NonNullable<StateViewProps['action']>; isButtonStyle: boolean }) {
-  const buttonClasses = 'inline-block px-2 py-1.5 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors font-medium text-sm';
-  const linkClasses = 'text-accent hover:underline text-sm font-medium';
+  // Single swap covers ALL retry surfaces in the app — every retry/try-again
+  // button across the codebase routes through StateView's `action` prop, so
+  // adding RefreshCw here propagates to StoryList, DomainStories,
+  // UserSubmissions, UserProfile, ItemDetail, FullScreenItem, swipe viewers,
+  // CommentsSection, CommentDetail, FullScreenComment, and ErrorBoundary —
+  // no per-page edits needed.
+  const isRetry = /try again|retry/i.test(action.label);
+  const buttonContent = (
+    <>
+      {isRetry && <RefreshCw aria-hidden className="size-3.5" />}
+      {action.label}
+    </>
+  );
 
   if (action.to) {
     return (
-      <Link
-        to={action.to}
-        onClick={action.onClick}
-        className={isButtonStyle ? buttonClasses : linkClasses}
+      <Button
+        asChild
+        variant={isButtonStyle ? 'default' : 'link'}
+        size="sm"
+        // Strip the size variant's height + padding (and the conditional
+        // `has-[>svg]:px-2.5` for retry icons, whose `:has()` pseudo-class
+        // selector specificity would otherwise beat plain `p-0`) for the
+        // inline `link` branch so it renders as a true text link, matching
+        // the pre-shadcn behavior. No current callsite uses `action.to` with
+        // `isButtonStyle=false` (i.e. `variant` `empty`, `deleted`, or `end`
+        // in non-compact layout); today `action.to` appears only on `not-found`
+        // or `error`, both `isButtonStyle=true`, but the override keeps the
+        // link branch visually correct for any future caller.
+        className={isButtonStyle ? undefined : 'h-auto p-0 has-[>svg]:px-0'}
       >
-        {action.label}
-      </Link>
+        <Link to={action.to} onClick={action.onClick}>
+          {buttonContent}
+        </Link>
+      </Button>
     );
   }
 
   if (action.onClick) {
     return (
-      <button
-        onClick={action.onClick}
-        className={buttonClasses}
-      >
-        {action.label}
-      </button>
+      <Button variant="default" size="sm" onClick={action.onClick}>
+        {buttonContent}
+      </Button>
     );
   }
 

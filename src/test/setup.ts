@@ -99,6 +99,24 @@ class MockIntersectionObserver {
 
 globalThis.IntersectionObserver = MockIntersectionObserver;
 
+// Mock ResizeObserver (not implemented in jsdom). Required by `usePackedNav`
+// — the hook calls `new ResizeObserver(...)` inside useLayoutEffect.
+// Callbacks never fire here; jsdom has no layout engine, so any measurement
+// would return 0 anyway. Hooks that consume this should treat 0-width as
+// "unmeasured" and fall back to a sensible default (`usePackedNav` does:
+// stays at `Infinity` and renders all items).
+class MockResizeObserver {
+  callback: ResizeObserverCallback;
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+  }
+  observe() { /* noop */ }
+  unobserve() { /* noop */ }
+  disconnect() { /* noop */ }
+}
+
+globalThis.ResizeObserver = MockResizeObserver;
+
 // Mock requestAnimationFrame (basic implementation for jsdom)
 globalThis.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16));
 globalThis.cancelAnimationFrame = vi.fn((id: number) => clearTimeout(id));

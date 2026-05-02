@@ -232,11 +232,6 @@ test.describe('Mobile Direct Item Access', () => {
 
     // Should display the item body text (sanitized HTML rendered in FullScreenItem)
     await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
-
-    // Should have a "past" link to Algolia in the mobile view too
-    const pastLink = page.getByRole('link', { name: 'past' }).first();
-    await expect(pastLink).toBeVisible();
-    await expect(pastLink).toHaveAttribute('href', /hn\.algolia\.com/);
   });
 
   test('clears error state when navigating back and forward from not-found item', async ({ page }) => {

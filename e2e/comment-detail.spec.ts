@@ -23,7 +23,7 @@ test.describe('Comment Detail', () => {
     const parentLink = page.getByRole('link', { name: 'parent' }).first();
     await expect(parentLink).toBeVisible();
 
-    // Should show "on: Item Title" link
+    // Should show item title link (the thread the comment is on)
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
     // Document title should contain comment author
@@ -57,7 +57,7 @@ test.describe('Comment Detail', () => {
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
   });
 
-  test('"on: Item Title" link navigates to item', async ({ page }) => {
+  test('item title link navigates to item', async ({ page }) => {
     await page.goto('/#/item/1001');
 
     // Wait for item title to load

@@ -29,7 +29,7 @@ describe('FullScreenComment', () => {
     expect(parentLink).toHaveAttribute('href', '/item/12345');
   });
 
-  it('renders "on: Item Title" link after background fetch', async () => {
+  it('renders item title link after background fetch', async () => {
     render(<FullScreenComment commentId={1001} />);
 
     await waitFor(() => {

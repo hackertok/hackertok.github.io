@@ -53,8 +53,13 @@ describe('StoryCard', () => {
 
     it('renders hostname for external links', () => {
       render(<StoryCard story={mockStory} />);
-      
-      expect(screen.getByText('example.com')).toBeInTheDocument();
+
+      // Hostname sits in the meta row as a single Link (direct flex child of
+      // the meta row) with the Globe icon and hostname text inside the anchor
+      // (icon is aria-hidden, so the accessible name is just the hostname).
+      // getByRole('link', { name }) asserts the /from/:domain control, not
+      // only visible text.
+      expect(screen.getByRole('link', { name: 'example.com' })).toBeInTheDocument();
     });
 
     it('renders points count', () => {
@@ -65,8 +70,12 @@ describe('StoryCard', () => {
 
     it('renders author name', () => {
       render(<StoryCard story={mockStory} />);
-      
-      expect(screen.getByText('testuser')).toBeInTheDocument();
+
+      // Author byline is a single Link (direct flex child of the meta row)
+      // with the User icon and name inside the anchor — no outer span wrapper
+      // around the Link. getByRole('link', { name }) asserts the /user/:author
+      // profile link.
+      expect(screen.getByRole('link', { name: 'testuser' })).toBeInTheDocument();
     });
 
     it('renders comment count', () => {
@@ -79,6 +88,32 @@ describe('StoryCard', () => {
       render(<StoryCard story={mockStory} />);
       
       expect(screen.getByText(/hour ago/i)).toBeInTheDocument();
+    });
+
+    it('renders "0 points" when points is missing (Algolia/Firebase oddity)', () => {
+      // Algolia hits in the wild can omit `points` (or send it as null) for
+      // very old/edge-case items. The `story.points ?? 0` fallback in the
+      // render keeps the meta-row column count stable rather than letting
+      // "undefined points" leak to the DOM. Pin it so a future refactor that
+      // drops the `??` immediately fails CI.
+      const noPointsStory: StoryItem = {
+        ...mockStory,
+        points: null as unknown as number,
+      };
+      render(<StoryCard story={noPointsStory} />);
+
+      expect(screen.getByText(/^0\s+points$/)).toBeInTheDocument();
+    });
+
+    it('renders "0 comments" when commentCount is missing', () => {
+      // Same fallback as points — commentCount is also nullable per the API.
+      const noCommentsStory: StoryItem = {
+        ...mockStory,
+        commentCount: null as unknown as number,
+      };
+      render(<StoryCard story={noCommentsStory} />);
+
+      expect(screen.getByRole('link', { name: /^0\s+comments$/ })).toBeInTheDocument();
     });
   });
 

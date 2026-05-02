@@ -111,7 +111,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     const parentLink = page.getByRole('link', { name: 'parent' }).first();
     await expect(parentLink).toBeVisible();
 
-    // Should show "on: Item Title" link
+    // Should show item title link (the thread the comment is on)
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
   });
 
@@ -147,14 +147,14 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     expect(historyLength).toBeLessThanOrEqual(2);
   });
 
-  test('in-panel links have correct hrefs and comments indicator clears on navigation', async ({ page }) => {
+  test('in-panel links have correct hrefs and comments indicator clears when leaving comment view', async ({ page }) => {
     await page.goto('/#/item/1001');
 
     // Wait for comment to load and verify "comments" indicator is shown
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('comments').first()).toBeVisible();
 
-    // Verify the "on: Item Title" link inside the swipe panel has the correct href
+    // Verify the item title link inside the swipe panel has the correct href
     const firstPanel = page.locator('[data-item-id="1001"]');
     const storyLink = firstPanel.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
     await expect(storyLink).toHaveAttribute('href', '#/item/12345');
@@ -163,8 +163,18 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     const parentLink = firstPanel.getByRole('link', { name: 'parent' });
     await expect(parentLink).toHaveAttribute('href', '#/item/12345');
 
-    // Navigate away using the header nav (a React Router link that unmounts the viewer)
-    await page.getByRole('link', { name: 'best' }).click();
+    // Navigate away from the comment view via the router. We previously
+    // clicked the header "Best" link directly, but the responsive packer
+    // (added by the modernization commit) now pushes Best/Show/Ask into
+    // a "More" dropdown when the comments pill is active at 375px — and
+    // simulating that interaction is brittle across Firefox (which
+    // sometimes drops the click while the swipe-viewer focus trap is
+    // active). The actual contract being tested here is "leaving comment
+    // view clears the comments indicator", which a hash-route push
+    // exercises just as well, without coupling to the header layout.
+    await page.evaluate(() => {
+      window.location.hash = '#/best';
+    });
     // On mobile, swipe viewer immediately replaces /#/best with /#/item/{id}
     await expect(page).toHaveURL(/\/#\/(best|item\/)/, { timeout: 5000 });
 
@@ -271,10 +281,10 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     await expect(page).toHaveTitle(/Comment by patio11/);
   });
 
-  test('clicking "on: title" navigates to story viewer, not comment viewer', async ({ page }) => {
+  test('clicking item title link navigates to story viewer, not comment viewer', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Scope to the current panel to avoid strict mode violation (each sibling has an "on: title" link)
+    // Scope to the current panel to avoid strict mode violation (each sibling has an item title link)
     const firstPanel = page.locator('[data-item-id="1001"]');
     const storyLink = firstPanel.getByRole('link', { name: /Rust Is the Future/ });
     await expect(storyLink).toBeVisible({ timeout: 10000 });

@@ -66,46 +66,56 @@ describe('Comment', () => {
       expect(authorLink).toHaveAttribute('href', '/user/testuser');
     });
 
+    // Author guard: the literal HN `'unknown'` placeholder (seen on
+    // degraded Algolia payloads) and any empty-string fallback that slips
+    // through `?? ''` upstream both render as a plain span (NOT a link),
+    // with the visible label "unknown" so the `›` byline marker doesn't
+    // sit alone. See `isKnownAuthor` for the centralised guard rule.
+    it.each([
+      { label: 'literal "unknown"', author: 'unknown', id: 100 },
+      { label: 'empty string', author: '', id: 101 },
+    ])(
+      'does not render an author link when the author is the $label',
+      ({ author, id }) => {
+        const guardedComment = createComment({
+          id,
+          author,
+          text: '<p>Anonymous comment</p>',
+          createdAt: Date.now() - 3600000,
+        });
+        render(<Comment comment={guardedComment} />);
+
+        expect(
+          screen.queryByRole('link', { name: 'unknown' }),
+        ).not.toBeInTheDocument();
+        expect(screen.getByText('unknown')).toBeInTheDocument();
+      },
+    );
+
     // Integration smoke test for the sanitize → dangerouslySetInnerHTML path.
     // The unit suite in `utils/sanitize.test.ts` covers `sanitizeHtml`'s
-    // output; this asserts the rewrite actually reaches the rendered DOM
-    // and isn't bypassed by a future refactor of `Comment.tsx`.
-    it('rewrites HN item links in the rendered DOM', () => {
-      const commentWithHnLink = {
-        ...mockComment,
-        text: '<p>See <a href="https://news.ycombinator.com/item?id=99999">https://news.ycombinator.com/item?id=99999</a></p>',
-      };
-      const { container } = render(<Comment comment={commentWithHnLink} />);
-      const link = container.querySelector('.comment-content a');
-      expect(link?.getAttribute('href')).toBe('#/item/99999');
-      expect(link?.textContent).toBe('item:99999');
-    });
-
-    // Companion to the `item:` smoke test above — pins that `user:` and
-    // `submitted:` rewrites also reach the rendered DOM, not just
-    // `sanitizeHtml`'s output. Catches a regression where `Comment.tsx`
-    // bypasses `sanitizeHtml` for any branch of HN URL handling.
-    it('rewrites HN user links in the rendered DOM', () => {
-      const commentWithUserLink = {
-        ...mockComment,
-        text: '<p>See <a href="https://news.ycombinator.com/user?id=pg">https://news.ycombinator.com/user?id=pg</a></p>',
-      };
-      const { container } = render(<Comment comment={commentWithUserLink} />);
-      const link = container.querySelector('.comment-content a');
-      expect(link?.getAttribute('href')).toBe('#/user/pg');
-      expect(link?.textContent).toBe('user:pg');
-    });
-
-    it('rewrites HN submitted links in the rendered DOM', () => {
-      const commentWithSubmittedLink = {
-        ...mockComment,
-        text: '<p>See <a href="https://news.ycombinator.com/submitted?id=pg">https://news.ycombinator.com/submitted?id=pg</a></p>',
-      };
-      const { container } = render(<Comment comment={commentWithSubmittedLink} />);
-      const link = container.querySelector('.comment-content a');
-      expect(link?.getAttribute('href')).toBe('#/submitted/pg');
-      expect(link?.textContent).toBe('submitted:pg');
-    });
+    // output exhaustively; these `it.each` assertions just pin that each
+    // recognised HN URL family actually reaches the rendered DOM via
+    // `Comment.tsx` (and isn't bypassed by a future refactor that, say,
+    // routes around the rewriter for one branch).
+    it.each([
+      { kind: 'item', sourcePath: 'item?id=99999', expectedHref: '#/item/99999', expectedText: 'item:99999' },
+      { kind: 'user', sourcePath: 'user?id=pg', expectedHref: '#/user/pg', expectedText: 'user:pg' },
+      { kind: 'submitted', sourcePath: 'submitted?id=pg', expectedHref: '#/submitted/pg', expectedText: 'submitted:pg' },
+    ])(
+      'rewrites HN $kind links in the rendered DOM',
+      ({ sourcePath, expectedHref, expectedText }) => {
+        const sourceUrl = `https://news.ycombinator.com/${sourcePath}`;
+        const commentWithHnLink = {
+          ...mockComment,
+          text: `<p>See <a href="${sourceUrl}">${sourceUrl}</a></p>`,
+        };
+        const { container } = render(<Comment comment={commentWithHnLink} />);
+        const link = container.querySelector('.comment-content a');
+        expect(link?.getAttribute('href')).toBe(expectedHref);
+        expect(link?.textContent).toBe(expectedText);
+      },
+    );
   });
 
   describe('nested comments', () => {

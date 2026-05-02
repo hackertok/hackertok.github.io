@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /* Enable class-based dark mode (toggle with .dark class on html element) */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -17,13 +18,24 @@
   --accent-hover: oklch(0.51 0.195 44);      /* darker orange for hover */
   --border: oklch(0.90 0.008 60);            /* warm cream-200 */
   --destructive: oklch(0.58 0.22 27);        /* red-500 */
-  --destructive-foreground: oklch(1 0 0);    /* white */
   --skeleton: oklch(0.90 0.008 60);          /* warm cream-200 */
   --viewed: oklch(0.55 0.01 60);             /* dimmed for read stories */
   --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
   --pill-glow: 0 2px 8px oklch(0.55 0.195 44 / 0.25);
   --header-height: 53px;
   --network-bar-height: 0px;
+
+  /* shadcn/ui token aliases — added in :root ONLY, not duplicated in .dark.
+     Each alias is `var(--accent)` / `var(--muted)` / etc., and the .dark
+     block already overrides those underlying primitives, so var() re-resolves
+     dynamically when the cascade re-applies the dark scope. No --radius
+     override on purpose: defining --radius would flip every unsuffixed
+     `rounded` utility (~30 usages on skeleton bars + the `@apply rounded`
+     chains below) from Tailwind's 4px default to 8px. */
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
 }
 
 /* Dark mode — soft dark, warm tones */
@@ -39,7 +51,6 @@
   --accent-hover: oklch(0.63 0.195 44);      /* darker orange for hover */
   --border: oklch(0.30 0.012 60);            /* warm gray-700 */
   --destructive: oklch(0.65 0.20 27);        /* red-400 */
-  --destructive-foreground: oklch(1 0 0);    /* white */
   --skeleton: oklch(0.30 0.012 60);          /* warm gray-700 */
   --viewed: oklch(0.62 0.01 60);             /* dimmed for read stories */
   --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
@@ -59,11 +70,21 @@
   --color-accent-hover: var(--accent-hover);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
   --color-skeleton: var(--skeleton);
   --color-viewed: var(--viewed);
   --color-tok: var(--tok-color);
   --shadow-pill-glow: var(--pill-glow);
+
+  /* shadcn/ui color aliases — wires the :root --primary / --popover
+     variables into Tailwind v4's color utility space (`bg-primary`,
+     `bg-popover`, etc.). These are required because shadcn-emitted
+     class names depend on `--color-<token>` being declared inside @theme.
+     Trimmed to only the aliases consumed by the kept Button + Tooltip +
+     DropdownMenu variants. */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
 }
 
 /* Spin animation for loading spinners */

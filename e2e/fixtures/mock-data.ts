@@ -324,8 +324,9 @@ export const mockDomainPaginationItem2 = {
 // `UserProfile` interface in `src/types.ts`.
 export const mockUserProfile = {
   id: 'pg',
-  // 2006-10-09 — Hacker News launch day. Pinned (not now()-relative) so the
-  // "X years ago" assertion in tests stays stable across calendar months.
+  // 2006-10-09 — Hacker News launch day. Pinned unix time (not now()-relative)
+  // so the visible account-age string stays deterministic
+  // (`October 9, 2006` — see user-profile.spec).
   created: 1160418092,
   karma: 155555,
   about: '<p>Bug fixer.</p>',

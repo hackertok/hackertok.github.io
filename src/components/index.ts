@@ -1,5 +1,7 @@
 export { Header } from './Header';
 export { StoryCard } from './StoryCard';
+export { AuthorByline } from './AuthorByline';
+export { RelativeTime } from './RelativeTime';
 export { StoryCardSkeleton, StoryCardSkeletonList } from './StoryCardSkeleton';
 export { ThemeToggle } from './ThemeToggle';
 export { Spinner } from './Spinner';

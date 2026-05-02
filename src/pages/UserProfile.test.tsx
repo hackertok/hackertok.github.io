@@ -32,7 +32,7 @@ describe('UserProfile', () => {
   });
 
   describe('loaded profile', () => {
-    it('renders username, karma, and account age', async () => {
+    it('renders username and karma', async () => {
       renderProfile('leerob');
 
       await waitFor(() => {
@@ -40,7 +40,21 @@ describe('UserProfile', () => {
       });
 
       expect(screen.getByText(/12,345 karma/)).toBeInTheDocument();
-      expect(screen.getByText(/created/i)).toBeInTheDocument();
+    });
+
+    it('renders the account creation date as an absolute long-month date', async () => {
+      // mockUserProfile.created = 1160418092 → 2006-10-09T20:21:32Z. The
+      // visible string is rendered via `formatAbsoluteDate` (long-month,
+      // no clock parts). We only assert locale-invariant pieces — the
+      // year + an absent `H:MM` clock — so the test stays green regardless
+      // of the host's `Intl.DateTimeFormat` defaults. The relative phrasing
+      // ("X years ago") lives in the `<time title>` attribute and is
+      // covered separately by the e2e suite.
+      renderProfile('leerob');
+
+      const time = await screen.findByText(/2006/);
+      expect(time.tagName).toBe('TIME');
+      expect(time.textContent ?? '').not.toMatch(/\d+:\d+/);
     });
 
     it('renders sanitized about HTML', async () => {

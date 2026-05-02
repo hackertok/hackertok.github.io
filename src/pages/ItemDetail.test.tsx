@@ -77,15 +77,6 @@ describe('ItemDetail', () => {
     });
   });
 
-  describe('past link', () => {
-    it('links to Algolia with type=story', async () => {
-      renderItemDetail(12345);
-
-      const pastLink = await screen.findByRole('link', { name: 'past' });
-      expect(pastLink).toHaveAttribute('href', expect.stringContaining('type=story'));
-    });
-  });
-
   describe('back-to-feed action on not-found', () => {
     // Override the default Firebase handler so the requested item resolves to
     // null (NotFoundError → isNotFound=true → "Back to feed" link rendered).

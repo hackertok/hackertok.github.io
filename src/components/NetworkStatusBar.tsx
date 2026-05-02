@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
+import { Wifi, WifiOff } from 'lucide-react';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 
 type BarState = 'hidden' | 'offline' | 'back-online' | 'sliding-out';
@@ -68,25 +69,12 @@ export function NetworkStatusBar() {
     >
       {barState === 'offline' ? (
         <>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 20h.01" />
-            <path d="M8.5 16.429a5 5 0 0 1 7 0" />
-            <path d="M5 12.859a10 10 0 0 1 5.17-2.69" />
-            <path d="M19 12.859a10 10 0 0 0-2.007-1.523" />
-            <path d="M2 8.82a15 15 0 0 1 4.177-2.643" />
-            <path d="M22 8.82a15 15 0 0 0-11.288-3.764" />
-            <path d="m2 2 20 20" />
-          </svg>
+          <WifiOff aria-hidden className="size-4 shrink-0" />
           No internet connection
         </>
       ) : (
         <>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 20h.01" />
-            <path d="M2 8.82a15 15 0 0 1 20 0" />
-            <path d="M5 12.859a10 10 0 0 1 14 0" />
-            <path d="M8.5 16.429a5 5 0 0 1 7 0" />
-          </svg>
+          <Wifi aria-hidden className="size-4 shrink-0" />
           Back online
         </>
       )}

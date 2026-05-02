@@ -596,24 +596,44 @@ export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comm
     }));
 }
 
-// Format timestamp as a localized absolute date string for tooltips
+// Format timestamp as a localized absolute date string for tooltips.
+// Guards reject null/undefined/zero (`!timestamp`), NaN, AND ±Infinity —
+// the latter would otherwise slip through (`!Infinity` is false,
+// `isNaN(Infinity)` is false) and produce a literal "Invalid Date" string.
 export function formatAbsoluteTime(timestamp: number): string {
-  if (!timestamp || isNaN(timestamp)) return '';
+  if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) return '';
   return new Date(timestamp).toLocaleString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });
 }
 
+// Format timestamp as a long-month date-only string (e.g. "October 9, 2006").
+// Used by UserProfile for the account creation date — minute precision is
+// meaningful on a per-story tooltip but not on a profile creation date, and
+// the long-month name matches the agreed visible style.
+// Same Infinity/NaN guard as formatAbsoluteTime — see comment there.
+export function formatAbsoluteDate(timestamp: number): string {
+  if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) return '';
+  return new Date(timestamp).toLocaleString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric',
+  });
+}
+
 // Safe ISO string for <time> dateTime attribute — returns '' for invalid timestamps
+// (null/undefined/zero/NaN/±Infinity); `Date#toISOString` throws RangeError on
+// non-finite millisecond inputs, so the isFinite gate is required here.
 export function safeISOString(timestamp: number): string {
-  if (!timestamp || isNaN(timestamp)) return '';
+  if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) return '';
   return new Date(timestamp).toISOString();
 }
 
-// Format relative time
+// Format relative time. Same Infinity/NaN guard as formatAbsoluteTime —
+// `!timestamp` rejects 0/null/undefined; `isNaN` catches arithmetic-NaN
+// inputs; `!isFinite` catches ±Infinity (which would slip through both
+// of the others and produce nonsense like "Infinity years ago").
 export function formatTimeAgo(timestamp: number): string {
-  if (!timestamp || isNaN(timestamp)) {
+  if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) {
     return '';
   }
   
@@ -638,6 +658,23 @@ export function formatTimeAgo(timestamp: number): string {
   if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
   if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
   return 'just now';
+}
+
+// Author truthiness helper. HN's degraded payloads use the literal string
+// `'unknown'` as a placeholder for missing/anonymous authors (verified in
+// e2e/fixtures/api-mocks.ts and observed in real Algolia responses for
+// orphaned items), and empty strings slip through `?? ''` fallbacks
+// elsewhere in the pipeline. Both should suppress the link to a
+// `/user/<garbage>` route — and the byline brightness that signals a
+// real authorship handle. StoryCard already inlines this check
+// (`author && author !== 'unknown'`); this helper centralizes the rule
+// so CommentArticle, Comment, and any future surface stay consistent.
+// Returns a type predicate so callers can use it as an `if`-narrow before
+// passing the author into a router `to=` template.
+export function isKnownAuthor(
+  author: string | null | undefined,
+): author is string {
+  return !!author && author !== 'unknown';
 }
 
 // Get hostname from URL (includes first path segment for GitHub-like domains)
