@@ -3,15 +3,13 @@ import { setupApiMocks } from './fixtures/api-mocks';
 import { waitForSwipeReady, smoothScrollAndAwaitSettled, waitForScrollAtIndex } from './fixtures/swipe-helpers';
 
 test.describe('Mobile Swipe Viewer', () => {
-  // Use mobile viewport for all tests in this file
-  test.use({ 
+  test.use({
     viewport: { width: 375, height: 667 },
     hasTouch: true,
   });
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
-    // Clear viewed items to ensure fresh state
     await page.addInitScript(() => {
       localStorage.clear();
       sessionStorage.clear();
@@ -20,99 +18,84 @@ test.describe('Mobile Swipe Viewer', () => {
 
   test('shows swipe viewer with item on mobile', async ({ page }) => {
     await page.goto('/#/');
-    
-    // Should show swipe container on mobile
+
     const swipeContainer = page.getByTestId('swipe-container');
     await expect(swipeContainer).toBeVisible();
 
-    // Item should be visible in swipe panel
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
   });
 
   test('can swipe to next item', async ({ page }) => {
     await page.goto('/#/');
-    
-    // Wait for initial item to load
+
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
-    // Document title should reflect the current (first) story
     await expect(page).toHaveTitle(/Rust Is the Future.*HackerTok/);
-    
-    // Get the swipe container
+
     const container = page.getByTestId('swipe-container');
-    
-    // Wait for container AND at least 2 panels to be ready (ensures second item exists)
+
+    // Need at least 2 panels mounted before scroll-snap has a target.
     await waitForSwipeReady(page, 2);
-    
-    // Get panel width using getBoundingClientRect (more reliable than clientWidth)
+
+    // getBoundingClientRect is more reliable than clientWidth (handles zoom).
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
-    
-    // Smooth scroll and wait for scrollend event (which triggers app URL update)
+
+    // Smooth scroll → scrollend event → app URL update.
     await smoothScrollAndAwaitSettled(container, panelWidth);
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
 
-    // Document title should update to the second story after swipe
     await expect(page).toHaveTitle(/SQLite Does Not Do Full FSYNC.*HackerTok/);
   });
 
   test('scroll-snap behavior works correctly', async ({ page }) => {
-    // Tests that scroll-snap actually snaps to boundaries
-    // This is a behavior test, not a CSS property test
+    // Behavior test (not a CSS property assertion): drop scroll between snap
+    // points and verify CSS scroll-snap: mandatory pulls it to a boundary.
     await page.goto('/#/');
-    
+
     const container = page.getByTestId('swipe-container');
     await expect(container).toBeVisible();
-    
-    // Wait for content to load
+
     await expect(page.getByTestId('swipe-panel').first()).toBeVisible();
-    
-    // Wait for container AND at least 2 panels to be ready (ensures snapping has targets)
+
     await waitForSwipeReady(page, 2);
-    
-    // Get the panel width using getBoundingClientRect
+
     const panelWidth = await container.evaluate(el => el.getBoundingClientRect().width);
-    
-    // Set scroll position to middle (between snap points) instantly
-    // Then CSS scroll-snap: mandatory should automatically snap to nearest boundary
+
+    // Drop scroll position halfway between snap points; mandatory snap should pull it back.
     await container.evaluate((el, width) => {
       el.scrollLeft = width * 0.5;
     }, panelWidth);
-    
-    // Use polling to wait for scroll snap to complete
-    // CSS scroll-snap animates to boundary, wait until scroll position stabilizes at a snap point
+
+    // Poll until the scroll position settles on a boundary; CSS snap is async.
     await page.waitForFunction(() => {
       const el = document.querySelector('[data-testid="swipe-container"]');
       if (!el) return false;
       const scrollLeft = el.scrollLeft;
       const width = el.getBoundingClientRect().width;
-      // Check if snapped to boundary (start or panel width, with tolerance)
       return scrollLeft < 10 || Math.abs(scrollLeft - width) < 10;
     }, { timeout: 5000 });
-    
-    // Verify it snapped to a boundary (either 0 or full panel width)
+
     const finalScrollLeft = await container.evaluate(el => el.scrollLeft);
-    
-    // Should snap to nearest boundary - allow small tolerance for rendering differences
+
+    // 10px tolerance for sub-pixel rendering differences across browsers.
     const snappedToStart = finalScrollLeft < 10;
     const snappedToPanel = Math.abs(finalScrollLeft - panelWidth) < 10;
-    
+
     expect(snappedToStart || snappedToPanel).toBe(true);
   });
 
   test('panels fill viewport width', async ({ page }) => {
-    // Using getBoundingClientRect for reliable dimension measurement
     await page.goto('/#/');
-    
+
     const panel = page.getByTestId('swipe-panel').first();
     await expect(panel).toBeVisible();
-    
-    // Get viewport width
+
     const viewportWidth = page.viewportSize()?.width || 375;
     const minExpectedWidth = viewportWidth * 0.95;
-    
-    // Wait for panel to have proper dimensions AND meet minimum width requirement
-    // This combines the wait and measurement to avoid race conditions
+
+    // Combined wait + measurement avoids a race where the panel renders
+    // before its width has settled.
     const panelWidth = await page.waitForFunction(
       (minWidth) => {
         const el = document.querySelector('[data-testid="swipe-panel"]');
@@ -123,25 +106,21 @@ test.describe('Mobile Swipe Viewer', () => {
       minExpectedWidth,
       { timeout: 5000 }
     ).then(handle => handle.jsonValue());
-    
-    // Panel should be at least 95% of viewport width (allowing for minor padding)
+
+    // 95%, not 100%, to tolerate minor padding/scrollbar variation.
     expect(panelWidth).toBeGreaterThanOrEqual(minExpectedWidth);
   });
 
   test('can scroll vertically within item', async ({ page }) => {
     await page.goto('/#/');
-    
-    // Wait for item to load
+
     await expect(page.getByTestId('swipe-panel').first()).toBeVisible();
-    
-    // Get the panel (should allow vertical scroll)
+
     const panel = page.getByTestId('swipe-panel').first();
-    
-    // Verify the panel has overflow-y set to allow vertical scrolling.
-    // The SwipeItemViewer panels use overflow-y: auto so users can scroll
-    // through long item content and comments within each panel.
-    // Use toPass() to retry until CSS is fully applied (computed style can
-    // briefly return "" while stylesheets are still loading).
+
+    // SwipeItemViewer panels use overflow-y: auto so long content scrolls
+    // inside a panel rather than spilling. toPass retries until CSS lands —
+    // computed style briefly returns "" while stylesheets are still loading.
     await expect(async () => {
       const overflowY = await panel.evaluate((el) => {
         return window.getComputedStyle(el).overflowY;
@@ -152,45 +131,39 @@ test.describe('Mobile Swipe Viewer', () => {
 
   test('swipe back to previous item', async ({ page }) => {
     await page.goto('/#/');
-    
-    // Wait for first item (12345) to load
+
     const container = page.getByTestId('swipe-container');
     await expect(container).toBeVisible();
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
-    // Wait for the initial URL update (/ → /item/12345) to settle before swiping
+    // Initial / → /item/12345 redirect must settle before scripted swipes.
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
-    
-    // Wait for container AND at least 2 panels to be ready
+
     await waitForSwipeReady(page, 2);
-    
-    // Get panel width using getBoundingClientRect
+
     const width = await container.evaluate((el) => el.getBoundingClientRect().width);
-    
-    // Swipe forward to second item and wait for scrollend
+
     await smoothScrollAndAwaitSettled(container, width);
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
-    
-    // Swipe back to first item and wait for scrollend
+
     await smoothScrollAndAwaitSettled(container, 0);
     await waitForScrollAtIndex(page, 0);
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
   });
 
   test('swipe uses replace — back navigates to previous section, not previous item', async ({ page }) => {
-    // Swipe-driven URL changes use replaceState (not pushState).
-    // Back should exit the swipe viewer entirely, not step through items.
+    // Swipe-driven URL changes use replaceState (not pushState), so back
+    // exits the swipe viewer rather than stepping through items.
     await page.goto('/#/');
 
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
-    // Wait for the initial URL update (/ → /item/12345) to settle before swiping,
-    // ensuring React's scroll-init cycle and programmatic-scroll flag have cleared.
+    // Wait for / → /item/12345 to settle so React's scroll-init cycle
+    // and the programmatic-scroll flag have cleared before we swipe.
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
     const container = page.getByTestId('swipe-container');
     await waitForSwipeReady(page, 3);
     const width = await container.evaluate((el) => el.getBoundingClientRect().width);
 
-    // Swipe through multiple items — scroll position updates, no history entries created
     await smoothScrollAndAwaitSettled(container, width);
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
@@ -199,7 +172,7 @@ test.describe('Mobile Swipe Viewer', () => {
     await waitForScrollAtIndex(page, 2);
     await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
 
-    // Verify history length hasn't grown (goto creates 1 entry, replaces keep it at 1)
+    // goto creates 1 history entry; replaces keep it there. >1 means we leaked entries.
     const historyLength = await page.evaluate(() => window.history.length);
     expect(historyLength).toBeLessThanOrEqual(2);
   });
@@ -217,8 +190,7 @@ test.describe('Mobile Direct Item Access', () => {
 
   test('can access item directly via URL on mobile', async ({ page }) => {
     await page.goto('/#/item/12345');
-    
-    // Should show the item in swipe viewer
+
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
   });
 
@@ -413,10 +385,9 @@ test.describe('Mobile Direct Item Access', () => {
   test('navigating directly to a comment shows comment in swipe viewer', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Should show the comment content in the swipe viewer (not a "not a story" message)
+    // Comment author renders inside the swipe viewer — not the "not a story" guard.
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
 
-    // URL should remain on the comment
     await expect(page).toHaveURL(/\/item\/1001/);
   });
 

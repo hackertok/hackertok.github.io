@@ -43,11 +43,7 @@ function getServerSnapshot(): boolean {
   return false;
 }
 
-/**
- * Hook to detect if the viewport is mobile-sized (<768px)
- * Reactive to viewport changes via matchMedia
- * @returns {boolean} True if viewport width < 768px
- */
+/** True when viewport width is below Tailwind's `md` breakpoint (768px). */
 export function useIsMobile(): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

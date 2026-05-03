@@ -73,7 +73,6 @@ export function useAutoRetry({
     }
   }, [error, clearTimer, enabled, isOnline, attempts, maxAttempts]);
 
-  // Main retry logic
   useEffect(() => {
     if (!error || !enabled) {
       return;
@@ -92,7 +91,6 @@ export function useAutoRetry({
       return;
     }
 
-    // Online + error: schedule retry with backoff
     setIsRetrying(true);
 
     const delay = BACKOFF_DELAYS[attempts] ?? BACKOFF_DELAYS[BACKOFF_DELAYS.length - 1];
@@ -122,7 +120,6 @@ export function useAutoRetry({
     }
   }, [isOnline, error, enabled, attempts, maxAttempts, clearTimer]);
 
-  // Cleanup on unmount
   useEffect(() => clearTimer, [clearTimer]);
 
   return {

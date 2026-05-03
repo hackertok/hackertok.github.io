@@ -17,39 +17,34 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   });
 
   test('navigating to a comment stays on that comment (no redirect, including direct URL)', async ({ page }) => {
-    // Regression test: navigating to comment 1001 should NOT redirect to first sibling.
-    // This also covers direct URL access (page.goto never passes React Router state,
-    // so MobileItemResolver resolves the type via Firebase).
+    // Regression: comment id MUST NOT redirect to its first sibling. Direct
+    // URL access (page.goto) never carries React Router state, so
+    // MobileItemResolver has to resolve the type via Firebase — exercises
+    // that fallback path.
     await page.goto('/#/item/1001');
 
-    // Should show the comment's author (patio11)
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
 
-    // URL must still be on the original comment, not redirected to a sibling
     await expect(page).toHaveURL(/\/item\/1001/, { timeout: 5000 });
   });
 
   test('shows comment content in swipe viewer on mobile', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Should show swipe container
     const swipeContainer = page.getByTestId('swipe-container');
     await expect(swipeContainer).toBeVisible();
 
-    // Comment author should be visible
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
 
-    // Comment text should be visible
     await expect(page.getByText(/wasm-bindgen/i).first()).toBeVisible();
   });
 
   test('loads sibling comments as swipeable panels', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Wait for siblings to load (parent story 12345 has kids: [1001, 1002, 1003])
+    // Parent story 12345 has kids: [1001, 1002, 1003] → 3 panels.
     await waitForSwipeReady(page, 3);
 
-    // Should have 3 panels for 3 siblings
     const panels = page.getByTestId('swipe-panel');
     await expect(panels).toHaveCount(3);
   });
@@ -57,18 +52,15 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('can swipe to next sibling comment', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Wait for all siblings to load
     await waitForSwipeReady(page, 3);
 
     const container = page.getByTestId('swipe-container');
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
 
-    // Swipe to second sibling (comment 1002)
     await smoothScrollAndAwaitSettled(container, panelWidth);
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
 
-    // Should show the second comment's author
     await expect(page.getByText('jgrahamc').first()).toBeVisible({ timeout: 10000 });
   });
 
@@ -80,22 +72,18 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     const container = page.getByTestId('swipe-container');
     const width = await container.evaluate((el) => el.getBoundingClientRect().width);
 
-    // Swipe to comment 1002
     await smoothScrollAndAwaitSettled(container, width);
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
 
-    // Swipe to comment 1003
     await smoothScrollAndAwaitSettled(container, width * 2);
     await waitForScrollAtIndex(page, 2);
     await expect(page).toHaveURL(/\/item\/1003/, { timeout: 5000 });
 
-    // Swipe back to comment 1002
     await smoothScrollAndAwaitSettled(container, width);
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
 
-    // Swipe back to comment 1001
     await smoothScrollAndAwaitSettled(container, 0);
     await waitForScrollAtIndex(page, 0);
     await expect(page).toHaveURL(/\/item\/1001/, { timeout: 5000 });
@@ -104,24 +92,19 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('shows parent and story links in comment', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Wait for comment content
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
 
-    // Should show parent link
     const parentLink = page.getByRole('link', { name: 'parent' }).first();
     await expect(parentLink).toBeVisible();
 
-    // Should show item title link (the thread the comment is on)
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
   });
 
   test('header shows "comments" indicator on mobile comment view', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Wait for comment to load
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
 
-    // Header should show "comments" indicator
     await expect(page.getByText('comments').first()).toBeVisible();
   });
 
@@ -133,7 +116,6 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     const container = page.getByTestId('swipe-container');
     const width = await container.evaluate((el) => el.getBoundingClientRect().width);
 
-    // Swipe through siblings
     await smoothScrollAndAwaitSettled(container, width);
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
@@ -142,7 +124,8 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     await waitForScrollAtIndex(page, 2);
     await expect(page).toHaveURL(/\/item\/1003/, { timeout: 5000 });
 
-    // History should not have grown (goto = 1 entry, replaces keep it there)
+    // ≤ 2 entries: initial goto + at most one. replaceState (not pushState)
+    // is the contract — extra entries would mean history growth on swipe.
     const historyLength = await page.evaluate(() => window.history.length);
     expect(historyLength).toBeLessThanOrEqual(2);
   });
@@ -150,40 +133,33 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('in-panel links have correct hrefs and comments indicator clears when leaving comment view', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Wait for comment to load and verify "comments" indicator is shown
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('comments').first()).toBeVisible();
 
-    // Verify the item title link inside the swipe panel has the correct href
     const firstPanel = page.locator('[data-item-id="1001"]');
     const storyLink = firstPanel.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
     await expect(storyLink).toHaveAttribute('href', '#/item/12345');
 
-    // Verify parent link also has correct href
     const parentLink = firstPanel.getByRole('link', { name: 'parent' });
     await expect(parentLink).toHaveAttribute('href', '#/item/12345');
 
-    // Navigate away from the comment view via the router. We previously
-    // clicked the header "Best" link directly, but the responsive packer
-    // (added by the modernization commit) now pushes Best/Show/Ask into
-    // a "More" dropdown when the comments pill is active at 375px — and
-    // simulating that interaction is brittle across Firefox (which
-    // sometimes drops the click while the swipe-viewer focus trap is
-    // active). The actual contract being tested here is "leaving comment
-    // view clears the comments indicator", which a hash-route push
-    // exercises just as well, without coupling to the header layout.
+    // Used to click the header "Best" link, but the responsive packer
+    // pushes Best/Show/Ask into a "More" dropdown when the comments pill
+    // is active at 375px — and the swipe-viewer focus trap makes that
+    // click brittle on Firefox. The actual contract is "leaving comment
+    // view clears the indicator"; a hash push exercises it without
+    // coupling to header layout.
     await page.evaluate(() => {
       window.location.hash = '#/best';
     });
-    // On mobile, swipe viewer immediately replaces /#/best with /#/item/{id}
+    // On mobile, the swipe viewer immediately replaces /#/best with /#/item/{id}.
     await expect(page).toHaveURL(/\/#\/(best|item\/)/, { timeout: 5000 });
 
-    // "comments" indicator should no longer be shown (we left comment view)
     await expect(page.getByText('comments', { exact: true })).not.toBeVisible({ timeout: 5000 });
   });
 
   test('shows "Comment deleted" for dead/deleted comment', async ({ page }) => {
-    // Override Firebase to return 5555 as a comment (so MobileItemResolver detects comment type)
+    // Firebase: 5555 is a dead comment (MobileItemResolver detects type).
     await page.route(`**/item/5555.json`, async (route) => {
       await route.fulfill({
         json: {
@@ -198,7 +174,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
       });
     });
 
-    // Override Algolia items to return a deleted comment for id 5555
+    // Algolia: matching deleted comment shape (null author/text).
     await page.route(`**/items/5555`, async (route) => {
       await route.fulfill({
         json: {
@@ -214,7 +190,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
       });
     });
 
-    // Override Firebase parent to return only kid 5555
+    // Parent kids: [5555] only — keeps swipe scope to a single panel.
     await page.route(`**/item/12345.json`, async (route) => {
       await route.fulfill({
         json: {
@@ -233,15 +209,14 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
     await page.goto('/#/item/5555');
 
-    // Should show deleted comment UI
     await expect(page.getByText('Comment deleted').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('shows error state when comment fetch fails', async ({ page }) => {
-    // Auto-retry exhausts 3 backoff attempts (2s+4s+8s) before error state appears
+    // Auto-retry exhausts 3 backoff attempts (2+4+8s) before showing error.
     test.setTimeout(60000);
-    // Return a valid comment for 99999 so MobileItemResolver discovers it's a comment,
-    // but point its parent to 88888 which will return 500
+    // 99999 is a valid comment so MobileItemResolver routes to comment view;
+    // its parent (88888) returns 500 so useSiblingComments errors out.
     await page.route(`**/item/99999.json`, async (route) => {
       await route.fulfill({
         json: {
@@ -255,51 +230,46 @@ test.describe('Mobile Comment Swipe Viewer', () => {
       });
     });
 
-    // Parent fetch fails — useSiblingComments errors out
     await page.route(`**/item/88888.json`, async (route) => {
       await route.fulfill({ status: 500, json: { error: 'Server Error' } });
     });
 
-    // Algolia also fails for this comment (useCommentDetail)
+    // Algolia also fails so useCommentDetail can't paper over the parent error.
     await page.route(`**/items/99999`, async (route) => {
       await route.fulfill({ status: 500, json: { error: 'Server Error' } });
     });
 
     await page.goto('/#/item/99999');
 
-    // Should show error state in the swipe viewer (auto-retry exhausts 3 attempts with 2s+4s+8s backoff before giving up)
+    // 30s timeout covers the 2+4+8s backoff plus slack.
     await expect(page.getByText('Failed to load comments').first()).toBeVisible({ timeout: 30000 });
   });
 
   test('sets document title to "Comment by {author}" for the current comment', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Wait for comment data to load (patio11 is the author of comment 1001)
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
 
-    // Document title should show the comment author
     await expect(page).toHaveTitle(/Comment by patio11/);
   });
 
   test('clicking item title link navigates to story viewer, not comment viewer', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Scope to the current panel to avoid strict mode violation (each sibling has an item title link)
+    // Scope to the current panel — every sibling has an item title link,
+    // which would otherwise trip strict-mode locator resolution.
     const firstPanel = page.locator('[data-item-id="1001"]');
     const storyLink = firstPanel.getByRole('link', { name: /Rust Is the Future/ });
     await expect(storyLink).toBeVisible({ timeout: 10000 });
 
-    // Click the story title link
     await storyLink.click();
 
-    // Should navigate to the story URL
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 10000 });
 
-    // Should show story content (SwipeStoryViewer), not comment viewer.
-    // The story title in the document title confirms we're in the story viewer.
+    // Title pin distinguishes SwipeStoryViewer from SwipeCommentViewer
+    // (which would title as "Comment by ...").
     await expect(page).toHaveTitle(/Rust Is the Future|HackerTok/, { timeout: 10000 });
 
-    // Should NOT show "Failed to load comments" or be stuck on skeleton
     await expect(page.getByText('Failed to load comments')).not.toBeVisible();
   });
 
@@ -310,38 +280,33 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     const container = page.getByTestId('swipe-container');
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
 
-    // Swipe to second sibling (comment 1002)
     await smoothScrollAndAwaitSettled(container, panelWidth);
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
     await expect(page.getByText('jgrahamc').first()).toBeVisible({ timeout: 10000 });
 
-    // Click "parent" from the 1002 panel
     const panel1002 = page.locator('[data-item-id="1002"]');
     await panel1002.getByRole('link', { name: 'parent' }).click();
 
-    // Should navigate to the parent story and render SwipeStoryViewer
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 10000 });
     await expect(page).toHaveTitle(/Rust Is the Future/, { timeout: 10000 });
   });
 
   test('clicking parent on nested comment navigates to parent comment viewer', async ({ page }) => {
-    // Comment 2001 is a reply to comment 1001 (which is a top-level comment on story 12345).
-    // Its "parent" link should carry isComment: true and land in SwipeCommentViewer for 1001.
+    // 2001 is a reply to 1001 (top-level on story 12345). Its "parent"
+    // link must carry isComment: true and land in SwipeCommentViewer for 1001.
     await page.goto('/#/item/2001');
 
-    // Wait for the nested comment author
     await expect(page.getByText('tptacek').first()).toBeVisible({ timeout: 10000 });
 
-    // Click "parent" — should navigate to comment 1001
     await page.getByRole('link', { name: 'parent' }).click();
     await expect(page).toHaveURL(/\/item\/1001/, { timeout: 10000 });
 
-    // Should render SwipeCommentViewer with 1001's siblings (1001, 1002, 1003)
+    // 1001's siblings are [1001, 1002, 1003] → confirms we're in the
+    // comment viewer with the correct sibling set.
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
     await expect(page).toHaveTitle(/Comment by patio11/);
 
-    // Confirm we're in comment viewer with all siblings loaded
     await waitForSwipeReady(page, 3);
   });
 });

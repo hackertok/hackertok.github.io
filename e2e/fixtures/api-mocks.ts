@@ -56,7 +56,7 @@ export async function setupApiMocks(page: Page) {
     const match = url.match(/\/item\/(\d+)\.json/);
     const id = match ? parseInt(match[1], 10) : 0;
 
-    // Return null for "not found" test IDs (IDs starting with 0 like 00000 or specific ID 99999999)
+    // 99999999 / 0 are reserved as "not found" sentinels in tests.
     if (id === 99999999 || id === 0) {
       await route.fulfill({ json: null });
       return;
@@ -68,11 +68,11 @@ export async function setupApiMocks(page: Page) {
       12347: mockItem3,
       1001: mockComment,
       2001: mockNestedComment,
-      // Best items (distinct from top items)
+      // Best items use distinct IDs so /best and / serve different data.
       33001: mockBestItem1,
       33002: mockBestItem2,
       33003: mockBestItem3,
-      // Show HN items in Firebase format
+      // Firebase shape for Show HN items (Algolia → Firebase translation).
       99999: {
         id: 99999,
         title: mockShowHNItem1.title,
@@ -93,7 +93,7 @@ export async function setupApiMocks(page: Page) {
         descendants: mockShowHNItem2.num_comments,
         type: 'story',
       },
-      // Ask HN items in Firebase format (includes text for text posts)
+      // Ask HN items include `text` (text-only posts have no URL).
       88888: {
         id: 88888,
         title: mockAskHNItem1.title,
@@ -115,7 +115,6 @@ export async function setupApiMocks(page: Page) {
         descendants: mockAskHNItem2.num_comments,
         type: 'story',
       },
-      // Domain item
       77777: {
         id: 77777,
         title: mockDomainItem.title,
@@ -126,12 +125,11 @@ export async function setupApiMocks(page: Page) {
         descendants: mockDomainItem.num_comments,
         type: 'story',
       },
-      // Job item (not a story — triggers "not a story" error in SwipeStoryViewer)
+      // Type=job triggers SwipeStoryViewer's "not a story" error path.
       55555: mockJobItem,
-      // User-submitted stories. Provided so desktop tests that click a comments
-      // link from /submitted/pg land on a fully-mocked /item/:id rather than
-      // the generic fallback below — the title assertions then read the real
-      // mock title instead of a synthesized one.
+      // User-submitted stories — pinned so desktop tests clicking a
+      // comments link from /submitted/pg land on a real-titled /item/:id
+      // (not the generic fallback below).
       66666: {
         id: 66666,
         title: mockUserStory1.title,
@@ -157,7 +155,6 @@ export async function setupApiMocks(page: Page) {
     if (items[id]) {
       await route.fulfill({ json: items[id] });
     } else if (id === 1002 || id === 1003) {
-      // Generic comments
       await route.fulfill({
         json: {
           id,
@@ -169,7 +166,8 @@ export async function setupApiMocks(page: Page) {
         },
       });
     } else {
-      // Generic item for unknown IDs
+      // Generic story for unknown IDs so byline/comments-link clicks
+      // never 404 in tests that don't pin them.
       await route.fulfill({
         json: {
           id,
@@ -185,7 +183,6 @@ export async function setupApiMocks(page: Page) {
     }
   });
 
-  // Algolia: Search endpoint
   await page.route(`${ALGOLIA_API}/search*`, async (route) => {
     const url = new URL(route.request().url());
     const tags = url.searchParams.get('tags') || '';
@@ -195,9 +192,8 @@ export async function setupApiMocks(page: Page) {
     let hits: object[] = [];
     let nbHits = 0;
 
-    // Comments for item detail page (tags=comment,story_12345)
+    // tags=comment,story_<id> — comments for an item detail page.
     if (tags.includes('comment') && tags.includes('story_')) {
-      // Return mock comments in Algolia format
       hits = [
         {
           objectID: '1001',
@@ -235,11 +231,11 @@ export async function setupApiMocks(page: Page) {
       hits = [mockAlgoliaItem1, mockAlgoliaItem2, mockAlgoliaItem3];
       nbHits = 3;
     } else if (tags === 'story') {
-      // Day-based pagination (tags=story with numericFilters) - return different items
+      // Day-based pagination (tags=story + numericFilters) — distinct items
+      // from the 'front_page' branch above so pagination is observable.
       hits = [mockPaginationItem1, mockPaginationItem2, mockPaginationItem3];
       nbHits = 3;
     } else if (query.includes('example.com')) {
-      // Domain filter
       hits = [mockDomainItem];
       nbHits = 1;
     }
@@ -446,9 +442,7 @@ export async function stubEmptyDomainSearch(page: Page, domain: string) {
   });
 }
 
-/**
- * Mock an empty items response
- */
+/** Mock an empty items response. */
 export async function mockEmptyItems(page: Page) {
   await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
     await route.fulfill({ json: [] });
@@ -467,9 +461,7 @@ export async function mockEmptyItems(page: Page) {
   });
 }
 
-/**
- * Mock API error responses
- */
+/** Mock API error responses (Firebase 500 + Algolia 503). */
 export async function mockApiError(page: Page) {
   await page.route(`${FIREBASE_API}/**`, async (route) => {
     await route.fulfill({ status: 500, json: { error: 'Internal Server Error' } });
@@ -480,23 +472,18 @@ export async function mockApiError(page: Page) {
   });
 }
 
-/**
- * Set up API mocks with artificial delay (for testing loading states)
- */
+/** Set up API mocks with artificial delay so loading states are observable. */
 export async function setupApiMocksWithDelay(page: Page, delayMs: number = 1500) {
-  // Firebase: Top items with delay
   await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
     await new Promise((r) => setTimeout(r, delayMs));
     await route.fulfill({ json: mockTopItemIds });
   });
 
-  // Firebase: Best items with delay
   await page.route(`${FIREBASE_API}/beststories.json`, async (route) => {
     await new Promise((r) => setTimeout(r, delayMs));
     await route.fulfill({ json: mockBestItemIds });
   });
 
-  // Firebase: Individual items with delay
   await page.route(`${FIREBASE_API}/item/*.json`, async (route) => {
     await new Promise((r) => setTimeout(r, delayMs));
     const url = route.request().url();
@@ -527,7 +514,6 @@ export async function setupApiMocksWithDelay(page: Page, delayMs: number = 1500)
     }
   });
 
-  // Algolia: Search endpoint with delay
   await page.route(`${ALGOLIA_API}/search*`, async (route) => {
     await new Promise((r) => setTimeout(r, delayMs));
     await route.fulfill({
@@ -541,7 +527,6 @@ export async function setupApiMocksWithDelay(page: Page, delayMs: number = 1500)
     });
   });
 
-  // Algolia: Search by date endpoint with delay
   await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
     await new Promise((r) => setTimeout(r, delayMs));
     await route.fulfill({

@@ -54,26 +54,23 @@ describe('itemCache', () => {
 
     it('marks cache as stale after CACHE_MAX_AGE (5 minutes)', () => {
       setCachedItem(123, mockItem, mockComments);
-      
-      // Advance time by 6 minutes
+
       vi.advanceTimersByTime(6 * 60 * 1000);
-      
+
       const result = getCachedItem(123)!;
-      
+
       expect(result).not.toBeNull();
       expect(result.isFresh).toBe(false);
     });
 
     it('discards cache after CACHE_STALE_AGE (24 hours) and removes from storage', () => {
       setCachedItem(123, mockItem, mockComments);
-      
-      // Advance time by 25 hours
+
       vi.advanceTimersByTime(25 * 60 * 60 * 1000);
-      
+
       const result = getCachedItem(123);
-      
+
       expect(result).toBeNull();
-      // Verify it was removed from localStorage
       expect(localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}123`)).toBeNull();
     });
 
@@ -175,35 +172,29 @@ describe('itemCache', () => {
     });
 
     it('prunes old entries when exceeding MAX_CACHED_ITEMS (60)', () => {
-      // Add 65 items
       for (let i = 0; i < 65; i++) {
         setCachedItem(i, createStoryItem({ id: i }), [] as Comment[]);
-        // Advance time slightly so each has different timestamp
+        // Advance so each entry has a distinct timestamp for prune ordering.
         vi.advanceTimersByTime(100);
       }
-      
-      // Count remaining item cache entries
+
       let count = 0;
       for (let i = 0; i < localStorage.length; i++) {
         if (localStorage.key(i)?.startsWith(ITEM_CACHE_KEY_PREFIX)) {
           count++;
         }
       }
-      
-      // Should have pruned down to ~60
-      expect(count).toBeLessThanOrEqual(61); // Allow some slack for timing
+
+      expect(count).toBeLessThanOrEqual(61); // small slack for prune timing
     });
 
     it('removes corrupted entries during pruning', () => {
-      // Add corrupted entry
       localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}corrupted`, 'not valid json');
-      
-      // Add valid entry (triggers prune)
+
+      // Setting any valid entry triggers the prune pass that nukes corrupt JSON.
       setCachedItem(123, mockItem, mockComments);
-      
-      // Corrupted entry should be removed
+
       expect(localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}corrupted`)).toBeNull();
-      // Valid entry should exist
       expect(getCachedItem(123)).not.toBeNull();
     });
   });
@@ -276,34 +267,28 @@ describe('sessionStorage - List Session State', () => {
 
     it('expires session after 30 minutes', () => {
       saveListSessionState('top', mockState);
-      
-      // Advance time by 31 minutes
+
       vi.advanceTimersByTime(31 * 60 * 1000);
-      
+
       const result = getListSessionState('top');
-      
+
       expect(result).toBeNull();
-       
-      // Verify it was removed from sessionStorage
       expect(sessionStorage.getItem(`${FEED_SESSION_KEY_PREFIX}top`)).toBeNull();
     });
 
     it('returns session within 30 minutes', () => {
       saveListSessionState('top', mockState);
-      
-      // Advance time by 29 minutes
+
       vi.advanceTimersByTime(29 * 60 * 1000);
-      
+
       const result = getListSessionState('top');
-      
+
       expect(result).not.toBeNull();
     });
 
     it('provides default values for missing fields', () => {
-      // Manually set minimal session data
       sessionStorage.setItem(`${FEED_SESSION_KEY_PREFIX}top`, JSON.stringify({
         timestamp: Date.now(),
-        // Missing most fields
       }));
       
       const result = getListSessionState('top')!;

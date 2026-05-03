@@ -33,7 +33,7 @@ describe('useSiblingComments', () => {
   });
 
   it('fetches siblings from parent kids list', async () => {
-    // Default mocks: comment 1001 has parent_id=12345, item 12345 has kids=[1001, 1002, 1003]
+    // Default MSW handlers: 1001's parent is 12345, whose kids = [1001, 1002, 1003].
     const { result } = renderHook(() => useSiblingComments(1001));
 
     await waitFor(() => {
@@ -46,7 +46,6 @@ describe('useSiblingComments', () => {
   });
 
   it('sets correct currentIndex for non-first sibling', async () => {
-    // Default handler already serves 1002 with parent_id=12345
     const { result } = renderHook(() => useSiblingComments(1002));
 
     await waitFor(() => {
@@ -68,7 +67,7 @@ describe('useSiblingComments', () => {
             text: 'A top-level comment.',
             time: Math.floor(Date.now() / 1000) - 300,
             type: 'comment',
-            // No parent field → top-level
+            // omitted parent → top-level
           });
         }
         return HttpResponse.json(null);
@@ -100,7 +99,7 @@ describe('useSiblingComments', () => {
           });
         }
         if (id === 9999) {
-          // Parent with no kids array
+          // Parent without `kids` → siblings should fall back to [self].
           return HttpResponse.json({
             id: 9999,
             title: 'A Story',
@@ -179,7 +178,6 @@ describe('useSiblingComments', () => {
     });
     expect(result.current.siblingIds).toEqual([1001, 1002, 1003]);
 
-    // Change to a different comment with no parent
     server.use(
       http.get(`${FIREBASE_API}/item/:id.json`, ({ params }) => {
         const id = parseInt(params.id as string, 10);
@@ -190,7 +188,6 @@ describe('useSiblingComments', () => {
             text: 'A top-level comment.',
             time: Math.floor(Date.now() / 1000) - 300,
             type: 'comment',
-            // No parent → single comment
           });
         }
         return HttpResponse.json(null);

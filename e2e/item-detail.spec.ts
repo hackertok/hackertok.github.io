@@ -8,136 +8,114 @@ test.describe('Item Detail', () => {
 
   test('displays item title and metadata', async ({ page }) => {
     await page.goto('/#/item/12345');
-    
+
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     await expect(page.getByText('leerob', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('284 points').first()).toBeVisible();
-    
-    // Document title should include item title
+
     await expect(page).toHaveTitle(/Rust Is the Future of JavaScript Infrastructure.*HackerTok/);
 
-    // Link to original article
     const articleLink = page.getByRole('link', { name: /example\.com/i }).first();
     await expect(articleLink).toHaveAttribute('href', /example\.com/);
   });
 
   test('displays comments', async ({ page }) => {
     await page.goto('/#/item/12345');
-    
-    // Top-level comments visible on load
+
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
 
-    // Nested comment hidden behind "View replies"
+    // Nested comments are collapsed by default behind "View replies".
     await expect(page.getByText('tptacek').first()).not.toBeVisible();
-    
-    // Expanding reveals nested comment
+
     await page.getByText(/1 reply/i).first().click();
     await expect(page.getByText('tptacek').first()).toBeVisible();
   });
 
   test('can expand and collapse replies', async ({ page }) => {
     await page.goto('/#/item/12345');
-    
+
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
-    
-    // Expand replies
+
     await page.getByText(/1 reply/i).first().click();
     await expect(page.getByText('tptacek').first()).toBeVisible();
-    
-    // Collapse replies via trunk line button
+
+    // Trunk line button collapses the whole subtree, not just the immediate child.
     await page.getByRole('button', { name: /collapse replies/i }).first().click();
     await expect(page.getByText('tptacek').first()).not.toBeVisible();
   });
 
   test('handles item not found', async ({ page }) => {
-    // Navigate to a non-existent item ID (99999999 returns null in mock)
+    // 99999999 returns null in the mock — exercises the not-found branch.
     await page.goto('/#/item/99999999');
-    
-    // Should show error message indicating item not found
+
     await expect(page.getByText(/not found/i)).toBeVisible();
-    
-    // Title should reflect not-found state
+
     await expect(page).toHaveTitle(/(Item|Story) not found.*HackerTok/);
-    
-    // Should have a link back to feed
+
     await expect(page.getByRole('link', { name: /back to feed/i })).toBeVisible();
-    
-    // URL should NOT change to another item's ID
+
+    // URL must NOT silently swap to a different item's id (prevents bait-and-switch).
     expect(page.url()).toContain('99999999');
   });
 
   test('handles item not found when navigating from existing item', async ({ page }) => {
-    // First navigate to a valid item
     await page.goto('/#/item/12345');
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     await expect(page).toHaveTitle(/Rust Is the Future of JavaScript Infrastructure.*HackerTok/);
-    
-    // Then navigate to a non-existent item
+
     await page.goto('/#/item/99999999');
-    
-    // Should show error message indicating item not found
+
     await expect(page.getByText(/not found/i)).toBeVisible();
     await expect(page).toHaveTitle(/(Item|Story) not found.*HackerTok/);
-    
-    // URL should NOT revert to the previous item's ID
+
+    // URL must reflect the requested id, not the previously-loaded one.
     expect(page.url()).toContain('99999999');
     expect(page.url()).not.toContain('12345');
   });
 
   test('renders out-of-feed item when navigating from in-feed item', async ({ page }) => {
-    // First navigate to an in-feed item (12345 is in mockTopItemIds)
+    // 12345 is in mockTopItemIds; 99999 has mock data but is NOT in the feed.
     await page.goto('/#/item/12345');
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
-    
-    // Then navigate to an out-of-feed item (99999 has mock data but is NOT in mockTopItemIds)
+
     await page.goto('/#/item/99999');
-    
-    // Should render the out-of-feed item with its title
+
     await expect(page.getByText('Show HN: Piko – Open-Source Ngrok Alternative in Go').first()).toBeVisible();
-    
-    // URL should show the out-of-feed item's ID
+
     expect(page.url()).toContain('99999');
     expect(page.url()).not.toContain('12345');
   });
 
   test('returns to same item after visiting external link', async ({ page }) => {
-    // Navigate to an item
     await page.goto('/#/item/12345');
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
-    
-    // Find the external link (item title link)
+
     const externalLink = page.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' }).first();
     await expect(externalLink).toBeVisible();
-    
-    // Click the link - navigates away from the page
+
     await externalLink.click();
-    
-    // Wait for navigation to external URL
+
     await page.waitForURL(/example\.com/);
-    
-    // Go back to the app
+
     await page.goBack();
-    
-    // The page should show the same item we were on
+
+    // Back must restore the same item — viewed-marking on click must not push history.
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     expect(page.url()).toContain('12345');
   });
 
   test('displays text content for Ask HN posts (no external URL)', async ({ page }) => {
-    // Navigate to Ask HN item (88888 - has text content but no URL)
+    // 88888 is an Ask HN item — has text body, no URL.
     await page.goto('/#/item/88888');
-    
-    // Should display the Ask HN title
+
     await expect(page.getByText('Ask HN: What are you working on?').first()).toBeVisible();
-    
-    // Should display the item text/body content
+
     await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
-    
-    // Should NOT have an external article link (no URL for Ask HN)
-    // Scope to the current item's article - mobile view may show other items with external links
+
+    // Mobile view may render adjacent items with external links, so scope
+    // the assertion to the current item's <article>.
     const askHnArticle = page.locator('article').filter({ has: page.getByText('Ask HN: What are you working on?') });
-    
-    // The title heading should exist but NOT contain an external link
+
     const titleHeading = askHnArticle.getByRole('heading', { level: 1 });
     await expect(titleHeading).toBeVisible();
     const titleLink = titleHeading.locator('a[href^="http"]');
@@ -153,8 +131,8 @@ test.describe('Item Detail - Deep Nested Comments', () => {
 
     const now = Math.floor(Date.now() / 1000);
 
-    // Override the Algolia search to return 4-level deep flat comments
-    // buildCommentTree assembles the tree from parent_id references
+    // Flat list of 4 comments linked by parent_id; buildCommentTree
+    // reassembles the nesting on the client.
     await page.route('**/search*', async (route) => {
       const url = new URL(route.request().url());
       const tags = url.searchParams.get('tags') || '';
@@ -182,23 +160,20 @@ test.describe('Item Detail - Deep Nested Comments', () => {
 
     await page.goto('/#/item/12345');
 
-    // Level 1: visible immediately
+    // Each level is collapsed; clicking the topmost "1 reply" reveals the next level only.
     await expect(page.getByText('level1_user').first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Top-level insight')).toBeVisible();
 
-    // Level 2: hidden behind "1 reply" toggle
     await expect(page.getByText('level2_user')).not.toBeVisible();
     await page.getByText(/1 reply/i).first().click();
     await expect(page.getByText('level2_user')).toBeVisible();
     await expect(page.getByText('Reply to top-level')).toBeVisible();
 
-    // Level 3: hidden behind another "1 reply" toggle
     await expect(page.getByText('level3_user')).not.toBeVisible();
     await page.getByText(/1 reply/i).first().click();
     await expect(page.getByText('level3_user')).toBeVisible();
     await expect(page.getByText('Deeply nested thought')).toBeVisible();
 
-    // Level 4: hidden behind yet another "1 reply" toggle
     await expect(page.getByText('level4_user')).not.toBeVisible();
     await page.getByText(/1 reply/i).first().click();
     await expect(page.getByText('level4_user')).toBeVisible();
@@ -237,16 +212,14 @@ test.describe('Item Detail - Deep Nested Comments', () => {
     await page.goto('/#/item/12345');
     await expect(page.getByText('ancestor')).toBeVisible({ timeout: 10000 });
 
-    // Expand both levels
     await page.getByText(/1 reply/i).first().click();
     await expect(page.getByText('child_user')).toBeVisible();
     await page.getByText(/1 reply/i).first().click();
     await expect(page.getByText('Grandchild reply')).toBeVisible();
 
-    // Collapse the top-level comment's replies via trunk line
+    // Trunk-line collapse must hide the entire subtree, not just the direct child.
     await page.getByRole('button', { name: /collapse replies/i }).first().click();
 
-    // Both child and grandchild should be hidden
     await expect(page.getByText('child_user')).not.toBeVisible();
     await expect(page.getByText('Grandchild reply')).not.toBeVisible();
   });
@@ -261,34 +234,27 @@ test.describe('Item Detail - Desktop', () => {
 
   test('shows full item detail page on desktop', async ({ page }) => {
     await page.goto('/#/item/12345');
-    
-    // Desktop should show full detail view, not swipe viewer
+
+    // Mobile-only swipe container must not appear at desktop width.
     const swipeContainer = page.locator('.swipe-snap-container');
     await expect(swipeContainer).not.toBeVisible();
-    
-    // Should see item content
+
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
   });
 
   test('back from item detail returns to item list', async ({ page }) => {
-    // Navigate to desktop item list
     await page.goto('/#/');
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
-    // Click comment link to navigate to item detail
     const commentLink = page.getByRole('link', { name: /137.*comments?/i }).first();
     await commentLink.click();
 
-    // Should be on item detail page
     await expect(page).toHaveURL(/\/item\/12345/);
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
-    // Go back
     await page.goBack();
 
-    // Should be back on the item list (not item detail)
     await expect(page).toHaveURL(/\/#\/$/);
-    // Item list should be visible
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default').first()).toBeVisible();
   });

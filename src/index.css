@@ -87,7 +87,6 @@
   --color-popover-foreground: var(--popover-foreground);
 }
 
-/* Spin animation for loading spinners */
 @keyframes refresh-spin {
   from {
     transform: rotate(0deg);
@@ -101,25 +100,71 @@
   animation: refresh-spin 0.8s linear infinite;
 }
 
-/* Custom styles for comment HTML content */
-.comment-content p {
-  margin-bottom: 0.75rem;
+/* Custom styles for comment HTML content. The base typography mirrors the
+   user-approved comments-tier1.html mock — slightly larger comfort font
+   (14.5px / 1.62 line-height) than HN's defaults so dense threads stay
+   readable. `p { margin: 0 }` + `p + p` adjacency replaces the old
+   bottom-margin approach so the last paragraph never adds an unbalanced
+   gap. `a` (HN link styling with `break-all` for long URLs) and `i`
+   (italic) are intentionally `@apply`-ed because they need to inherit
+   Tailwind's `text-accent` token resolution; the rest are explicit so
+   the OKLCH `color-mix` calls survive without hand-mapping. */
+.comment-content {
+  font-size: 14.5px;
+  line-height: 1.62;
+  color: var(--foreground);
 }
 
-.comment-content p:last-child {
-  margin-bottom: 0;
+.comment-content p {
+  margin: 0;
+}
+
+.comment-content p + p {
+  margin-top: 0.75em;
 }
 
 .comment-content a {
   @apply text-accent underline break-all;
 }
 
+.comment-content blockquote {
+  margin: 0.75em 0;
+  padding: 4px 0 4px 14px;
+  border-left: 3px solid color-mix(in oklch, var(--accent) 45%, var(--border));
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.comment-content blockquote p {
+  margin: 0;
+}
+
 .comment-content code {
-  @apply bg-muted px-1 py-0.5 rounded text-sm font-mono;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: color-mix(in oklch, var(--muted) 70%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .comment-content pre {
-  @apply bg-muted p-3 rounded overflow-x-auto text-sm font-mono my-2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background: var(--muted);
+  padding: 12px 14px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.75em 0;
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+}
+
+/* Reset the inline code styling inside a <pre> so the block doesn't
+   double-wrap a tinted background around itself. */
+.comment-content pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.92em;
 }
 
 .comment-content i {
@@ -444,4 +489,177 @@ body.swipe-mode {
     animation-duration: 0.01s !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* ── Page stage choreography ──────────────────────────────────────── */
+
+/* Shared keyframe — used by story cards, top-level comments, AND the
+   story-header leader. (Nested replies use `reply-fade-in` below.)
+   Lifts 4px while fading; only opacity + transform animate so the
+   work stays on the compositor (no layout thrash even on long
+   threads). */
+@keyframes stage-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Opacity-only fade for reply expansion. No translateY — the
+   .tree-branch wrapper holds the connector + trunk-end mask at
+   rest, and any vertical lift on the inner Comment would briefly
+   misalign them with the byline. See `.reply-fade` below. */
+@keyframes reply-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Grid stack so children + overlay share a cell that auto-sizes to
+   `max(skeleton, children)`. Avoids the absolute-overlay-over-empty-
+   flex pitfall where a cold load with empty children would render
+   the overlay at 0×0. `min-width: 0` prevents grid blow-out from
+   wide content. */
+.page-stage {
+  display: grid;
+  grid-template-areas: "stack";
+}
+.page-stage > .page-stage-content,
+.page-stage > .skeleton-overlay {
+  grid-area: stack;
+  min-width: 0;
+}
+
+/* Positioning context for any absolute descendants inside the
+   page-stage stack — defensive even with no current consumers, so
+   future absolute children can't accidentally escape the stack and
+   anchor to a faraway ancestor. */
+.page-stage > .page-stage-content {
+  position: relative;
+}
+
+/* Real content holds opacity 0 in `'skeleton'` only. The
+   `:not(.fade-skeleton)` scope is CRITICAL — removing `play-real` at
+   t=1200ms would otherwise unset the animation property and snap
+   elements back to opacity 0 (fill-mode only persists while the
+   animation property is present). Same scope lets infinite-scroll
+   appends mount at opacity 1 in `'done'`. */
+.page-stage:not(.fade-skeleton) .story-stage-leader,
+.page-stage:not(.fade-skeleton) .stagger-fade {
+  opacity: 0;
+}
+
+/* Story header animates in as a single unit at slot 0 (no delay) so
+   the focal point reads cleanly rather than cascading inside itself
+   (title and meta-row arriving at staggered moments would feel
+   distracting). */
+.page-stage.play-real .story-stage-leader {
+  animation: stage-fade-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Top-level comments + story cards. Gated to play-real so infinite-
+   scroll appends in 'done' state mount at default opacity 1 (no
+   600ms cliff for cards arriving past slot 23). */
+.page-stage.play-real .stagger-fade {
+  animation: stage-fade-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--stagger-delay, 0ms);
+}
+
+/* Children-on-expand — a soft, unified opacity fade. Reply expansion
+   is a deliberate user action ("show me these N replies"); a per-
+   child stagger would just add latency to a reveal the user already
+   asked for. The cascade earns its keep on UNSOLICITED reveals
+   (initial page load, infinite-scroll appends), not here. 180ms is
+   enough to feel intentional without making the reader wait.
+
+   Animation targets the inner Comment (`> *`), NOT the .tree-branch
+   wrapper itself. The wrapper owns two pseudo-elements that must
+   stay visible from frame 0: `.tree-branch::before` (horizontal
+   connector into the trunk) and `.tree-branch--last::after`
+   (var(--background) mask that paints over the trunk line below the
+   L-curve, making the trunk visually "end" at the last child). If
+   those fade with the wrapper, the trunk line — which spans
+   `top:0;bottom:0` of its container — would be unmasked during the
+   fade and visibly extend past where the L-curve should clip it. */
+.reply-fade > * {
+  animation: reply-fade-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  opacity: 0;
+}
+
+/* Infinite-scroll appends — UNSCOPED so the cascade fires whenever
+   a card mounts past the cold-load batch (the `.play-real` scope on
+   `.stagger-fade` no longer matches in `'done'`). Same animation +
+   `--stagger-delay` plumbing as the initial cascade so the rhythm
+   stays consistent across batches. See `useStaggerCascadeSlots`. */
+.append-fade {
+  animation: stage-fade-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--stagger-delay, 0ms);
+  opacity: 0;
+}
+
+/* Solid `var(--background)` fill is required — z-index wins the
+   stack but doesn't paint over what's underneath. Without an opaque
+   fill, anything in the `.page-stage-content` slot (empty
+   StateViews, inline error messages) would bleed through the gaps
+   between skeleton bars. */
+.skeleton-overlay {
+  z-index: 1;
+  opacity: 1;
+  background: var(--background);
+  transition: opacity 320ms ease;
+  pointer-events: none;
+}
+.page-stage.fade-skeleton .skeleton-overlay {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* !important to beat the (3,0,0)-specificity .page-stage:not(.fade-
+     skeleton) opacity:0 rule above — without it, reduced-motion users
+     would see opacity 0 in the skeleton state. The skeleton overlay
+     is hidden entirely (display: none) so reduced-motion users skip
+     the choreography and land straight on the resting content. */
+  .page-stage .story-stage-leader,
+  .page-stage .stagger-fade,
+  .reply-fade > *,
+  .append-fade {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+  .skeleton-overlay {
+    transition: none;
+    display: none;
+  }
+}
+
+/* ── Story body card ──────────────────────────────────────────────── */
+
+/* Muted card under the meta row that holds an Ask HN body / story
+   text. Typography inherits from .comment-content (the rendering
+   element gets both classes). */
+.story-body {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: color-mix(in oklch, var(--muted) 55%, transparent);
+  border-radius: 8px;
+}
+
+/* ── OP badge ─────────────────────────────────────────────────────── */
+
+/* Soft-tinted accent pill (shadcn-ghost treatment) rendered next to
+   the original poster's name. 14%-mixed-accent fill is quieter than
+   a solid chip when the same OP comments multiple times in a row,
+   but the pill shape still distinguishes it from clickable pills.
+   `color-mix(in oklch, …)` recomputes against `.dark`'s `--accent`.
+   NO margin-left — every consumer wraps `[author, badge]` in an
+   inline-flex with `gap-1.5` so the author-to-badge distance is 6px
+   in both compact and focal bylines. */
+.op-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  color: var(--accent);
+  border-radius: 3px;
+  vertical-align: 1px;
+  line-height: 1.4;
 }

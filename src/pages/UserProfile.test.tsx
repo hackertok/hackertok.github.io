@@ -61,9 +61,7 @@ describe('UserProfile', () => {
       renderProfile('leerob');
 
       await waitFor(() => {
-        // mockUserProfile.about contains an <a> tag pointing to leerob.io.
-        // sanitizeHtml rewrites external <a> hrefs but preserves leerob.io
-        // (non-self/HN host) verbatim.
+        // sanitizeHtml preserves non-self/non-HN hosts verbatim (no rewrite).
         const link = screen.getByRole('link', { name: 'leerob.io' });
         expect(link).toHaveAttribute('href', 'https://leerob.io');
       });

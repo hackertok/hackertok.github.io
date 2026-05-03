@@ -7,7 +7,8 @@ export function useScrollDirection(): { scrollDirection: 'up' | 'down'; isAtTop:
   const ticking = useRef(false);
 
   useEffect(() => {
-    const threshold = 10; // Minimum scroll amount before changing direction
+    // Min scroll amount before flipping direction — prevents jitter near the threshold.
+    const threshold = 10;
 
     const updateScrollDir = () => {
       const scrollY = window.scrollY;

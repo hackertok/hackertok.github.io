@@ -31,7 +31,6 @@ type CustomFixtures = {
  * Import this instead of '@playwright/test' for tests that need API mocking helpers.
  */
 export const test = base.extend<CustomFixtures>({
-  // Helper fixture for mocking empty responses
   mockEmpty: async ({ page }, use) => {
     const mockFn = async () => {
       await mockEmptyItems(page);
@@ -39,7 +38,6 @@ export const test = base.extend<CustomFixtures>({
     await use(mockFn);
   },
 
-  // Helper fixture for mocking error responses
   mockError: async ({ page }, use) => {
     const mockFn = async () => {
       await mockApiError(page);
@@ -48,15 +46,12 @@ export const test = base.extend<CustomFixtures>({
   },
 
   /**
-   * Fixture that provides a page with error routes already active.
-   * Routes are set on browserContext BEFORE page creation, guaranteeing
-   * they intercept the very first request during navigation.
-   * 
-   * This solves the race condition where page.route() might not be ready
-   * by the time page.goto() triggers network requests.
+   * Page whose context already has error routes attached. Routes are set
+   * on browserContext BEFORE page creation so the very first request
+   * during navigation is intercepted — solves the race where
+   * `page.route()` may not be active by the time `page.goto()` fires.
    */
   errorMockedPage: async ({ context }, use) => {
-    // Set up error routes on context BEFORE page creation
     await context.route(`${FIREBASE_API}/**`, async (route) => {
       await route.fulfill({ status: 500, json: { error: 'Internal Server Error' } });
     });
@@ -64,11 +59,10 @@ export const test = base.extend<CustomFixtures>({
       await route.fulfill({ status: 503, json: { message: 'Service unavailable' } });
     });
 
-    // Create page AFTER routes are set up
     const page = await context.newPage();
     await use(page);
-    // Navigate away before closing to cancel pending JS/network activity,
-    // preventing context teardown from exceeding the test timeout
+    // about:blank cancels pending JS/network so context teardown doesn't
+    // exceed the test timeout under flakey error-path conditions.
     await page.goto('about:blank');
     await page.close();
   },
@@ -81,5 +75,4 @@ export const test = base.extend<CustomFixtures>({
   },
 });
 
-// Re-export expect for convenience
 export { expect };

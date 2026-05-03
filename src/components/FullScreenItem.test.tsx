@@ -48,7 +48,6 @@ describe('FullScreenItem', () => {
 
   describe('comment handling', () => {
     it('shows "Item not found" when item type is comment', async () => {
-      // Override Firebase to return a comment item
       server.use(
         http.get(`${FIREBASE_API}/item/:id.json`, ({ params }) => {
           const id = parseInt(params.id as string, 10);
@@ -76,7 +75,7 @@ describe('FullScreenItem', () => {
 
       render(<FullScreenItem itemId={1001} />);
 
-      // Comment items are not rendered in swipe viewer — should show rejection message
+      // Story-only viewer must reject comment-typed items rather than render them as stories.
       await waitFor(() => {
         expect(screen.getByText('Item not found')).toBeInTheDocument();
       });

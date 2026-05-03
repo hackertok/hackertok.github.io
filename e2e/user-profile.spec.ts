@@ -16,21 +16,18 @@ test.describe('User Profile - Desktop', () => {
   test('renders profile with id, karma, account creation date, and about section', async ({ page }) => {
     await page.goto('/#/user/pg');
 
-    // Username heading (h1)
     await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
 
-    // Karma value formatted with thousands separator (Intl.NumberFormat)
+    // Thousands separator comes from Intl.NumberFormat — locale pinning matters.
     await expect(page.getByText('155,555 karma')).toBeVisible();
 
-    // Account creation date — visible label is now an absolute long-month
-    // date via formatAbsoluteDate (relative `X years ago` lives in the
-    // <time title> tooltip). Fixture pins `created: 1160418092` =
-    // 2006-10-09T20:21:32Z; under UTC + en-US (pinned in playwright.config.ts
-    // per-project use blocks) this renders deterministically as
-    // "October 9, 2006".
+    // Visible label uses formatAbsoluteDate; relative ("X years ago") moves
+    // to the <time title> tooltip. Fixture's created: 1160418092 is
+    // 2006-10-09T20:21:32Z — under UTC + en-US (pinned per-project in
+    // playwright.config.ts) this renders deterministically as "October 9, 2006".
     await expect(page.getByText('October 9, 2006')).toBeVisible();
 
-    // About section — sanitized HTML rendered into .comment-content
+    // About section — sanitized HTML rendered into .comment-content.
     await expect(page.getByText('Bug fixer.')).toBeVisible();
   });
 
@@ -53,25 +50,36 @@ test.describe('User Profile - Desktop', () => {
     await submissions.click();
     await expect(page).toHaveURL(/\/#\/submitted\/pg/);
 
-    // Sanity: the destination renders the user's stories list, not the
-    // profile copy. "Bug fixer." is unique to the profile's about section.
+    // "Bug fixer." is unique to the profile's about section — its
+    // disappearance confirms we're on the submissions page, not still on profile.
     await expect(page.getByText('Beating the Averages')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Bug fixer.')).not.toBeVisible();
   });
 
-  test('shows active "user" pill in header on /user/:id', async ({ page }) => {
+  test('hides all contextual pills on /user/:id (profile is not a feed)', async ({ page }) => {
     await page.goto('/#/user/pg');
 
-    // The pill is rendered as a non-clickable <span> (mirrors "from"). Scoped
-    // to the header nav so it never collides with byline links to /user/...
-    // inside the page body.
+    // Profile detail pages are a one-shot "about this user" surface
+    // (karma / join date / Submissions link), not a section/feed — so they
+    // deliberately do NOT activate any contextual pill. The pill is
+    // reserved for the submissions feed (`/submitted/:id`), where it earns
+    // its place as a "where am I in the navigation" signal. The unit-test
+    // counterpart for this rule lives in `Header.test.tsx`; this case
+    // re-asserts it end-to-end so a regression in `deriveHeaderState`'s
+    // priority cascade would also surface in the production browser.
+    //
+    // All three pills are scoped to `header nav span` so byline links to
+    // `/user/...` (or any other text containing "user" / "from" /
+    // "comments") in the page body never produce a false positive.
     const userPill = page.locator('header nav span', { hasText: 'user' });
-    await expect(userPill).toBeVisible();
-    await expect(userPill).toHaveClass(/bg-accent/);
-
-    // Other contextual pills are mutually exclusive — comments > user > from.
     const fromPill = page.locator('header nav span', { hasText: 'from' });
     const commentsPill = page.locator('header nav span', { hasText: 'comments' });
+
+    // Heading paint is the readiness signal — by then the header has
+    // definitely committed its render for this route.
+    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+
+    await expect(userPill).toHaveCount(0);
     await expect(fromPill).toHaveCount(0);
     await expect(commentsPill).toHaveCount(0);
   });

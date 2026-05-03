@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
-import { Header, ErrorBoundary, SwipeStoryViewer, SwipeDomainStoryViewer, SwipeUserSubmissionsViewer, SwipeCommentViewer, FullScreenCommentSkeleton, StateView, NetworkStatusBar } from './components';
+import { Header, ErrorBoundary, SwipeStoryViewer, SwipeDomainStoryViewer, SwipeUserSubmissionsViewer, SwipeCommentViewer, FullScreenCommentSkeletonPanel, StateView, NetworkStatusBar } from './components';
 import { TooltipProvider } from './components/ui';
 import { StoryList, ItemDetail, DomainStories, UserProfile, UserSubmissions } from './pages';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -12,7 +12,6 @@ import { NetworkStatusProvider } from './context/NetworkStatusContext';
 import { fetchItemOnly } from './api/hn';
 import type { FeedType, LocationState } from './types';
 
-// Mobile wrapper that shows SwipeStoryViewer instead of StoryList
 function MobileStoryListWrapper({ type }: { type: FeedType }) {
   const isMobile = useIsMobile();
   
@@ -23,9 +22,9 @@ function MobileStoryListWrapper({ type }: { type: FeedType }) {
   return <StoryList type={type} />;
 }
 
-// Mobile wrapper for domain filter pages - shows SwipeDomainStoryViewer on mobile, DomainStories list on desktop.
-// Falls through to the desktop list when the URL has no domain (empty `/from/`) so the
-// "No domain specified" fallback in DomainStories handles it consistently on both platforms.
+// Falls through to the desktop list when the URL has no domain (empty `/from/`)
+// so the "No domain specified" fallback in DomainStories handles it consistently
+// on both platforms.
 function MobileDomainStoriesWrapper() {
   const params = useParams();
   const domain = params['*'] ?? '';
@@ -40,10 +39,9 @@ function MobileDomainStoriesWrapper() {
   return <DomainStories />;
 }
 
-// Mobile wrapper for /submitted/:id — shows SwipeUserSubmissionsViewer on
-// mobile, UserSubmissions list on desktop. Falls through to the desktop list
-// when the URL has no username so UserSubmissions' "No user specified" state
-// renders consistently on both platforms.
+// Falls through to the desktop list when the URL has no username so
+// UserSubmissions' "No user specified" state renders consistently on both
+// platforms.
 //
 // IMPORTANT: do NOT pass `initialItemId` to the swipe viewer here. The route
 // param `:id` is a USERNAME, not a story id; passing it would coerce to NaN
@@ -61,7 +59,8 @@ function MobileUserSubmissionsWrapper() {
   return <UserSubmissions />;
 }
 
-// Mobile wrapper for item detail - routes to correct viewer based on item type
+// Routes /item/:id to the correct mobile viewer based on `location.state`
+// (or the item type for direct URLs without state).
 function MobileItemDetailWrapper() {
   const { id } = useParams();
   const isMobile = useIsMobile();
@@ -107,7 +106,8 @@ function MobileItemDetailWrapper() {
   return <ItemDetail key={id} />;
 }
 
-// Resolves item type for direct URL access on mobile, then mounts correct viewer
+// Resolves item type for a direct URL hit on mobile (no `location.state`),
+// then mounts the matching viewer.
 function MobileItemResolver({ id }: { id: string }) {
   const [itemType, setItemType] = useState<'story' | null>(null);
   const navigate = useNavigate();
@@ -139,17 +139,15 @@ function MobileItemResolver({ id }: { id: string }) {
     return <SwipeStoryViewer type="top" initialItemId={id} />;
   }
 
-  // Loading skeleton while resolving type
   return (
     <div className="swipe-snap-container" data-testid="swipe-container">
       <div className="swipe-snap-panel" data-testid="swipe-panel">
-        <FullScreenCommentSkeleton />
+        <FullScreenCommentSkeletonPanel />
       </div>
     </div>
   );
 }
 
-// Main content wrapper that conditionally applies padding
 function MainContent({ children }: { children: React.ReactNode }) {
   const { isSwipeMode } = useScrollContainer();
   

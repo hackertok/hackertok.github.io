@@ -1,25 +1,15 @@
 import { useEffect } from 'react';
 
 /**
- * Custom hook to update the document title
- * Automatically appends " | HackerTok" suffix
- * 
- * @param {string} title - The page-specific title (without suffix)
- * 
- * @example
- * // Sets title to "Best | HackerTok"
- * useDocumentTitle('Best');
- * 
- * @example
- * // Sets title to just "HackerTok" when no title provided
- * useDocumentTitle();
+ * Sets `document.title` to `${title} | HackerTok` (or just `HackerTok` when
+ * `title` is omitted). Restores the previous title on unmount, so it composes
+ * cleanly with modal-like components that mount/unmount mid-route.
  */
 export function useDocumentTitle(title?: string) {
   useEffect(() => {
     const previousTitle = document.title;
     document.title = title ? `${title} | HackerTok` : 'HackerTok';
     
-    // Restore previous title on unmount (useful for modal-like components)
     return () => {
       document.title = previousTitle;
     };

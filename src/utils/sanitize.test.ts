@@ -29,6 +29,77 @@ describe('sanitizeHtml', () => {
     });
   });
 
+  describe('<pre> dedent', () => {
+    it('strips uniform leading indent from a <pre><code> block', () => {
+      const html = '<pre><code>    line1\n    line2\n    line3</code></pre>';
+      const result = sanitizeHtml(html);
+      expect(result).toContain('<pre><code>line1\nline2\nline3</code></pre>');
+    });
+
+    it('preserves relative indent (continuation lines stay indented under their parent)', () => {
+      const html = '<pre><code>    if (x)\n        foo();\n    bar();</code></pre>';
+      const result = sanitizeHtml(html);
+      expect(result).toContain('<pre><code>if (x)\n    foo();\nbar();</code></pre>');
+    });
+
+    it('ignores blank lines when computing the common indent', () => {
+      const html = '<pre><code>    line1\n\n    line2</code></pre>';
+      const result = sanitizeHtml(html);
+      expect(result).toContain('<pre><code>line1\n\nline2</code></pre>');
+    });
+
+    it('leaves a block with no leading indent unchanged', () => {
+      const html = '<pre><code>line1\nline2</code></pre>';
+      const result = sanitizeHtml(html);
+      expect(result).toContain('<pre><code>line1\nline2</code></pre>');
+    });
+
+    it('preserves the inner <code> wrapper so `.comment-content pre code` styles still apply', () => {
+      const html = '<pre><code>    foo</code></pre>';
+      const result = sanitizeHtml(html);
+      expect(result).toContain('<code>');
+      expect(result).toContain('</code>');
+    });
+
+    it('handles bare <pre> (no <code> child) by dedenting the <pre> directly', () => {
+      const html = '<pre>    line1\n    line2</pre>';
+      const result = sanitizeHtml(html);
+      expect(result).toContain('<pre>line1\nline2</pre>');
+    });
+
+    it('preserves an auto-linkified URL inside a <pre> at the cost of skipping dedent', () => {
+      // HN linkifies URLs everywhere except submission text fields,
+      // including inside <pre> (per https://news.ycombinator.com/formatdoc).
+      // We'd rather keep the <a> clickable than wipe it via textContent,
+      // so this case keeps its leading indent.
+      const html =
+        '<pre><code>    // see <a href="https://example.com">https://example.com</a> for details</code></pre>';
+      const result = sanitizeHtml(html);
+      expect(result).toContain('<a');
+      expect(result).toContain('href="https://example.com"');
+      expect(result).toContain('    // see');
+    });
+
+    it('dedents the real-world HN code-block shape (4-space source indent)', () => {
+      // Mirrors the Algolia API's actual output for an HN comment that
+      // uses the 4-space-indent code-block convention. The `&&` operator
+      // round-trips through innerHTML escaping as `&amp;&amp;` — that's
+      // browser-side HTML serialisation, not a sanitiser change.
+      const html =
+        '<pre><code>    // Step 9. Null move search\n' +
+        '    if (cutNode\n' +
+        '        && pos.non_pawn_material(us))\n' +
+        '    {</code></pre>';
+      const result = sanitizeHtml(html);
+      expect(result).toContain(
+        '<pre><code>// Step 9. Null move search\n' +
+          'if (cutNode\n' +
+          '    &amp;&amp; pos.non_pawn_material(us))\n' +
+          '{</code></pre>',
+      );
+    });
+  });
+
   describe('XSS prevention', () => {
     it('removes script tags completely', () => {
       const result = sanitizeHtml('<script>alert("xss")</script>');
@@ -54,7 +125,7 @@ describe('sanitizeHtml', () => {
     it('removes data: URLs in href (XSS vector)', () => {
       const result = sanitizeHtml('<a href="data:text/html,<script>alert(1)</script>">link</a>');
       expect(result).not.toContain('data:');
-      expect(result).toContain('>link</a>'); // Link text preserved
+      expect(result).toContain('>link</a>');
     });
 
     it('removes iframe tags', () => {

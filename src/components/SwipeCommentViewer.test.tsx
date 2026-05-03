@@ -28,7 +28,6 @@ describe('SwipeCommentViewer', () => {
     const container = screen.getByTestId('swipe-container');
     expect(container).toBeInTheDocument();
 
-    // Should show at least one panel with skeleton content while loading
     const panels = screen.getAllByTestId('swipe-panel');
     expect(panels.length).toBeGreaterThanOrEqual(1);
   });
@@ -38,13 +37,12 @@ describe('SwipeCommentViewer', () => {
       initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],
     });
 
-    // Should eventually show all 3 sibling panels (parent 12345 has kids: [1001, 1002, 1003])
+    // Parent 12345 has kids: [1001, 1002, 1003] → 3 panels.
     await waitFor(() => {
       const panels = screen.getAllByTestId('swipe-panel');
       expect(panels.length).toBe(3);
     });
 
-    // The first comment author should be rendered
     await waitFor(() => {
       expect(screen.getByText('patio11')).toBeInTheDocument();
     });
@@ -64,7 +62,7 @@ describe('SwipeCommentViewer', () => {
       initialEntries: [{ pathname: '/item/999', state: { isComment: true } }],
     });
 
-    // Auto-retry retries 3 times with 2s+4s+8s backoff before giving up and showing error
+    // 30s waitFor + 35s test timeout cover the 2+4+8s auto-retry backoff.
     await waitFor(() => {
       expect(screen.getByText('Failed to load comments')).toBeInTheDocument();
     }, { timeout: 30000 });
@@ -81,12 +79,12 @@ describe('SwipeCommentViewer', () => {
             text: 'Top-level comment with no parent.',
             time: Math.floor(Date.now() / 1000) - 300,
             type: 'comment',
-            // No parent field
+            // No parent → single-panel branch.
           });
         }
         return HttpResponse.json(null);
       }),
-      // FullScreenComment's useCommentDetail fetches from Algolia
+      // FullScreenComment's useCommentDetail hits Algolia.
       http.get(`${ALGOLIA_API}/items/:id`, () => {
         return HttpResponse.json({
           id: 7777,
@@ -109,13 +107,12 @@ describe('SwipeCommentViewer', () => {
       expect(screen.getByText('solo')).toBeInTheDocument();
     });
 
-    // Only 1 panel since there are no siblings
     const panels = screen.getAllByTestId('swipe-panel');
     expect(panels.length).toBe(1);
   });
 
   it('virtualizes panels beyond BUFFER distance', async () => {
-    // Create a parent with 7 kids to test virtualization (buffer = ±2)
+    // 7 kids exercises the BUFFER=±2 boundary: 3 real, 4 skeleton.
     const manyKids = [3001, 3002, 3003, 3004, 3005, 3006, 3007];
 
     server.use(
@@ -139,7 +136,6 @@ describe('SwipeCommentViewer', () => {
           type: 'comment',
         });
       }),
-      // FullScreenComment's useCommentDetail fetches from Algolia
       http.get(`${ALGOLIA_API}/items/:id`, ({ params }) => {
         const id = parseInt(params.id as string, 10);
         return HttpResponse.json({
@@ -159,25 +155,29 @@ describe('SwipeCommentViewer', () => {
       initialEntries: [{ pathname: '/item/3001', state: { isComment: true } }],
     });
 
-    // Wait for all 7 panels to render
     await waitFor(() => {
       const panels = screen.getAllByTestId('swipe-panel');
       expect(panels.length).toBe(7);
     });
 
-    // Wait for first panel's real content to load (author "user3001")
     await waitFor(() => {
       expect(screen.getByText('user3001')).toBeInTheDocument();
     });
 
-    // With currentIndex=0 and BUFFER=2, panels 0-2 should be real content,
-    // panels 3-6 should be skeleton placeholders.
+    // currentIndex=0 + BUFFER=2 → panels 0-2 real, 3-6 skeleton.
     const panels = screen.getAllByTestId('swipe-panel');
-    // Panel 0 (index 0, distance 0) - should have loaded real content
+    // Panel 0 stays in PageStage's 'transitioning' state for ~1200ms
+    // after loading flips false, so .skeleton-overlay lingers — wait
+    // for it to unmount ('done' state) before asserting "fully cleared".
+    await waitFor(
+      () => {
+        expect(panels[0].querySelector('.skeleton-overlay')).toBeNull();
+      },
+      { timeout: 2000 },
+    );
     expect(panels[0].querySelector('.animate-pulse')).toBeNull();
-    // Panel 3 (distance = 3, just outside BUFFER=2) - exact boundary, should be skeleton
+    // Panel 3 sits exactly at distance BUFFER+1 — boundary check.
     expect(panels[3].querySelector('.animate-pulse')).not.toBeNull();
-    // Panel 4+ (distance >= 4, well beyond buffer) - skeleton
     expect(panels[4].querySelector('.animate-pulse')).not.toBeNull();
     expect(panels[5].querySelector('.animate-pulse')).not.toBeNull();
     expect(panels[6].querySelector('.animate-pulse')).not.toBeNull();

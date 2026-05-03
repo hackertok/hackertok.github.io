@@ -5,6 +5,7 @@ import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
 import { CommentSkeletonTree } from './CommentSkeleton';
 import { CommentArticle } from './CommentArticle';
+import { PageStage } from './PageStage';
 import { StateView } from './StateView';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import type { LocationState } from '../types';
@@ -19,8 +20,35 @@ interface CommentDetailProps {
   };
 }
 
+/**
+ * Skeleton for the comment-detail page. Mirrors the real
+ * `CommentArticle` shape (article wrapper, 4-pill meta row, 2 body
+ * bars, replies tree) so the swap is invisible. Outer chrome stays
+ * with `CommentDetail` so this skeleton doesn't double-pad when fed
+ * into PageStage's overlay slot.
+ */
+export function CommentDetailSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <article className="mb-6 pb-4 border-b border-border">
+        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 mb-3 min-h-5">
+          <div className="h-3.5 bg-skeleton rounded w-20" />
+          <div className="h-3.5 bg-skeleton rounded w-16" />
+          <div className="h-3.5 bg-skeleton rounded w-12" />
+          <div className="h-3.5 bg-skeleton rounded w-40" />
+        </div>
+        <div className="space-y-2">
+          <div className="h-4 bg-skeleton rounded w-full" />
+          <div className="h-4 bg-skeleton rounded w-3/4" />
+        </div>
+      </article>
+      <CommentSkeletonTree count={6} />
+    </div>
+  );
+}
+
 export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
-  const { comment, replies, itemId, itemTitle, loading, error, retry } = useCommentDetail(commentId, initialData);
+  const { comment, replies, itemId, itemTitle, itemAuthor, loading, error, retry } = useCommentDetail(commentId, initialData);
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
@@ -32,7 +60,7 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
     isOnline,
   });
 
-  // Set isComment in router state so Header shows "comments" indicator
+  // Set isComment in router state so Header shows the "comments" indicator.
   useEffect(() => {
     if (!locationState?.isComment) {
       void navigate(location.pathname, { replace: true, state: { isComment: true } });
@@ -54,32 +82,37 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
     );
   }
 
-  if ((error && isRetrying) || (!comment && loading)) {
+  // Pre-emptive retry skeleton — fires while useAutoRetry is between
+  // attempts (loading flips back to true, error stays set) so the
+  // user doesn't see the error UI flash off before the retry kicks in.
+  if (error && isRetrying) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-        <div className="animate-pulse">
-          <div className="h-4 bg-skeleton rounded w-48 mb-2" />
-          <div className="h-3 bg-skeleton rounded w-64 mb-4" />
-          <div className="h-4 bg-skeleton rounded w-full mb-2" />
-          <div className="h-4 bg-skeleton rounded w-3/4 mb-6" />
-          <CommentSkeletonTree count={6} />
-        </div>
+        <CommentDetailSkeleton />
       </div>
     );
   }
 
-  if (!comment) return null;
-
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-      <CommentArticle
-        comment={comment}
-        replies={replies}
-        itemId={itemId}
-        itemTitle={itemTitle}
-        loading={loading}
-        articleClassName="mb-6"
-      />
+      {/* `loading={!comment}` (not raw `loading`): when initialData
+          seeds `comment` on first render, PageStage starts in
+          'transitioning' so progressive rendering shows the seeded
+          byline + text without a skeleton flash. Cold load (no
+          initialData) still skeletons normally. */}
+      <PageStage loading={!comment} skeleton={<CommentDetailSkeleton />}>
+        {comment && (
+          <CommentArticle
+            comment={comment}
+            replies={replies}
+            itemId={itemId}
+            itemTitle={itemTitle}
+            loading={loading}
+            articleClassName="mb-6"
+            storyAuthor={itemAuthor ?? ''}
+          />
+        )}
+      </PageStage>
     </div>
   );
 }

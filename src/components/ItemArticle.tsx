@@ -26,9 +26,10 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
   );
 
   return (
-    <article className={className}>
-      {/* Title — hostname now lives in the meta row below as `[Globe] domain`,
-          so the title stays paren-free and reads clean. */}
+    // `story-stage-leader` lets PageStage's `.play-real` rule animate
+    // the whole header as one unit at slot 0 (no delay) so the focal
+    // point reads cleanly instead of cascading inside itself.
+    <article className={`${className} story-stage-leader`}>
       <h1 className={`text-xl font-semibold mb-2 leading-snug ${viewed ? 'text-viewed' : 'text-foreground'}`}>
         {item.url ? (
           <a
@@ -44,17 +45,11 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
         )}
       </h1>
 
-      {/* Meta row — flex with leading icons, NO dot/pipe separators (gap only).
-          Order matches StoryCard. Comments stays a non-clickable <span> here
-          (we're already on the detail page) — asymmetric with StoryCard.
-          AuthorByline uses `emptyFallback="hide"` to preserve the historical
-          ItemArticle behavior of dropping the slot entirely when no author
-          handle is present (StoryCard / CommentArticle render an "unknown"
-          placeholder instead — the meta-row gap rhythm is more forgiving on
-          the detail page where there's more vertical space).
-
-          See `src/lib/classes.ts` for the full rationale on the
-          metaItemClass / metaPillClass split + axe compliance. */}
+      {/* Meta row order matches StoryCard. Comments stays a non-
+          clickable span here (we're already on the detail page).
+          `emptyFallback="hide"` preserves ItemArticle's historical
+          behavior of dropping the author slot entirely when no handle
+          is present. */}
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground mb-2">
         <span className={metaItemClass}>
           <ChevronUp aria-hidden className="size-3.5" />
@@ -83,7 +78,7 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
 
       {sanitizedText && (
         <div
-          className="mt-3 comment-content text-foreground text-sm leading-relaxed"
+          className="story-body comment-content"
           dangerouslySetInnerHTML={{ __html: sanitizedText }}
         />
       )}

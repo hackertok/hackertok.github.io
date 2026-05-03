@@ -15,6 +15,13 @@ interface UseCommentDetailResult {
   replies: Comment[];
   itemId: number | null;
   itemTitle: string | null;
+  /**
+   * Author handle of the parent story (not the comment's author).
+   * Resolved asynchronously alongside `itemTitle`; `null` until that
+   * fetch completes. Consumers MUST guard with
+   * `isKnownAuthor(itemAuthor)` before using it for OP detection.
+   */
+  itemAuthor: string | null;
   loading: boolean;
   error: string | null;
   retry: () => void;
@@ -39,6 +46,7 @@ export function useCommentDetail(
   const [replies, setReplies] = useState<Comment[]>([]);
   const [itemId, setItemId] = useState<number | null>(null);
   const [itemTitle, setItemTitle] = useState<string | null>(null);
+  const [itemAuthor, setItemAuthor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -52,7 +60,6 @@ export function useCommentDetail(
       setLoading(true);
 
       try {
-        // Single request: comment + full reply tree + story_id
         const item = await fetchAlgoliaItem(commentId, controller.signal);
         if (controller.signal.aborted) return;
 
@@ -67,15 +74,21 @@ export function useCommentDetail(
         setReplies(normalizeAlgoliaItemChildren(item.children ?? []));
         setLoading(false);
 
-        // Fetch parent item title in background (non-blocking)
+        // Fetch parent title + author in background (non-blocking).
+        // The author drives OP detection; landing ~100-300ms after the
+        // comment renders means the badge pops in late, which is the
+        // accepted trade-off vs delaying the focal render.
         if (item.story_id) {
           try {
             const parentItem = await fetchFirebaseItem(item.story_id, controller.signal);
-            if (!controller.signal.aborted && parentItem?.title) {
-              setItemTitle(parentItem.title);
+            if (!controller.signal.aborted && parentItem) {
+              if (parentItem.title) setItemTitle(parentItem.title);
+              if (parentItem.by) setItemAuthor(parentItem.by);
             }
           } catch {
-            // Degrade gracefully — "on:" link still works with itemId
+            // Degrade gracefully — title link still works with itemId
+            // alone; OP badge stays off (consumers guard with
+            // `isKnownAuthor(itemAuthor)`).
           }
         }
       } catch (err) {
@@ -89,5 +102,5 @@ export function useCommentDetail(
     return () => controller.abort();
   }, [commentId, retryCount]);
 
-  return { comment, replies, itemId, itemTitle, loading, error, retry };
+  return { comment, replies, itemId, itemTitle, itemAuthor, loading, error, retry };
 }

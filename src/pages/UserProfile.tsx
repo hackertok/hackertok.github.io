@@ -6,8 +6,36 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useScrollContainer } from '../hooks/useScrollContainer';
 import { sanitizeHtml } from '../utils/sanitize';
 import { formatAbsoluteDate, formatTimeAgo, safeISOString } from '../api/hn';
-import { StateView, Spinner } from '../components';
+import { StateView, PageStage } from '../components';
 import { metaItemClass, metaPillClass } from '../lib/classes';
+
+/**
+ * Header-only skeleton for the user profile page. About text is
+ * optional on HN, so painting an about-block placeholder would create
+ * a visual jump for users without one. The header is a stable canvas
+ * every profile shares.
+ *
+ * Title `h-7` ≤ real `text-2xl` line-box (~32px) so PageStage's grid
+ * stack sizes to the real h1 and there's no contraction when the
+ * overlay unmounts. `mb-2` matches the real h1 (not `mb-3`) so the
+ * meta row doesn't shift on swap.
+ */
+function UserProfileSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <header className="mb-6 pb-4 border-b border-border">
+        <div className="h-7 bg-skeleton rounded w-40 mb-2" />
+
+        {/* karma / date / submissions */}
+        <div className="flex items-center gap-x-3.5 gap-y-2 min-h-5">
+          <div className="h-3 bg-skeleton rounded w-24" />
+          <div className="h-3 bg-skeleton rounded w-32" />
+          <div className="h-3 bg-skeleton rounded w-24" />
+        </div>
+      </header>
+    </div>
+  );
+}
 
 export function UserProfile() {
   const { id } = useParams<{ id: string }>();
@@ -17,26 +45,21 @@ export function UserProfile() {
 
   const { disableSwipeMode } = useScrollContainer();
 
-  // index.html optimistically applies the `swipe-mode` class to <html>/<body>
-  // for any `#/...` route on mobile so the swipe viewers don't double-paint
-  // a scrollable page first. This page is vertically scrollable, so we have
-  // to undo that on mount or the body stays `overflow: hidden` on direct
-  // load (`https://.../#/user/pg`). The provider's noop fallback on desktop
-  // makes this a safe no-op there.
+  // index.html optimistically applies `swipe-mode` to <html>/<body>
+  // for any `#/...` route on mobile so swipe viewers don't double-
+  // paint a scrollable page first. This page IS vertically scrollable,
+  // so we undo that on mount or `overflow: hidden` sticks on direct
+  // load (`https://.../#/user/pg`). Desktop is a no-op via the
+  // provider's noop fallback.
   //
-  // useLayoutEffect (not useEffect): the class removal must run BEFORE the
-  // first paint so the user never sees a non-scrollable frame on direct mobile
-  // load. With useEffect the sequence is commit → paint (overflow:hidden still
-  // active) → effect → repaint, leaving a one-frame window where mid-flick
-  // gestures can be lost. useLayoutEffect collapses this to commit → effect →
-  // paint. Mirrors `useSwipeScroll`, which uses useLayoutEffect for the
-  // mirror-image enable case.
+  // useLayoutEffect (not useEffect): the class removal MUST run before
+  // first paint to avoid a one-frame window where mid-flick gestures
+  // are lost on direct mobile load. Mirrors `useSwipeScroll`, which
+  // uses useLayoutEffect for the enable case.
   useLayoutEffect(() => {
     disableSwipeMode();
   }, [disableSwipeMode]);
 
-  // State-aware title mirrors `ItemDetail`. On error we still want a
-  // descriptive title so browser history / tab labels read sensibly.
   const documentTitle = !username || isNotFound
     ? 'User not found'
     : error
@@ -64,13 +87,8 @@ export function UserProfile() {
     );
   }
 
-  if (loading && !profile) {
-    return (
-      <div className="page-state-center-padded">
-        <Spinner />
-      </div>
-    );
-  }
+  // Error / not-found short-circuits run BEFORE PageStage because
+  // they replace the whole layout (no skeleton overlay).
 
   if (isNotFound) {
     return (
@@ -85,7 +103,9 @@ export function UserProfile() {
     );
   }
 
-  if (error || !profile) {
+  // Gate on `!loading` so this branch doesn't fire during the
+  // skeleton phase.
+  if (!loading && (error || !profile)) {
     return (
       <div className="page-state-center-padded">
         <StateView
@@ -98,57 +118,63 @@ export function UserProfile() {
     );
   }
 
-  const createdAtMs = profile.created * 1000;
+  const createdAtMs = profile ? profile.created * 1000 : 0;
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-      <article>
-        <header className="mb-6 pb-4 border-b border-border">
-          <h1 className="text-2xl font-semibold text-foreground mb-2">{profile.id}</h1>
-          {/* Stat row — flex with leading icons, NO pipe separators (gap only).
-              Visible date is absolute (`October 9, 2006`) via `formatAbsoluteDate`;
-              the relative `X years ago` lives in the `<time title>` attribute so
-              users get both views — the visible primary, the hover surfaces age.
-              Submissions link uses CSS `capitalize` so DOM textContent stays
-              lowercase `submissions` (preserves accessible-name assertions). */}
-          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground">
-            <span className={metaItemClass}>
-              <Award aria-hidden className="size-3.5" />
-              <span>{profile.karma.toLocaleString()} karma</span>
-            </span>
+      {/* `loading={loading && !profile}` so a refresh with a cached
+          profile doesn't blank it out — the existing header stays up
+          while the new fetch resolves. */}
+      <PageStage
+        loading={loading && !profile}
+        skeleton={<UserProfileSkeleton />}
+      >
+        {profile && (
+          <article className="story-stage-leader">
+            <header className="mb-6 pb-4 border-b border-border">
+              <h1 className="text-2xl font-semibold text-foreground mb-2">{profile.id}</h1>
+              {/* Visible date is absolute (`October 9, 2006`); the
+                  `<time title>` surfaces the relative `X years ago`
+                  on hover. Submissions link uses CSS `capitalize` so
+                  DOM textContent stays lowercase `submissions`,
+                  preserving accessible-name assertions. */}
+              <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground">
+                <span className={metaItemClass}>
+                  <Award aria-hidden className="size-3.5" />
+                  <span>{profile.karma.toLocaleString()} karma</span>
+                </span>
 
-            <span className={metaItemClass}>
-              <Calendar aria-hidden className="size-3.5" />
-              <time
-                dateTime={safeISOString(createdAtMs)}
-                title={formatTimeAgo(createdAtMs)}
-              >
-                {formatAbsoluteDate(createdAtMs)}
-              </time>
-            </span>
+                <span className={metaItemClass}>
+                  <Calendar aria-hidden className="size-3.5" />
+                  <time
+                    dateTime={safeISOString(createdAtMs)}
+                    title={formatTimeAgo(createdAtMs)}
+                  >
+                    {formatAbsoluteDate(createdAtMs)}
+                  </time>
+                </span>
 
-            {/* Submissions: nav-pill hover pattern (see `src/lib/classes.ts`
-                for the full rationale on the negative-margin trick + axe
-                compliance via font-medium weight delta). */}
-            <Link
-              to={`/submitted/${profile.id}`}
-              className={`${metaPillClass} capitalize font-medium`}
-            >
-              <FileText aria-hidden className="size-3.5" />
-              submissions
-            </Link>
-          </div>
-        </header>
+                <Link
+                  to={`/submitted/${profile.id}`}
+                  className={`${metaPillClass} capitalize font-medium`}
+                >
+                  <FileText aria-hidden className="size-3.5" />
+                  submissions
+                </Link>
+              </div>
+            </header>
 
-        {sanitizedAbout && (
-          <section className="mb-6">
-            <div
-              className="comment-content text-foreground text-sm leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: sanitizedAbout }}
-            />
-          </section>
+            {sanitizedAbout && (
+              <section className="mb-6">
+                <div
+                  className="comment-content text-foreground text-sm leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: sanitizedAbout }}
+                />
+              </section>
+            )}
+          </article>
         )}
-      </article>
+      </PageStage>
     </div>
   );
 }

@@ -46,16 +46,14 @@ describe('useCommentDetail', () => {
 
     const { result } = renderHook(() => useCommentDetail(1001, initialData));
 
-    // Should immediately have comment data from initialData
+    // initialData renders synchronously before the async fetch resolves.
     expect(result.current.comment).toBeTruthy();
     expect(result.current.comment!.author).toBe('patio11');
 
-    // Should still load replies
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
-    // After load, comment should be updated from Algolia data
     expect(result.current.replies).toHaveLength(1);
   });
 
@@ -80,7 +78,7 @@ describe('useCommentDetail', () => {
   });
 
   it('degrades gracefully when item title fetch fails', async () => {
-    // Override only the Firebase handler to fail
+    // Only Firebase fails — Algolia (comment + replies) still succeeds.
     server.use(
       http.get(`${FIREBASE_API}/item/:id.json`, () => {
         return HttpResponse.json(null, { status: 500 });
@@ -93,12 +91,10 @@ describe('useCommentDetail', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    // Comment data should still be available (from Algolia)
     expect(result.current.comment).toBeTruthy();
     expect(result.current.replies).toHaveLength(1);
-    // Item title should be null (graceful degradation)
+    // Item title is non-blocking: missing title must NOT propagate as an error.
     expect(result.current.itemTitle).toBeNull();
-    // No error (item title failure is non-blocking)
     expect(result.current.error).toBeNull();
   });
 

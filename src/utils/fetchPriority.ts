@@ -18,46 +18,31 @@ type PriorityListener = (isActive: boolean) => void;
 let priorityFetchCount = 0;
 const listeners = new Set<PriorityListener>();
 
-/**
- * Notify all listeners of priority fetch state change
- */
 function notifyListeners() {
   const isActive = priorityFetchCount > 0;
   listeners.forEach(fn => fn(isActive));
 }
 
 /**
- * Register a priority fetch (user-visible content loading).
- * Call this when starting to fetch content the user is actively waiting for.
- * Must be paired with unregisterPriorityFetch().
+ * Register a priority fetch (user-visible content loading). Must be paired
+ * with `unregisterPriorityFetch()`.
  */
 export function registerPriorityFetch() {
   priorityFetchCount++;
   notifyListeners();
 }
 
-/**
- * Unregister a priority fetch.
- * Call this when the priority fetch completes (success or failure).
- */
+/** Call when the priority fetch completes (success or failure). */
 export function unregisterPriorityFetch() {
   priorityFetchCount = Math.max(0, priorityFetchCount - 1);
   notifyListeners();
 }
 
-/**
- * Check if any priority fetch is currently in progress.
- * @returns {boolean} True if priority fetch is active
- */
 export function isPriorityFetchActive() {
   return priorityFetchCount > 0;
 }
 
-/**
- * Subscribe to priority fetch state changes.
- * @param {function} fn - Callback receiving boolean (isActive)
- * @returns {function} Unsubscribe function
- */
+/** Subscribe to priority fetch state changes; returns an unsubscribe fn. */
 export function onPriorityFetchChange(fn: PriorityListener): () => void {
   listeners.add(fn);
   // Immediately notify with current state
@@ -66,10 +51,8 @@ export function onPriorityFetchChange(fn: PriorityListener): () => void {
 }
 
 /**
- * Wait for all priority fetches to complete.
- * Returns immediately if no priority fetch is active.
- * @param {AbortSignal} signal - Optional abort signal to cancel waiting
- * @returns {Promise<void>} Resolves when priority fetches complete
+ * Wait for all priority fetches to complete; resolves immediately when none
+ * are active.
  */
 export function waitForPriorityFetch(signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
@@ -95,7 +78,6 @@ export function waitForPriorityFetch(signal?: AbortSignal): Promise<void> {
     
     signal?.addEventListener('abort', onAbort);
     
-    // Subscribe to changes
     unsubscribe = onPriorityFetchChange((isActive) => {
       if (!isActive) {
         signal?.removeEventListener('abort', onAbort);
@@ -106,9 +88,7 @@ export function waitForPriorityFetch(signal?: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * Reset priority state (for testing only)
- */
+/** Reset priority state (for testing only). */
 export function _resetForTesting() {
   priorityFetchCount = 0;
   listeners.clear();

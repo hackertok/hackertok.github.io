@@ -4,7 +4,6 @@ import { useScrollDirection } from './useScrollDirection';
 
 describe('useScrollDirection', () => {
   beforeEach(() => {
-    // Reset scroll position
     Object.defineProperty(window, 'scrollY', {
       value: 0,
       writable: true,
@@ -21,14 +20,13 @@ describe('useScrollDirection', () => {
 
   it('detects scroll down', async () => {
     const { result } = renderHook(() => useScrollDirection());
-    
-    // Simulate scrolling down
+
     act(() => {
       window.scrollY = 100;
       window.dispatchEvent(new Event('scroll'));
     });
-    
-    // Wait for requestAnimationFrame
+
+    // waitFor lets the rAF inside the hook flush.
     await waitFor(() => {
       expect(result.current.scrollDirection).toBe('down');
     });
@@ -36,23 +34,21 @@ describe('useScrollDirection', () => {
 
   it('detects scroll up', async () => {
     const { result } = renderHook(() => useScrollDirection());
-    
-    // First scroll down
+
     act(() => {
       window.scrollY = 100;
       window.dispatchEvent(new Event('scroll'));
     });
-    
+
     await waitFor(() => {
       expect(result.current.scrollDirection).toBe('down');
     });
-    
-    // Then scroll up
+
     act(() => {
       window.scrollY = 50;
       window.dispatchEvent(new Event('scroll'));
     });
-    
+
     await waitFor(() => {
       expect(result.current.scrollDirection).toBe('up');
     });
@@ -75,14 +71,13 @@ describe('useScrollDirection', () => {
 
   it('ignores small scroll changes below threshold', async () => {
     const { result } = renderHook(() => useScrollDirection());
-    
-    // Small scroll that's below the 10px threshold
+
+    // 5px is below the 10px direction-flip threshold; should not register.
     act(() => {
       window.scrollY = 5;
       window.dispatchEvent(new Event('scroll'));
     });
-    
-    // Direction should still be 'up'
+
     await waitFor(() => {
       expect(result.current.scrollDirection).toBe('up');
     });

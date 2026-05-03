@@ -210,6 +210,28 @@ function parseTargetRoute(parsed: URL): RouteTarget | null {
   return null;
 }
 
+/**
+ * Strips the common leading whitespace shared by every non-blank line.
+ * HN's text-to-HTML converter preserves the author's source indent
+ * verbatim inside `<pre>` blocks (commenters indent with 2+ spaces to
+ * mark a block as code), so the rendered text inherits a 2-, 4-, or
+ * 6-space hanging indent on top of our `.comment-content pre` padding
+ * — wasted horizontal space, especially on mobile. Relative indent
+ * inside the block is preserved (e.g. continuation lines keep their
+ * inner indent under their if/for/while parent).
+ */
+function dedentPreText(text: string): string {
+  const lines = text.split('\n');
+  let minIndent = Infinity;
+  for (const line of lines) {
+    if (line.trim() === '') continue;
+    const indent = /^[ \t]*/.exec(line)?.[0].length ?? 0;
+    if (indent < minIndent) minIndent = indent;
+  }
+  if (minIndent === Infinity || minIndent === 0) return text;
+  return lines.map((line) => line.slice(minIndent)).join('\n');
+}
+
 // HN auto-linkifies URLs by wrapping the bare URL in <a>, sometimes clipping
 // long display URLs (e.g. `…/from?site=scattered-thoughts.ne...`) while
 // keeping the full URL in href. Whatever the truncation strategy — literal
@@ -222,6 +244,28 @@ function isAutoLinkifiedText(text: string, parsed: URL): boolean {
 }
 
 purify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'PRE') {
+    // Target the inner <code> when present so the <code> wrapper
+    // survives (keeps `.comment-content pre code`'s background-reset
+    // / font-size override applying). Falls back to the <pre> itself
+    // for the rare bare-text shape.
+    const firstChild = node.firstElementChild;
+    const target = firstChild?.tagName === 'CODE' ? firstChild : node;
+    // Skip when the block contains element descendants (e.g. an
+    // auto-linkified URL — HN linkifies inside <pre> too, per
+    // formatdoc). Setting `target.textContent` would wipe the <a> and
+    // demote the link to plain text. Rare in real HN code blocks, but
+    // we'd rather keep the link clickable than dedent at any cost.
+    if (target.querySelector('*')) {
+      return;
+    }
+    const text = target.textContent ?? '';
+    const dedented = dedentPreText(text);
+    if (dedented !== text) {
+      target.textContent = dedented;
+    }
+    return;
+  }
   if (node.tagName === 'A') {
     const originalHref = node.getAttribute('href');
     if (originalHref) {

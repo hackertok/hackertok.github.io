@@ -5,7 +5,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
 import { useSiblingComments } from '../hooks/useSiblingComments';
-import { FullScreenComment, FullScreenCommentSkeleton } from './FullScreenComment';
+import { FullScreenComment, FullScreenCommentSkeletonPanel } from './FullScreenComment';
 import { StateView } from './StateView';
 import type { LocationState } from '../types';
 
@@ -59,8 +59,8 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
   const currentAuthor = currentCommentId ? authorsByCommentId[currentCommentId] : undefined;
   useDocumentTitle(currentAuthor ? `Comment by ${currentAuthor}` : 'Comments');
 
-  // Handle initialCommentId prop changes (e.g. "parent" link navigation)
-  // Swipe URL updates set isOurNavigationRef → skip. External nav → refetch siblings.
+  // Swipe URL updates set isOurNavigationRef → skip. External nav (e.g. "parent"
+  // link) → refetch siblings.
   useEffect(() => {
     if (lastInitialCommentIdRef.current !== initialCommentId) {
       if (isOurNavigationRef.current) {
@@ -107,12 +107,11 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     }
   }, [scrollInitialized, currentIndex, siblingIds, navigate, location.pathname]);
 
-  // Loading state
   if (loading && siblingIds.length <= 1) {
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
         <div className="swipe-snap-panel" data-testid="swipe-panel">
-          <FullScreenCommentSkeleton />
+          <FullScreenCommentSkeletonPanel />
         </div>
       </div>
     );
@@ -130,7 +129,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
         <div className="swipe-snap-panel" data-testid="swipe-panel">
-          <FullScreenCommentSkeleton />
+          <FullScreenCommentSkeletonPanel />
         </div>
       </div>
     );
@@ -158,7 +157,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
             {isWithinWindow ? (
               <FullScreenComment commentId={id} onAuthorLoaded={handleAuthorLoaded} />
             ) : (
-              <FullScreenCommentSkeleton />
+              <FullScreenCommentSkeletonPanel />
             )}
           </div>
         );

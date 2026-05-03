@@ -195,14 +195,6 @@ describe('Header', () => {
     const commentsIndicator = () =>
       screen.queryByText('comments', { selector: 'header nav span' });
 
-    it('shows "user" indicator on /user/:id profile route', () => {
-      render(<Header />, { initialEntries: ['/user/pg'] });
-
-      const indicator = userIndicator();
-      expect(indicator).not.toBeNull();
-      expect(indicator).toHaveAttribute('aria-current', 'page');
-    });
-
     it('shows "user" indicator on /submitted/:id list route', () => {
       render(<Header />, { initialEntries: ['/submitted/pg'] });
 
@@ -341,7 +333,7 @@ describe('Header', () => {
     });
 
     it('marks the active contextual pill (user) with aria-current="page"', () => {
-      render(<Header />, { initialEntries: ['/user/pg'] });
+      render(<Header />, { initialEntries: ['/submitted/pg'] });
 
       const indicator = screen.getByText('user', {
         selector: 'header nav span',
@@ -403,7 +395,7 @@ describe('Header', () => {
     });
 
     it('puts the active contextual pill at index 0 ahead of feed tabs', () => {
-      render(<Header />, { initialEntries: ['/user/pg'] });
+      render(<Header />, { initialEntries: ['/submitted/pg'] });
 
       expect(navChildLabels()).toEqual(['user', 'best', 'show', 'ask']);
     });
