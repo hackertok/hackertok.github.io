@@ -1,16 +1,32 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { isKnownAuthor } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
+import { OpWrap } from './AuthorByline';
 import { StateView } from './StateView';
 import { RelativeTime } from './RelativeTime';
+import { decayDelay } from '../lib/staggerDelay';
+import { metaPillClass } from '../lib/classes';
 import type { Comment as CommentType } from '../types';
 
 interface CommentProps {
   comment: CommentType;
+  /**
+   * Author handle of the surrounding story. Forwarded recursively to
+   * children so deeply-nested replies from the OP also light up; the
+   * OP badge fires when `storyAuthor === comment.author` (with an
+   * `isKnownAuthor` guard so empty/'unknown' authors don't decorate).
+   */
+  storyAuthor?: string;
+  /**
+   * 0-indexed slot position in the entry cascade. CSS scope
+   * (`.page-stage.play-real`) gates the actual animation to the
+   * initial cascade window only.
+   */
+  stageIdx?: number;
 }
 
-export function Comment({ comment }: CommentProps) {
+export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
   const [repliesExpanded, setRepliesExpanded] = useState(false);
 
   const sanitizedText = useMemo(
@@ -27,23 +43,44 @@ export function Comment({ comment }: CommentProps) {
     />
   ) : null;
 
+  const isOp = isKnownAuthor(storyAuthor) && comment.author === storyAuthor;
+
+  // Top-level comments inside a tree get a cascade slot; nested
+  // children fade in together via `.reply-fade` on their
+  // `.tree-branch` wrappers when the user expands a thread (no
+  // stagger — reply expansion is a deliberate user-initiated reveal).
+  const wrapperClass = stageIdx !== undefined ? 'py-2 comment-row stagger-fade' : 'py-2 comment-row';
+  const wrapperStyle: CSSProperties | undefined =
+    stageIdx !== undefined
+      ? ({ '--stagger-delay': `${decayDelay(stageIdx)}ms` } as CSSProperties)
+      : undefined;
+
   return (
-    <div className="py-2">
-      {/* Compact byline for nested replies — intentionally keeps the lightweight
-          `›` + author + time pattern. The unified lucide meta row (`User`,
-          `Clock`, optional parent, optional thread) is reserved for the focal
-          comment in `CommentArticle` (permalink / fullscreen views), where
-          parent/thread context isn't implicit; here in the threaded list, the
-          `tree-trunk` / `tree-branch` graphical structure already conveys
-          parent location, so a denser meta row would just add noise. */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-0.5">
+    <div className={wrapperClass} style={wrapperStyle} id={`comment-${comment.id}`}>
+      {/* Compact `›` + author + time byline — the unified lucide meta
+          row is reserved for the focal comment in CommentArticle. Here
+          in the threaded list the tree-trunk graphical structure
+          already conveys parent location, so a denser row would only
+          add noise. */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-0.5 comment-byline">
         <span className="text-accent/80 text-base leading-none">›</span>
-        {/* Author guard mirrors StoryCard / CommentArticle — see
-            isKnownAuthor for the empty-string + literal `'unknown'`
-            rationale. Falls back to a plain span so the byline still
-            renders (so the `›` marker doesn't sit alone) without minting
-            a dead `/user/` or `/user/unknown` link. */}
-        {isKnownAuthor(comment.author) ? (
+        {/* OP variant: `OpWrap` (shared with AuthorByline) places the
+            badge as a SIBLING of the Link so the handle's accessible
+            name stays clean, and the `gap-1.5` spacing is identical
+            across compact and focal bylines. */}
+        {isOp ? (
+          <OpWrap>
+            {/* `isOp` requires `comment.author === storyAuthor` AND
+                `isKnownAuthor(storyAuthor)`, so `comment.author` is
+                guaranteed known here — no unknown fallback needed. */}
+            <Link
+              to={`/user/${comment.author}`}
+              className="font-semibold text-foreground hover:text-accent transition-colors"
+            >
+              {comment.author}
+            </Link>
+          </OpWrap>
+        ) : isKnownAuthor(comment.author) ? (
           <Link
             to={`/user/${comment.author}`}
             className="font-medium text-foreground hover:text-accent transition-colors"
@@ -56,7 +93,16 @@ export function Comment({ comment }: CommentProps) {
           </span>
         )}
         <span className="text-muted-foreground">·</span>
-        <RelativeTime timestamp={comment.createdAt} />
+        {/* Time IS the permalink (HN convention). `state.isComment:
+            true` lets MobileItemDetailWrapper short-circuit straight
+            to SwipeCommentViewer without a resolver round-trip. */}
+        <Link
+          to={`/item/${comment.id}`}
+          state={{ isComment: true }}
+          className={metaPillClass}
+        >
+          <RelativeTime timestamp={comment.createdAt} />
+        </Link>
       </div>
 
       {hasChildren ? (
@@ -74,18 +120,11 @@ export function Comment({ comment }: CommentProps) {
 
           {!repliesExpanded && (
             <div className="tree-branch tree-branch--last pt-2">
-              {/* Replies expander: small pill button matching the nav-pill
-                  hover pattern. The orange rotated `›` chevron is kept as
-                  the leading glyph (a deliberate accent flourish that
-                  visually rhymes with the `›` author marker on each
-                  comment byline). The chevron has its own `text-accent/80`
-                  so it stays orange on hover while the rest of the label
-                  text shifts to `text-foreground` from the parent's
-                  `hover:text-foreground`. The negative-margin `-mx-2 -my-1`
+              {/* Replies expander pill. Negative-margin -mx-2 -my-1
                   cancels the padding for layout (so the tree-branch
-                  connector still meets the button at the same position)
-                  while letting the hover backdrop extend beyond the text
-                  bounds. */}
+                  connector still meets the button at the same
+                  position) while letting the hover backdrop extend
+                  beyond the text bounds. */}
               <button
                 onClick={() => setRepliesExpanded(true)}
                 className="inline-flex items-center gap-1.5 px-2 py-1 -mx-2 -my-1 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -97,12 +136,18 @@ export function Comment({ comment }: CommentProps) {
             </div>
           )}
 
+          {/* Children re-mount on every expand (React's conditional
+              render); the `.reply-fade` fade animation re-fires each
+              time. The .tree-branch wrapper itself stays opaque so
+              its `::before` connector and `--last::after` trunk-end
+              mask render at full opacity from frame 0 — see the
+              comment on `.reply-fade > *` in src/index.css. */}
           {repliesExpanded && comment.children.map((child, i) => (
             <div
               key={child.id}
-              className={`tree-branch${i === comment.children.length - 1 ? ' tree-branch--last' : ''}`}
+              className={`tree-branch${i === comment.children.length - 1 ? ' tree-branch--last' : ''} reply-fade`}
             >
-              <Comment comment={child} />
+              <Comment comment={child} storyAuthor={storyAuthor} />
             </div>
           ))}
         </div>
@@ -115,17 +160,29 @@ export function Comment({ comment }: CommentProps) {
 
 interface CommentTreeProps {
   comments: CommentType[];
+  storyAuthor?: string;
+  /**
+   * Slot offset for the cascade. CommentsSection passes `1` (slot 0
+   * is the story-header leader); CommentArticle inherits `0` so the
+   * focal article doesn't burn slots already owned by the page cascade.
+   */
+  startIdx?: number;
 }
 
-export function CommentTree({ comments }: CommentTreeProps) {
+export function CommentTree({ comments, storyAuthor = '', startIdx = 0 }: CommentTreeProps) {
   if (!comments || comments.length === 0) {
     return <StateView variant="empty" compact title="No comments yet." />;
   }
 
   return (
     <div className="space-y-0">
-      {comments.map(comment => (
-        <Comment key={comment.id} comment={comment} />
+      {comments.map((comment, i) => (
+        <Comment
+          key={comment.id}
+          comment={comment}
+          storyAuthor={storyAuthor}
+          stageIdx={startIdx + i}
+        />
       ))}
     </div>
   );

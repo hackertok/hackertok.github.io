@@ -1,20 +1,18 @@
 /** Mock data for E2E tests */
 
-// API endpoints
 export const ALGOLIA_API = 'https://hn.algolia.com/api/v1';
 export const FIREBASE_API = 'https://hacker-news.firebaseio.com/v0';
 
-// Helper to get current timestamp
 const now = () => Math.floor(Date.now() / 1000);
 
-// Sample item data (Firebase format)
+// Sample item data (Firebase format).
 export const mockItem1 = {
   id: 12345,
   title: 'Rust Is the Future of JavaScript Infrastructure',
   url: 'https://example.com/blog/rust',
   by: 'leerob',
   score: 284,
-  time: now() - 3600, // 1 hour ago
+  time: now() - 3600,
   descendants: 137,
   kids: [1001, 1002, 1003],
   type: 'story',
@@ -39,7 +37,6 @@ export const mockNestedComment = {
   type: 'comment',
 };
 
-// Additional items for list views
 export const mockItem2 = {
   id: 12346,
   title: 'SQLite Does Not Do Full FSYNC by Default',
@@ -62,7 +59,7 @@ export const mockItem3 = {
   type: 'story',
 };
 
-// Normalized item (Algolia format)
+// Normalized item (Algolia format).
 export const mockAlgoliaItem1 = {
   objectID: '12345',
   title: 'Rust Is the Future of JavaScript Infrastructure',
@@ -96,7 +93,7 @@ export const mockAlgoliaItem3 = {
   _tags: ['story', 'front_page'],
 };
 
-// Show HN items (Algolia format)
+// Show HN items (Algolia format).
 export const mockShowHNItem1 = {
   objectID: '99999',
   title: 'Show HN: Piko – Open-Source Ngrok Alternative in Go',
@@ -119,7 +116,7 @@ export const mockShowHNItem2 = {
   _tags: ['story', 'show_hn'],
 };
 
-// Ask HN items (Algolia format) - note: no URL (text posts)
+// Ask HN items (Algolia format) — text posts have url: null and a story_text body.
 export const mockAskHNItem1 = {
   objectID: '88888',
   title: 'Ask HN: What are you working on?',
@@ -129,7 +126,6 @@ export const mockAskHNItem1 = {
   created_at_i: now() - 7200,
   num_comments: 312,
   _tags: ['story', 'ask_hn'],
-  // Text content for Ask HN posts (rendered on item detail page)
   story_text: 'I\u2019m curious what side projects everyone is working on this month. Share your progress, challenges, and what technologies you\u2019re using!',
 };
 
@@ -144,11 +140,10 @@ export const mockAskHNItem2 = {
   _tags: ['story', 'ask_hn'],
 };
 
-// Top item IDs (Firebase format)
 export const mockTopItemIds = [12345, 12346, 12347, 12348, 12349];
 export const mockBestItemIds = [33001, 33002, 33003];
 
-// Best items (Firebase format) - distinct from top items
+// Best items use distinct IDs from top items so the /best route is observably different.
 export const mockBestItem1 = {
   id: 33001,
   title: 'The Art of Finishing Projects',
@@ -182,7 +177,6 @@ export const mockBestItem3 = {
   type: 'story',
 };
 
-// Domain-filtered item
 export const mockDomainItem = {
   objectID: '77777',
   title: 'Google Announces Gemini 3.0 with Extended Context',
@@ -194,14 +188,14 @@ export const mockDomainItem = {
   _tags: ['story'],
 };
 
-// Additional items for pagination/infinite scroll testing (Algolia format)
+// Pagination items (Algolia format) — used by the day-based pagination branch.
 export const mockPaginationItem1 = {
   objectID: '55551',
   title: 'WebAssembly 2.0 Reaches W3C Recommendation',
   url: 'https://www.w3.org/blog/2026/wasm-2/',
   author: 'nickcw',
   points: 167,
-  created_at_i: now() - 86400, // 1 day ago
+  created_at_i: now() - 86400,
   num_comments: 94,
   _tags: ['story', 'front_page'],
 };
@@ -228,7 +222,7 @@ export const mockPaginationItem3 = {
   _tags: ['story', 'front_page'],
 };
 
-// Comment item (Algolia /items format) for comment detail tests
+// Comment items (Algolia /items format) for comment detail tests.
 export const mockAlgoliaCommentItem = {
   id: 1001,
   type: 'comment',
@@ -249,7 +243,7 @@ export const mockAlgoliaCommentItem = {
   ],
 };
 
-// Sibling comments (Algolia /items format) for mobile swipe tests
+// Sibling comments for mobile swipe tests (children of 12345 alongside 1001).
 export const mockAlgoliaCommentItem1002 = {
   id: 1002,
   type: 'comment',
@@ -283,7 +277,7 @@ export const mockAlgoliaCommentItem2001 = {
   children: [],
 };
 
-// Job item (Firebase format) — for "not a story" error path on mobile
+// Job item — type=job triggers SwipeStoryViewer's "not a story" error path on mobile.
 export const mockJobItem = {
   id: 55555,
   type: 'job',
@@ -294,7 +288,7 @@ export const mockJobItem = {
   url: 'https://jobs.example.com/apply',
 };
 
-// Domain pagination items (Algolia format) — for page-1 assertion in domain-filter tests
+// Domain pagination items — used by the page-1 assertion in domain-filter tests.
 export const mockDomainPaginationItem1 = {
   objectID: '77700',
   title: 'Advanced CSS Grid Techniques for Modern Layouts',

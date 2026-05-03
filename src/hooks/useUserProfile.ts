@@ -36,19 +36,15 @@ interface UseUserProfileResult {
 }
 
 /**
- * Hook to fetch a Hacker News user profile from Firebase.
+ * Fetches a Hacker News user profile from Firebase. Mirrors the
+ * `loading`/`error`/`isNotFound` semantics of {@link useItemWithComments} so
+ * `UserProfile.tsx` can reuse the same `StateView` patterns. Lazy-initializes
+ * from a module-level cache so route remounts are instant, and treats
+ * Firebase's `null` response as a NotFoundError (HN convention).
  *
- * Mirrors the loading/error/isNotFound semantics of `useItemWithComments` so
- * `UserProfile.tsx` can reuse the same `StateView` patterns.
- *
- * - Lazy-initializes from a module-level cache so route remounts are instant
- * - Treats Firebase's `null` response as a NotFoundError (HN convention)
- * - Surfaces `isNotFound` as a discrete flag so callers can render a
- *   "user not found" StateView without parsing error strings
- *
- * The username is passed verbatim — Firebase is case-sensitive, so any
- * normalization must happen at the caller (which today is the route
- * `/user/:id` whose param preserves case).
+ * `username` is passed verbatim — Firebase is case-sensitive, so any
+ * normalization must happen at the caller (today: the route `/user/:id`
+ * whose param preserves case).
  */
 export function useUserProfile(username: string): UseUserProfileResult {
   const cached = username ? userProfileCache.get(username) : undefined;

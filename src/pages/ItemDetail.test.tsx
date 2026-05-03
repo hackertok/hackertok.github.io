@@ -42,7 +42,6 @@ describe('ItemDetail', () => {
     it('shows unviewed title color by default', async () => {
       renderItemDetail(12345);
 
-      // Wait for item to load
       const heading = await screen.findByRole('heading', { level: 1 });
       expect(heading).toHaveClass('text-foreground');
       expect(heading).not.toHaveClass('text-viewed');
@@ -52,7 +51,6 @@ describe('ItemDetail', () => {
       markViewed(12345);
       renderItemDetail(12345);
 
-      // Wait for item to load
       const heading = await screen.findByRole('heading', { level: 1 });
       expect(heading).toHaveClass('text-viewed');
       expect(heading).not.toHaveClass('text-foreground');
@@ -61,25 +59,23 @@ describe('ItemDetail', () => {
     it('marks item as viewed and updates title color on external link click', async () => {
       renderItemDetail(12345);
 
-      // Wait for item to load - title link should appear
       const titleLink = await screen.findByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
       expect(titleLink.closest('h1')).toHaveClass('text-foreground');
 
       fireEvent.click(titleLink);
 
-      // Title should now have viewed color
       await waitFor(() => {
         expect(titleLink.closest('h1')).toHaveClass('text-viewed');
       });
 
-      // Should be persisted to storage
+      // Persistence side of the contract — class change alone wouldn't
+      // catch a regression that skips the storage write.
       expect(isViewed(12345)).toBe(true);
     });
   });
 
   describe('back-to-feed action on not-found', () => {
-    // Override the default Firebase handler so the requested item resolves to
-    // null (NotFoundError → isNotFound=true → "Back to feed" link rendered).
+    // Null response → NotFoundError → isNotFound=true → "Back to feed" link.
     beforeEach(() => {
       server.use(
         http.get(`${FIREBASE_API}/item/:id.json`, () => HttpResponse.json(null)),
@@ -108,9 +104,8 @@ describe('ItemDetail', () => {
     });
 
     it('prefers fromDomain over from when both are present', async () => {
-      // The two states are written mutually exclusively in production today,
-      // but if a future caller ever co-writes them, fromDomain should win
-      // (more specific origin). This pins down the priority decision.
+      // Currently mutually exclusive in production, but the priority
+      // (fromDomain wins as the more specific origin) is pinned defensively.
       renderItemDetailWithState(99999999, {
         from: 'best',
         fromDomain: 'example.com',
@@ -128,9 +123,7 @@ describe('ItemDetail', () => {
     });
 
     it('prefers fromUser over fromDomain when both are present', async () => {
-      // fromUser is the most specific origin (one author per story vs many
-      // domains/feeds), so it wins over fromDomain and from. This locks the
-      // priority decision so a future co-write doesn't silently flip it.
+      // Origin priority: fromUser > fromDomain > from. Locked defensively.
       renderItemDetailWithState(99999999, {
         from: 'best',
         fromDomain: 'example.com',
@@ -144,7 +137,6 @@ describe('ItemDetail', () => {
 
   describe('comment detection', () => {
     it('renders CommentDetail when item.type is comment', async () => {
-      // Override Firebase to return a comment item
       server.use(
         http.get(`${FIREBASE_API}/item/:id.json`, ({ params }) => {
           const id = parseInt(params.id as string, 10);
@@ -158,7 +150,7 @@ describe('ItemDetail', () => {
               type: 'comment',
             });
           }
-          // Return item for story_id fetch (item title)
+          // Fallback handler covers the parent-story fetch (item title lookup).
           return HttpResponse.json({
             id,
             title: 'Rust Is the Future of JavaScript Infrastructure',
@@ -176,16 +168,15 @@ describe('ItemDetail', () => {
 
       renderItemDetail(1001);
 
-      // Should render CommentDetail, not the normal item view
       await waitFor(() => {
         expect(screen.getByText('patio11')).toBeInTheDocument();
       });
 
-      // Should show parent link after Algolia data loads
       const parentLink = await screen.findByRole('link', { name: 'parent' });
       expect(parentLink).toBeInTheDocument();
 
-      // Should NOT show item-specific elements like "points"
+      // "points" is item-specific — its absence proves we routed to
+      // CommentDetail (not ItemArticle).
       expect(screen.queryByText(/points/)).not.toBeInTheDocument();
     });
   });

@@ -17,10 +17,10 @@ const matchMediaMock = vi.fn(() => ({
   },
 }));
 
-// Must be set before module import
+// Must be set before the module import below — the hook reads matchMedia at
+// module scope, so a later assignment would miss the initial call.
 window.matchMedia = matchMediaMock as unknown as typeof window.matchMedia;
 
-// Now import — module-level matchMedia() call will use our mock
 const { useIsMobile } = await import('./useIsMobile');
 
 describe('useIsMobile', () => {
@@ -46,7 +46,6 @@ describe('useIsMobile', () => {
     const { result } = renderHook(() => useIsMobile());
     expect(result.current).toBe(false);
 
-    // Simulate viewport change to mobile
     act(() => {
       currentMatches = true;
       listeners.forEach(l => {

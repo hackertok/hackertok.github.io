@@ -10,13 +10,13 @@ describe('useTheme', () => {
   );
 
   it('throws error when used outside ThemeProvider', () => {
-    // Suppress console.error for this test
+    // React logs the throw via console.error; silence to keep test output clean.
     const spy = vi.spyOn(console, 'error').mockImplementation(() => { /* noop */ });
-    
+
     expect(() => {
       renderHook(() => useTheme());
     }).toThrow('useTheme must be used within a ThemeProvider');
-    
+
     spy.mockRestore();
   });
 

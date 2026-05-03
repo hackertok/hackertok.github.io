@@ -29,11 +29,10 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
 
     async function load() {
       try {
-        // 1. Fetch comment to get parent ID
         const item = await fetchFirebaseItem(numericId, controller.signal);
         if (controller.signal.aborted) return;
 
-        // If no parent, show single comment (top-level or deleted)
+        // No parent → top-level comment or deleted; show just this one.
         if (item.parent == null) {
           setSiblingIds([numericId]);
           setCurrentIndex(0);
@@ -41,7 +40,7 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
           return;
         }
 
-        // 2. Fetch parent to get kids[] (sibling IDs in HN ranking order)
+        // parent.kids[] holds sibling IDs in HN ranking order.
         const parent = await fetchFirebaseItem(item.parent, controller.signal);
         if (controller.signal.aborted) return;
 

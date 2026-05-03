@@ -72,14 +72,17 @@ export function deriveHeaderState(
   const isCommentView = locationState?.isComment === true;
   const isOnItem = pathname.startsWith('/item/');
 
-  // "user" indicator: profile / submissions routes, or item detail
-  // navigated from a user submissions list (mobile swipe viewer rewrites
-  // /submitted/:id to /item/:id per-item with fromUser preserved; desktop
-  // StoryCard writes fromUser when its parent list is a user).
+  // "user" indicator: the user-submissions FEED, or item detail
+  // navigated from one (mobile swipe viewer rewrites /submitted/:id to
+  // /item/:id per-item with fromUser preserved; desktop StoryCard writes
+  // fromUser when its parent list is a user). DELIBERATELY excludes the
+  // profile detail page (`/user/:id`) — that's a one-shot "about this
+  // user" surface (karma, join date, link to submissions), not a feed,
+  // so it doesn't earn a section-level contextual pill. The pill lights
+  // up once the user actually enters the submissions feed.
   const isUserActive =
     !isCommentView &&
-    (pathname.startsWith('/user/') ||
-      pathname.startsWith('/submitted/') ||
+    (pathname.startsWith('/submitted/') ||
       (isOnItem && !!locationState?.fromUser));
 
   // "from" indicator: domain route, or item detail navigated from a

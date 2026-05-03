@@ -16,13 +16,12 @@ test.describe('User Submissions - Desktop', () => {
   test('renders the user\'s stories list', async ({ page }) => {
     await page.goto('/#/submitted/pg');
 
-    // Both fixture stories should render (mockUserStory1 + mockUserStory2),
-    // confirming `useUserInfiniteStories` mapped Algolia hits → StoryCards.
+    // Both fixture stories must render — proves `useUserInfiniteStories`
+    // mapped Algolia hits → StoryCards.
     await expect(page.getByText('Beating the Averages')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Hackers and Painters')).toBeVisible();
 
-    // Document title — `useDocumentTitle` appends ' | HackerTok'. Pinned
-    // verbatim so a regression to the wording (e.g. "Stories by") fails fast.
+    // Pin verbatim — catches regressions to wording (e.g. "Stories by").
     await expect(page).toHaveTitle('Submissions by pg | HackerTok');
   });
 

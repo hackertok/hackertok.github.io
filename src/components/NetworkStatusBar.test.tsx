@@ -50,7 +50,6 @@ describe('NetworkStatusBar', () => {
     const { rerender } = render(<NetworkStatusBar />);
     expect(screen.getByText('No internet connection')).toBeInTheDocument();
 
-    // Go back online
     mockUseNetworkStatus.mockReturnValue({ isOnline: true });
     rerender(<NetworkStatusBar />);
 
@@ -60,7 +59,7 @@ describe('NetworkStatusBar', () => {
       document.documentElement.style.getPropertyValue('--network-bar-height'),
     ).toBe('32px');
 
-    // After 1.5s, bar starts sliding out
+    // 1.5s success-banner display + 300ms exit-animation fallback timer.
     act(() => { vi.advanceTimersByTime(1500); });
 
     const bar = screen.getByRole('status');
@@ -69,7 +68,6 @@ describe('NetworkStatusBar', () => {
       document.documentElement.style.getPropertyValue('--network-bar-height'),
     ).toBe('32px');
 
-    // After exit animation duration (300ms fallback timer), bar is removed
     act(() => { vi.advanceTimersByTime(300); });
 
     expect(screen.queryByRole('status')).not.toBeInTheDocument();

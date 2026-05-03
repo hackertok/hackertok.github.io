@@ -131,34 +131,28 @@ describe('viewedItems - Time-based functions', () => {
     });
 
     it('excludes IDs older than the time window', () => {
-      // Mark an item "25 hours ago"
       const twentyFiveHoursAgo = Date.now() - (25 * 60 * 60 * 1000);
       vi.spyOn(Date, 'now').mockReturnValue(twentyFiveHoursAgo);
       markViewedWithTime(11111);
-      
-      // Mark an item "now"
+
       vi.spyOn(Date, 'now').mockReturnValue(Date.now() + (25 * 60 * 60 * 1000));
       markViewedWithTime(22222);
-      
+
       vi.restoreAllMocks();
-      
+
       const ids = getRecentlyViewedIds(24);
-      expect(ids.has(11111)).toBe(false); // Too old
-      expect(ids.has(22222)).toBe(true);  // Recent
+      expect(ids.has(11111)).toBe(false);
+      expect(ids.has(22222)).toBe(true);
     });
 
     it('handles custom time window', () => {
-      // Mark an item "2 hours ago"
       const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
       vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
       markViewedWithTime(12345);
       vi.restoreAllMocks();
-      
-      // Within 24 hours
+
       expect(getRecentlyViewedIds(24).has(12345)).toBe(true);
-      // Within 3 hours
       expect(getRecentlyViewedIds(3).has(12345)).toBe(true);
-      // NOT within 1 hour
       expect(getRecentlyViewedIds(1).has(12345)).toBe(false);
     });
   });
@@ -187,57 +181,46 @@ describe('viewedItems - Time-based functions', () => {
     });
 
     it('updates timestamp if marked again', () => {
-      // Mark "2 hours ago"
       const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
       vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
       markViewedWithTime(12345);
       vi.restoreAllMocks();
-      
-      // Should be within 3 hours but not 1 hour
+
       expect(getRecentlyViewedIds(1).has(12345)).toBe(false);
-      
-      // Mark again "now"
+
       markViewedWithTime(12345);
-      
-      // Now should be within 1 hour
+
       expect(getRecentlyViewedIds(1).has(12345)).toBe(true);
     });
   });
 
   describe('pruneExpiredViewed', () => {
     it('removes entries older than time window', () => {
-      // Mark an item "25 hours ago"
       const twentyFiveHoursAgo = Date.now() - (25 * 60 * 60 * 1000);
       vi.spyOn(Date, 'now').mockReturnValueOnce(twentyFiveHoursAgo);
       markViewedWithTime(11111);
       vi.restoreAllMocks();
-      
-      // Mark an item "now"
+
       markViewedWithTime(22222);
-      
-      // Before pruning - old one would fail the time check anyway
+
+      // Old entry already filtered by getRecentlyViewedIds time check, even before pruning.
       expect(getRecentlyViewedIds(24).has(11111)).toBe(false);
       expect(getRecentlyViewedIds(24).has(22222)).toBe(true);
-      
-      // Prune
+
       pruneExpiredViewed(24);
-      
-      // After pruning - recent one still there
+
       expect(getRecentlyViewedIds(24).has(22222)).toBe(true);
     });
 
     it('handles custom time window', () => {
-      // Mark an item "2 hours ago"
       const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
       vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
       markViewedWithTime(12345);
       vi.restoreAllMocks();
-      
-      // Prune with 1-hour window
+
       pruneExpiredViewed(1);
-      
-      // Should be pruned (was 2 hours old)
-      // Note: need to clear cache to see the pruned result
+
+      // Need to clear the in-memory cache to observe the pruned result on disk.
       clearViewedTimes();
       expect(getRecentlyViewedIds(24).has(12345)).toBe(false);
     });

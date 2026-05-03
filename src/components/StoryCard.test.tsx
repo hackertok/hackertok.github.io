@@ -54,11 +54,8 @@ describe('StoryCard', () => {
     it('renders hostname for external links', () => {
       render(<StoryCard story={mockStory} />);
 
-      // Hostname sits in the meta row as a single Link (direct flex child of
-      // the meta row) with the Globe icon and hostname text inside the anchor
-      // (icon is aria-hidden, so the accessible name is just the hostname).
-      // getByRole('link', { name }) asserts the /from/:domain control, not
-      // only visible text.
+      // getByRole('link', { name }) — Globe icon is aria-hidden, so the
+      // link's accessible name is just the hostname (no "Globe " prefix).
       expect(screen.getByRole('link', { name: 'example.com' })).toBeInTheDocument();
     });
 
@@ -71,10 +68,7 @@ describe('StoryCard', () => {
     it('renders author name', () => {
       render(<StoryCard story={mockStory} />);
 
-      // Author byline is a single Link (direct flex child of the meta row)
-      // with the User icon and name inside the anchor — no outer span wrapper
-      // around the Link. getByRole('link', { name }) asserts the /user/:author
-      // profile link.
+      // User icon is aria-hidden — link's accessible name is just the handle.
       expect(screen.getByRole('link', { name: 'testuser' })).toBeInTheDocument();
     });
 
@@ -90,12 +84,23 @@ describe('StoryCard', () => {
       expect(screen.getByText(/hour ago/i)).toBeInTheDocument();
     });
 
+    // Pin the responsive variant — a refactor that drops md:text-xl
+    // back to text-base degrades the visual anchor at desktop width.
+    it('renders title with responsive size classes (text-lg md:text-xl)', () => {
+      render(<StoryCard story={mockStory} />);
+
+      const titleLink = screen.getByRole('link', { name: mockStory.title });
+      const title = titleLink.closest('h2');
+      expect(title).not.toBeNull();
+      expect(title).toHaveClass('text-lg');
+      expect(title).toHaveClass('md:text-xl');
+      expect(title).toHaveClass('font-semibold');
+    });
+
     it('renders "0 points" when points is missing (Algolia/Firebase oddity)', () => {
-      // Algolia hits in the wild can omit `points` (or send it as null) for
-      // very old/edge-case items. The `story.points ?? 0` fallback in the
-      // render keeps the meta-row column count stable rather than letting
-      // "undefined points" leak to the DOM. Pin it so a future refactor that
-      // drops the `??` immediately fails CI.
+      // Algolia can omit points (or send null) for very old items. The
+      // `?? 0` fallback keeps the meta-row column count stable; dropping
+      // it would leak "undefined points" to the DOM.
       const noPointsStory: StoryItem = {
         ...mockStory,
         points: null as unknown as number,
@@ -106,7 +111,7 @@ describe('StoryCard', () => {
     });
 
     it('renders "0 comments" when commentCount is missing', () => {
-      // Same fallback as points — commentCount is also nullable per the API.
+      // Same nullable contract as points.
       const noCommentsStory: StoryItem = {
         ...mockStory,
         commentCount: null as unknown as number,
@@ -160,11 +165,11 @@ describe('StoryCard', () => {
 
     it('marks story as viewed on internal title click', () => {
       const { rerender } = render(<StoryCard story={mockTextStory} />);
-      
+
       const titleLink = screen.getByRole('link', { name: /Ask HN/i });
       fireEvent.click(titleLink);
-      
-      // Re-render to see the style change
+
+      // Re-render to pick up the markViewed-driven class change.
       rerender(<StoryCard story={mockTextStory} />);
       const newTitleLink = screen.getByRole('link', { name: /Ask HN/i });
       expect(newTitleLink).toHaveClass('text-viewed');
@@ -172,11 +177,10 @@ describe('StoryCard', () => {
 
     it('marks text post as viewed when clicking comments link', () => {
       const { rerender } = render(<StoryCard story={mockTextStory} />);
-      
+
       const commentsLink = screen.getByRole('link', { name: /15 comments/i });
       fireEvent.click(commentsLink);
-      
-      // Re-render to see the style change
+
       rerender(<StoryCard story={mockTextStory} />);
       const titleLink = screen.getByRole('link', { name: /Ask HN/i });
       expect(titleLink).toHaveClass('text-viewed');
@@ -184,13 +188,14 @@ describe('StoryCard', () => {
 
     it('does not mark regular story as viewed when clicking comments link', () => {
       const { rerender } = render(<StoryCard story={mockStory} />);
-      
+
       const commentsLink = screen.getByRole('link', { name: /42 comments/i });
       fireEvent.click(commentsLink);
-      
-      // Re-render - external link titles now use viewed state styling too
+
+      // External-link stories share the viewed-conditional classes, but
+      // a comments-link click must NOT flip them — only the external link
+      // click does (preserves "did the user actually visit?" semantics).
       rerender(<StoryCard story={mockStory} />);
-      // External links use the same viewed-conditional classes
       const titleLink = screen.getByRole('link', { name: /Rust Is the Future/i });
       expect(titleLink).toHaveClass('text-foreground');
     });
@@ -215,6 +220,61 @@ describe('StoryCard', () => {
       fireEvent.click(commentsLink);
       
       expect(mockCallback).toHaveBeenCalled();
+    });
+
+    it('calls onBeforeNavigate when clicking the external title link (so scroll restore works on browser back)', () => {
+      const mockCallback = vi.fn();
+      render(<StoryCard story={mockStory} onBeforeNavigate={mockCallback} />);
+
+      const titleLink = screen.getByRole('link', { name: /Rust Is the Future/i });
+      fireEvent.click(titleLink);
+
+      expect(mockCallback).toHaveBeenCalled();
+    });
+
+    it('calls onBeforeNavigate when clicking the domain pill (sibling-list navigation)', () => {
+      const mockCallback = vi.fn();
+      render(<StoryCard story={mockStory} onBeforeNavigate={mockCallback} />);
+
+      const domainPill = screen.getByRole('link', { name: 'example.com' });
+      fireEvent.click(domainPill);
+
+      expect(mockCallback).toHaveBeenCalled();
+    });
+
+    it('calls onBeforeNavigate when clicking the author byline (peer profile navigation)', () => {
+      const mockCallback = vi.fn();
+      render(<StoryCard story={mockStory} onBeforeNavigate={mockCallback} />);
+
+      const authorLink = screen.getByRole('link', { name: 'testuser' });
+      fireEvent.click(authorLink);
+
+      expect(mockCallback).toHaveBeenCalled();
+    });
+
+    it('does NOT mark the story as viewed when clicking the domain pill', () => {
+      // Sibling-list navigation must not flip viewed state — the user
+      // hasn't engaged with this story's content. Symmetric guard to
+      // the comments-link case for URL-bearing stories.
+      const { rerender } = render(<StoryCard story={mockStory} />);
+
+      const domainPill = screen.getByRole('link', { name: 'example.com' });
+      fireEvent.click(domainPill);
+
+      rerender(<StoryCard story={mockStory} />);
+      const titleLink = screen.getByRole('link', { name: /Rust Is the Future/i });
+      expect(titleLink).toHaveClass('text-foreground');
+    });
+
+    it('does NOT mark the story as viewed when clicking the author byline', () => {
+      const { rerender } = render(<StoryCard story={mockStory} />);
+
+      const authorLink = screen.getByRole('link', { name: 'testuser' });
+      fireEvent.click(authorLink);
+
+      rerender(<StoryCard story={mockStory} />);
+      const titleLink = screen.getByRole('link', { name: /Rust Is the Future/i });
+      expect(titleLink).toHaveClass('text-foreground');
     });
   });
 
@@ -242,8 +302,8 @@ describe('StoryCard', () => {
     });
 
     it('writes state.fromDomain (not state.from) when fromDomain prop is set', () => {
-      // Mount the card under a Routes tree so we can follow the navigation
-      // and read back what ended up in location.state.
+      // Mount under a Routes tree so we can follow the click and read
+      // back what landed in location.state via StateEchoer.
       render(
         <Routes>
           <Route
@@ -342,8 +402,8 @@ describe('StoryCard', () => {
     });
 
     it('prefers fromUser over fromDomain and from when all three are set', () => {
-      // Origin priority: fromUser > fromDomain > from. Pins the decision so a
-      // future co-write doesn't silently flip it.
+      // Origin priority: fromUser > fromDomain > from. Pinned so a
+      // future refactor doesn't silently flip it.
       render(
         <Routes>
           <Route
@@ -372,6 +432,88 @@ describe('StoryCard', () => {
     });
   });
 
+  describe('cascade animation plumbing', () => {
+    // stageIdx and appendIdx are mutually exclusive in practice (parent's
+    // slot getter picks one), but precedence (stageIdx > appendIdx) is
+    // pinned defensively — a double-animation would surface as a
+    // re-fade after the initial cascade settles.
+    it('applies neither cascade class when no idx prop is set', () => {
+      render(<StoryCard story={mockStory} />);
+
+      const article = screen.getByTestId('story-card');
+      expect(article).not.toHaveClass('stagger-fade');
+      expect(article).not.toHaveClass('append-fade');
+      expect(article.getAttribute('style') ?? '').not.toContain('--stagger-delay');
+    });
+
+    it('applies .stagger-fade and a --stagger-delay when stageIdx is set', () => {
+      render(<StoryCard story={mockStory} stageIdx={3} />);
+
+      const article = screen.getByTestId('story-card');
+      expect(article).toHaveClass('stagger-fade');
+      expect(article).not.toHaveClass('append-fade');
+      // Assert the variable exists, not its ms value — pinning ms would
+      // couple to the decay-curve constants.
+      expect(article.getAttribute('style') ?? '').toContain('--stagger-delay');
+    });
+
+    it('applies .append-fade and a --stagger-delay when appendIdx is set', () => {
+      render(<StoryCard story={mockStory} appendIdx={2} />);
+
+      const article = screen.getByTestId('story-card');
+      expect(article).toHaveClass('append-fade');
+      expect(article).not.toHaveClass('stagger-fade');
+      expect(article.getAttribute('style') ?? '').toContain('--stagger-delay');
+    });
+
+    it('prefers stageIdx over appendIdx when both are passed', () => {
+      // Defense-in-depth — the slot getter shouldn't pass both, but
+      // the precedence rule prevents a double-animation if it drifts.
+      render(<StoryCard story={mockStory} stageIdx={1} appendIdx={4} />);
+
+      const article = screen.getByTestId('story-card');
+      expect(article).toHaveClass('stagger-fade');
+      expect(article).not.toHaveClass('append-fade');
+    });
+
+    // useStaggerCascadeSlots advances batchStart on every fetch, so
+    // getSlot(index) for already-mounted cards drifts (or drops to
+    // undefined). Without the at-mount snapshot, that prop change would
+    // (a) cancel a mid-flight .append-fade by toggling the class off,
+    // or (b) silently mutate --stagger-delay on a settled card. The
+    // snapshot freezes the slot at mount so re-renders are no-ops.
+    it('keeps the .append-fade class even after appendIdx is dropped on re-render', () => {
+      const { rerender } = render(<StoryCard story={mockStory} appendIdx={3} />);
+
+      let article = screen.getByTestId('story-card');
+      expect(article).toHaveClass('append-fade');
+      const initialStyle = article.getAttribute('style');
+
+      // Parent's batchStart advanced; this card is in a past batch.
+      rerender(<StoryCard story={mockStory} />);
+      article = screen.getByTestId('story-card');
+      expect(article).toHaveClass('append-fade');
+      // Style must be byte-equal — even decayDelay(0) drift is unwanted.
+      expect(article.getAttribute('style')).toBe(initialStyle);
+    });
+
+    it('keeps the .stagger-fade class even after stageIdx is dropped on re-render', () => {
+      // Symmetric to the append case — a feed-change reset that
+      // collapses initialBoundary in the parent must not strip the
+      // class off cards that already animated through the cold-load cascade.
+      const { rerender } = render(<StoryCard story={mockStory} stageIdx={5} />);
+
+      let article = screen.getByTestId('story-card');
+      expect(article).toHaveClass('stagger-fade');
+      const initialStyle = article.getAttribute('style');
+
+      rerender(<StoryCard story={mockStory} />);
+      article = screen.getByTestId('story-card');
+      expect(article).toHaveClass('stagger-fade');
+      expect(article.getAttribute('style')).toBe(initialStyle);
+    });
+  });
+
   describe('author byline link', () => {
     it('wraps the author byline in a link to /user/:author when author is present', () => {
       render(<StoryCard story={mockStory} />);
@@ -384,15 +526,13 @@ describe('StoryCard', () => {
       const noAuthorStory: StoryItem = { ...mockStory, author: '' };
       render(<StoryCard story={noAuthorStory} />);
 
-      // The literal "unknown" text should be present and NOT inside an anchor —
-      // we never want to link to /user/unknown (an invalid HN account).
+      // /user/unknown is an invalid HN account — never link to it.
       const placeholder = screen.getByText('unknown');
       expect(placeholder.tagName).toBe('SPAN');
     });
 
     it('does not link the byline when author is the literal "unknown" string', () => {
-      // Defense-in-depth: the API can populate `author` with the literal
-      // string `'unknown'` (legacy data). Don't link to /user/unknown either.
+      // Legacy data sometimes ships the literal 'unknown' string.
       const unknownAuthorStory: StoryItem = { ...mockStory, author: 'unknown' };
       render(<StoryCard story={unknownAuthorStory} />);
 

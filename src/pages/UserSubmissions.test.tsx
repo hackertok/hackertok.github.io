@@ -54,11 +54,9 @@ describe('UserSubmissions', () => {
   });
 
   it('shows the loading skeleton immediately and again while auto-retry is in flight', async () => {
-    // useAutoRetry hides the error UI behind a 3× backoff loop (2s/4s/8s).
-    // We assert the skeleton is rendered while a retry is in flight; the
-    // give-up + Try Again UI is exercised end-to-end in `useAutoRetry.test.ts`
-    // and the underlying error surface is covered by
-    // `useUserInfiniteStories.test.ts`.
+    // useAutoRetry hides the error UI behind 3× backoff (2/4/8s). The
+    // give-up branch + Try Again UI live in useAutoRetry.test.ts; this
+    // test only pins "skeleton, not error UI, while in flight".
     server.use(
       http.get(`${ALGOLIA_API}/search_by_date`, () =>
         HttpResponse.json({ error: 'boom' }, { status: 503 }),
@@ -68,20 +66,18 @@ describe('UserSubmissions', () => {
     const { container } = renderSubmissions('leerob');
 
     await waitFor(() => {
-      // StoryCardSkeletonList renders multiple skeleton cards; the marker
-      // class is the easiest stable hook.
+      // .bg-skeleton is the stable marker class on StoryCardSkeletonList.
       expect(container.querySelectorAll('.bg-skeleton').length).toBeGreaterThan(0);
     });
 
-    // Error UI must not be visible while auto-retry is in progress.
     expect(screen.queryByText(/failed to load submissions/i)).not.toBeInTheDocument();
   });
 
   it('renders the "no user specified" StateView when the username param is empty', async () => {
     render(
       <Routes>
-        {/* Use a wildcard path so an empty `:id` still matches and exercises the
-            empty-username guard branch in UserSubmissions. */}
+        {/* Wildcard path matches /submitted/ with no id — exercises the
+            empty-username guard branch. */}
         <Route path="/submitted/*" element={<UserSubmissions />} />
       </Routes>,
       { initialEntries: ['/submitted/'] },
@@ -93,11 +89,9 @@ describe('UserSubmissions', () => {
   it('passes fromUser to StoryCard so its byline links carry the origin', async () => {
     renderSubmissions('leerob');
 
-    // Comment count link is the StoryCard's most reliable internal link
-    // (text post or otherwise). Its href is /item/:id; we don't assert state
-    // here because react-router synthesizes hrefs from the `to` prop and
-    // stores `state` only at navigation time. The StoryCard test covers the
-    // state assertion directly.
+    // Asserts only href here — react-router synthesizes href from `to`,
+    // but `state` is only set at navigation time. State assertion lives
+    // in StoryCard.test.tsx.
     const commentsLink = await screen.findByRole('link', { name: /137 comments/ });
     expect(commentsLink).toHaveAttribute('href', '/item/12345');
   });

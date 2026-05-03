@@ -28,20 +28,20 @@ describe('fetchPriority', () => {
       registerPriorityFetch();
       registerPriorityFetch();
       expect(isPriorityFetchActive()).toBe(true);
-      
+
       unregisterPriorityFetch();
-      expect(isPriorityFetchActive()).toBe(true); // Still one active
-      
+      expect(isPriorityFetchActive()).toBe(true);
+
       unregisterPriorityFetch();
-      expect(isPriorityFetchActive()).toBe(false); // All done
+      expect(isPriorityFetchActive()).toBe(false);
     });
 
     it('never goes negative on count', () => {
       unregisterPriorityFetch();
       unregisterPriorityFetch();
       expect(isPriorityFetchActive()).toBe(false);
-      
-      // Should still work after extra unregisters
+
+      // Verifies the negative-count guard didn't poison subsequent registers.
       registerPriorityFetch();
       expect(isPriorityFetchActive()).toBe(true);
     });
@@ -94,17 +94,15 @@ describe('fetchPriority', () => {
 
     it('waits until priority fetch completes', async () => {
       registerPriorityFetch();
-      
+
       let resolved = false;
       const promise = waitForPriorityFetch().then(() => {
         resolved = true;
       });
-      
-      // Should not resolve yet
+
       await Promise.resolve();
       expect(resolved).toBe(false);
-      
-      // Complete priority fetch
+
       unregisterPriorityFetch();
       await promise;
       expect(resolved).toBe(true);

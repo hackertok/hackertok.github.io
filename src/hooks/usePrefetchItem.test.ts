@@ -49,11 +49,10 @@ describe('usePrefetchItem', () => {
     });
 
     it('skips items with fresh cache', () => {
-      // Pre-populate cache with fresh entry
       setCachedItem(12345, createStoryItem({ id: 12345, title: 'Cached' }), [] as Comment[]);
-      
+
       const { result } = renderHook(() => usePrefetchItem());
-      
+
       expect(() => {
         act(() => {
           result.current.startPrefetch(12345, 0);
@@ -63,16 +62,17 @@ describe('usePrefetchItem', () => {
 
     it('removes item from queue when stopPrefetch called', () => {
       const { result } = renderHook(() => usePrefetchItem());
-      
+
       act(() => {
         result.current.startPrefetch(12345, 0);
       });
-      
+
       act(() => {
         result.current.stopPrefetch();
       });
-      
-      // Item should be removed from queue (can be re-added without error)
+
+      // Re-adding the same id must succeed; if stopPrefetch left it queued,
+      // the dedup short-circuit would silently swallow this call.
       expect(() => {
         act(() => {
           result.current.startPrefetch(12345, 0);
@@ -85,17 +85,16 @@ describe('usePrefetchItem', () => {
     it('processes queue after debounce delay', async () => {
       const spy = vi.spyOn(hn, 'prefetchItemComments');
       const { result } = renderHook(() => usePrefetchItem());
-      
+
       act(() => {
         result.current.startPrefetch(12345, 0);
       });
-      
-      // Advance past debounce delay (200ms)
+
+      // 200ms debounce; advance comfortably past it.
       await act(async () => {
         vi.advanceTimersByTime(250);
       });
-      
-      // Queue should have started processing the item
+
       expect(spy).toHaveBeenCalledWith(12345, expect.any(AbortSignal), 1);
       spy.mockRestore();
     });
@@ -103,23 +102,22 @@ describe('usePrefetchItem', () => {
     it('prioritizes lower index items', async () => {
       const spy = vi.spyOn(hn, 'prefetchItemComments');
       const { result } = renderHook(() => usePrefetchItem());
-      
-      // Add items in reverse priority order
+
+      // Enqueue lower-priority first, higher-priority second to prove the
+      // queue sorts by index rather than insertion order.
       act(() => {
-        result.current.startPrefetch(99999, 5); // Lower priority
+        result.current.startPrefetch(99999, 5);
       });
-      
+
       const { result: result2 } = renderHook(() => usePrefetchItem());
       act(() => {
-        result2.current.startPrefetch(88888, 1); // Higher priority
+        result2.current.startPrefetch(88888, 1);
       });
-      
-      // Advance past debounce
+
       await act(async () => {
         vi.advanceTimersByTime(250);
       });
-      
-      // Higher priority (lower index) should be fetched first
+
       expect(spy.mock.calls[0][0]).toBe(88888);
       expect(spy.mock.calls[1][0]).toBe(99999);
       spy.mockRestore();
@@ -204,17 +202,17 @@ describe('usePrefetchItems', () => {
       ({ index }) => usePrefetchItems(index, mockItems, 2),
       { initialProps: { index: 0 } }
     );
-    
-    // Move to next index — should not throw for already-queued items
+
+    // Re-rendering at a new index re-enqueues already-pending IDs; dedup
+    // should swallow them without raising.
     expect(() => {
       rerender({ index: 1 });
     }).not.toThrow();
   });
 
   it('skips items with fresh cache', () => {
-    // Pre-populate cache
     setCachedItem(2, createStoryItem({ id: 2, title: 'Item 2' }), [] as Comment[]);
-    
+
     expect(() => {
       renderHook(() => usePrefetchItems(0, mockItems, 3));
     }).not.toThrow();
@@ -264,26 +262,24 @@ describe('cancelAllPrefetches', () => {
   });
 
   it('aborts active prefetches', async () => {
-    // Mock to never resolve (simulates slow network), keeping fetch in-flight
+    // Hang the fetch so cancelAllPrefetches has something in flight to abort.
     const spy = vi.spyOn(hn, 'prefetchItemComments').mockReturnValue(new Promise(() => { /* never resolves */ }));
-    
+
     const { result } = renderHook(() => usePrefetchItem());
     act(() => {
       result.current.startPrefetch(12345, 0);
     });
-    
-    // Start processing
+
     await act(async () => {
       vi.advanceTimersByTime(250);
     });
-    
+
     const signal = spy.mock.calls[0][1];
     expect(signal!.aborted).toBe(false);
-    
-    // Cancel should abort the active fetch
+
     cancelAllPrefetches();
     expect(signal!.aborted).toBe(true);
-    
+
     spy.mockRestore();
   });
 

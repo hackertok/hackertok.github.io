@@ -6,12 +6,23 @@ import type { Comment } from '../types';
 
 interface CommentsSectionProps {
   comments: Comment[] | null;
-  commentsLoading: boolean;
   commentsError: string | null;
   onRetry: () => void;
+  /**
+   * Forwarded to CommentTree so OP detection works in nested replies.
+   * Defaults to `''`; the OP guard short-circuits on empty/unknown.
+   */
+  storyAuthor?: string;
 }
 
-export function CommentsSection({ comments, commentsLoading, commentsError, onRetry }: CommentsSectionProps) {
+/**
+ * Comments rail under a story page (ItemDetail / FullScreenItem).
+ *
+ * The initial-load skeleton is owned by the parent PageStage now;
+ * error / retry paths still render their own inline skeletons because
+ * those fire AFTER PageStage has already transitioned to `'done'`.
+ */
+export function CommentsSection({ comments, commentsError, onRetry, storyAuthor = '' }: CommentsSectionProps) {
   const { isOnline } = useNetworkStatus();
   const { isRetrying } = useAutoRetry({
     error: commentsError,
@@ -19,14 +30,17 @@ export function CommentsSection({ comments, commentsLoading, commentsError, onRe
     isOnline,
   });
 
-  if (commentsLoading && !comments) {
-    return <CommentSkeletonTree count={12} />;
-  }
   if (commentsError && !comments?.length && !isRetrying) {
     return <StateView variant="error" compact description="Failed to load comments" action={{ label: 'Retry', onClick: onRetry }} />;
   }
   if (commentsError && !comments?.length && isRetrying) {
     return <CommentSkeletonTree count={6} />;
   }
-  return <CommentTree comments={comments ?? []} />;
+  // startIdx=1 reserves slot 0 for the `.story-stage-leader` header
+  // animation that fires alongside the cascade.
+  return (
+    <div className="comments-real">
+      <CommentTree comments={comments ?? []} storyAuthor={storyAuthor} startIdx={1} />
+    </div>
+  );
 }

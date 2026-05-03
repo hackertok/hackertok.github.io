@@ -17,8 +17,7 @@ describe('ScrollContainerContext', () => {
 
     it('default functions are no-ops', () => {
       const { result } = renderHook(() => useScrollContainer());
-      
-      // Should not throw
+
       expect(() => result.current.enableSwipeMode()).not.toThrow();
       expect(() => result.current.disableSwipeMode()).not.toThrow();
     });

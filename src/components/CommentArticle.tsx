@@ -7,6 +7,7 @@ import { StateView } from './StateView';
 import { AuthorByline } from './AuthorByline';
 import { RelativeTime } from './RelativeTime';
 import { sanitizeHtml } from '../utils/sanitize';
+import { isKnownAuthor } from '../api/hn';
 import { metaItemClass, metaPillClass } from '../lib/classes';
 import type { Comment } from '../types';
 
@@ -22,6 +23,13 @@ interface CommentArticleProps {
   itemTitle: string | null;
   loading: boolean;
   articleClassName?: string;
+  /**
+   * Author handle of the surrounding story. When it matches
+   * `comment.author`, the focal byline picks up an OP badge and
+   * forwards through the reply tree. Guarded by `isKnownAuthor` so
+   * unknown / empty story authors never OP-decorate.
+   */
+  storyAuthor?: string;
 }
 
 export function CommentArticle({
@@ -31,7 +39,9 @@ export function CommentArticle({
   itemTitle,
   loading,
   articleClassName = 'mb-4',
+  storyAuthor = '',
 }: CommentArticleProps) {
+  const isOp = isKnownAuthor(storyAuthor) && comment.author === storyAuthor;
   const sanitizedText = useMemo(
     () => comment.text ? sanitizeHtml(comment.text) : '',
     [comment.text],
@@ -40,26 +50,13 @@ export function CommentArticle({
   return (
     <>
       <article className={`${articleClassName} pb-4 border-b border-border`}>
-        {/* Single meta row — author + time + (parent + thread title), all on
-            one flex line with leading icons and gap-only separation. Matches
-            the modernized meta-row pattern in StoryCard / ItemArticle /
-            UserProfile, including the byline color: author inherits the
-            muted-foreground baseline like every other meta item, with
-            `font-medium` as the axe-compliant non-color signal (weight
-            delta vs surrounding font-normal). The pill-on-hover backdrop
-            handles all the "I'm the comment owner / I'm clickable"
-            affordance work, so the static brighter color is no longer
-            needed. See StoryCard.tsx for the full rationale on the
-            negative-margin trick. Icons are aria-hidden so accessible
-            names remain exactly: author = "<author>", parent = "parent",
-            title = "<title>" — preserves every `getByRole('link',
-            { name: ... })` assertion.
-
-            Nested replies in this article render via `Comment` / `CommentTree`
-            and deliberately keep the compact `›` byline — the tree structure
-            handles parent location, so the unified row would just add density. */}
+        {/* Single meta row [author, time, parent, thread-title]. Icons
+            are aria-hidden so accessible names stay exactly the visible
+            label — preserves `getByRole('link', { name: ... })`
+            assertions. Nested replies under this article render via
+            CommentTree and keep the compact `›` byline. */}
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground mb-3">
-          <AuthorByline author={comment.author} />
+          <AuthorByline author={comment.author} isOp={isOp} />
 
           <span className={metaItemClass}>
             <Clock aria-hidden className="size-3.5" />
@@ -79,14 +76,11 @@ export function CommentArticle({
 
           {(itemId != null || loading) && (
             itemId != null && itemTitle ? (
-              // `min-w-0` lets the link shrink below its intrinsic content
-              // width when it wraps onto its own row (the meta row is
-              // `flex-wrap`, so a long title forms a second row by itself);
-              // `max-w-full` clamps it to the container width so the inner
-              // `truncate` span can ellipsize instead of letting an
-              // arbitrarily-long HN title spill onto a second line. The
-              // icon gets `shrink-0` so it always stays visible — only the
-              // text shrinks/ellipsizes.
+              // `min-w-0 max-w-full` lets the link shrink below its
+              // intrinsic content width when it wraps onto its own row
+              // (the meta row is `flex-wrap`), so the inner `truncate`
+              // can ellipsize instead of spilling. Icon gets `shrink-0`
+              // so it always stays visible.
               <Link
                 to={`/item/${itemId}`}
                 state={{ isComment: false }}
@@ -96,15 +90,10 @@ export function CommentArticle({
                 <span className="truncate">{itemTitle}</span>
               </Link>
             ) : itemId != null && !loading ? (
-              // Resolved-but-titleless fallback. We have the focal item id
-              // (so the comment IS a permalink/fullscreen view of a known
-              // story), `loading` has settled, and yet `itemTitle` never
-              // arrived — either the parent fetch errored, the item came
-              // back without a title (extremely rare for HN stories), or
-              // an upstream consumer chose not to thread the title in.
-              // Show a generic but navigable "story" link instead of
-              // sitting on the skeleton forever — the user still has a
-              // working path back to the discussion root.
+              // Resolved-but-titleless fallback (parent fetch errored
+              // or returned without a title). Show a generic "story"
+              // link so the user still has a path back to the root
+              // instead of sitting on the skeleton forever.
               <Link
                 to={`/item/${itemId}`}
                 state={{ isComment: false }}
@@ -132,9 +121,14 @@ export function CommentArticle({
 
       <section>
         {loading ? (
+          // Bridges CommentDetail's initialData progressive-rendering
+          // gap: when `comment` is seeded, PageStage skips its skeleton
+          // and `replies=[]` would otherwise flash "No replies yet."
+          // for the ~100-500ms before the algolia fetch resolves. On
+          // cold load PageStage's overlay covers this branch.
           <CommentSkeletonTree count={6} />
         ) : replies.length > 0 ? (
-          <CommentTree comments={replies} />
+          <CommentTree comments={replies} storyAuthor={storyAuthor} />
         ) : (
           <StateView variant="empty" compact title="No replies yet." />
         )}

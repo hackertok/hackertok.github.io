@@ -49,9 +49,7 @@ describe('CommentArticle', () => {
   });
 
   it('omits the parent link when parentId is null', () => {
-    // Top-level comments under a story have no parent comment to navigate
-    // back to — the meta row should drop the `parent` pill rather than
-    // render a dangling link.
+    // Top-level comments have no parent — drop the pill, don't render a dangling link.
     renderArticle({ comment: { ...mockComment, parentId: null } });
 
     expect(screen.queryByRole('link', { name: 'parent' })).not.toBeInTheDocument();
@@ -65,10 +63,7 @@ describe('CommentArticle', () => {
   });
 
   it('renders a relative time inside a <time> element with a sane dateTime attribute', () => {
-    // The byline's time pill drives both visible relative phrasing
-    // ("X minutes/hours ago") and machine-readable ISO via `dateTime`.
-    // `mockComment.createdAt` is one hour ago, so the visible text must
-    // include "ago" and `dateTime` must be a parseable ISO string.
+    // <time dateTime> must be machine-parseable ISO; visible text is the relative label.
     renderArticle();
 
     const time = screen.getByText(/ago/i);
@@ -79,9 +74,8 @@ describe('CommentArticle', () => {
   });
 
   it('renders sanitized comment HTML', () => {
-    // CommentArticle pipes `comment.text` through `sanitizeHtml` and uses
-    // `dangerouslySetInnerHTML`. A plain `<p>` should survive the sanitizer
-    // and surface as a paragraph (not as escaped text or as an inert div).
+    // sanitizeHtml + dangerouslySetInnerHTML: <p> must survive as a real
+    // paragraph (not escaped text or an inert div).
     renderArticle();
 
     const paragraph = screen.getByText('Some thoughts.');
@@ -89,13 +83,9 @@ describe('CommentArticle', () => {
   });
 
   describe('thread title — loading skeleton', () => {
-    // CommentArticle's meta row reserves space for the focal item's title
-    // even before it resolves: while `loading=true && itemTitle=null`, we
-    // render a pulse placeholder of the same approximate width so the row
-    // doesn't reflow when the title arrives. The skeleton uses the
-    // `animate-pulse` Tailwind utility, which is the same primitive used
-    // by every other skeleton in the app — making it the cheapest single
-    // assertion that the loading branch is wired up correctly.
+    // Meta row reserves the title's width while loading so it doesn't
+    // reflow on resolve. .animate-pulse is the cheapest single assertion
+    // that the loading branch is wired up.
 
     it('shows a pulse placeholder while the focal item title is loading', () => {
       render(
@@ -108,26 +98,17 @@ describe('CommentArticle', () => {
         />,
       );
 
-      // The thread-title slot contains an inline-block .animate-pulse span
-      // when loading; this is the visible "skeleton bar" before the title
-      // resolves. Scope the query to the <article> element so we don't
-      // accidentally pass via the CommentSkeletonTree rows (which also
-      // use .animate-pulse) — that tree lives in the sibling <section>,
-      // and asserting against the whole render container would let the
-      // meta-row title skeleton be silently deleted in a future refactor.
+      // Scope to <article> — the sibling CommentSkeletonTree also uses
+      // .animate-pulse, so a container-wide query would let the meta-row
+      // title skeleton be silently deleted in a future refactor.
       const article = screen.getByRole('article');
       expect(
         article.querySelectorAll('.animate-pulse').length,
       ).toBeGreaterThan(0);
-      // And the resolved title link must NOT be present yet.
       expect(screen.queryByRole('link', { name: /some story/i })).not.toBeInTheDocument();
     });
 
     it('shows the resolved title link (no skeleton) once itemTitle arrives', () => {
-      // Sanity-check the inverse: when itemTitle resolves, the meta row
-      // shows the actual link — the skeleton in the thread-title slot must
-      // disappear. (The CommentSkeletonTree below also disappears once
-      // loading=false; this test pins the title-slot specifically.)
       renderArticle({ loading: false });
 
       expect(
@@ -136,13 +117,9 @@ describe('CommentArticle', () => {
     });
 
     it('falls back to a generic "story" link when loading settles without a title', () => {
-      // Failure mode: parent fetch errored or returned a titleless item,
-      // so `itemTitle` stays null after `loading` flips to false. Without
-      // an explicit fallback the meta row would sit on the skeleton
-      // forever. We render a plain `story` link to /item/:itemId so the
-      // user still has a working path back to the discussion root, and
-      // assistive tech still has a navigable anchor (no perpetual
-      // pulse-bar staring at a screen reader).
+      // Failure mode: parent fetch errored or returned a titleless item.
+      // Without the fallback, the skeleton would pulse forever and a
+      // screen reader would have no navigable anchor.
       render(
         <CommentArticle
           comment={mockComment}
@@ -155,19 +132,15 @@ describe('CommentArticle', () => {
 
       const fallback = screen.getByRole('link', { name: /^story$/i });
       expect(fallback).toHaveAttribute('href', '/item/12345');
-      // No skeleton inside the article when we've decided to render the
-      // fallback link instead.
+      // Skeleton must clear when fallback link renders — otherwise both UIs surface.
       const article = screen.getByRole('article');
       expect(article.querySelector('.animate-pulse')).toBeNull();
     });
   });
 
   describe('author guard', () => {
-    // HN's degraded payloads use the literal `'unknown'` placeholder for
-    // missing/anonymous authors (see e2e/fixtures/api-mocks.ts) and empty
-    // strings slip through `?? ''` fallbacks elsewhere. CommentArticle
-    // must not mint a dead `/user/unknown` or `/user/` link in either
-    // case — it should fall back to a plain non-link byline.
+    // 'unknown' / '' must not mint a dead /user/unknown or /user/ link —
+    // fall back to a plain non-link byline. See isKnownAuthor.
 
     it('does not render an author link when the author is the literal "unknown"', () => {
       renderArticle({
@@ -177,7 +150,7 @@ describe('CommentArticle', () => {
       expect(
         screen.queryByRole('link', { name: 'unknown' }),
       ).not.toBeInTheDocument();
-      // The label still surfaces (so the meta row keeps its rhythm).
+      // Visible label still surfaces so the meta-row rhythm stays intact.
       expect(screen.getByText('unknown')).toBeInTheDocument();
     });
 
@@ -186,8 +159,7 @@ describe('CommentArticle', () => {
         comment: { ...mockComment, author: '' },
       });
 
-      // Empty author falls back to displaying the literal "unknown" so
-      // the byline stays meaningful, with no link to /user/.
+      // Empty author falls back to the literal "unknown" label, no link.
       expect(
         screen.queryByRole('link', { name: 'unknown' }),
       ).not.toBeInTheDocument();
@@ -195,21 +167,56 @@ describe('CommentArticle', () => {
     });
   });
 
+  describe('OP highlight', () => {
+    // OP badge is a SIBLING of the author Link (not child), so the
+    // link's accessible name stays exactly the handle — getByRole('link',
+    // { name: 'patio11' }) keeps working across the suite.
+
+    it('renders an OP badge when storyAuthor matches comment.author', () => {
+      renderArticle({ storyAuthor: 'patio11' });
+
+      expect(screen.getByLabelText('Original poster')).toBeInTheDocument();
+      expect(screen.getByText('OP')).toBeInTheDocument();
+    });
+
+    it('does not render an OP badge when storyAuthor differs from comment.author', () => {
+      renderArticle({ storyAuthor: 'someone-else' });
+
+      expect(screen.queryByLabelText('Original poster')).not.toBeInTheDocument();
+      expect(screen.queryByText('OP')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      { label: 'literal "unknown"', storyAuthor: 'unknown' },
+      { label: 'empty string', storyAuthor: '' },
+    ])(
+      'does not render OP badge when storyAuthor is the $label',
+      ({ storyAuthor }) => {
+        renderArticle({ storyAuthor });
+
+        expect(screen.queryByLabelText('Original poster')).not.toBeInTheDocument();
+      },
+    );
+
+    // Sibling-pattern regression — see AuthorByline.tsx for rationale.
+    it('keeps the author Link accessible name unchanged when OP', () => {
+      renderArticle({ storyAuthor: 'patio11' });
+
+      const link = screen.getByRole('link', { name: 'patio11' });
+      expect(link).toHaveAttribute('href', '/user/patio11');
+    });
+  });
+
   describe('parent link — router state propagation', () => {
-    // The parent link writes `state.isComment` so the destination route
-    // knows whether it's loading another comment thread (true) or the
-    // story root (false). This drives the Header's "comments" pill
-    // visibility and the feed-tab deactivation rule. Two cases:
-    //   1. parentId === itemId → parent IS the story → isComment: false
-    //   2. parentId !== itemId → parent is another comment → isComment: true
-    // We follow the navigation under a Routes tree so we can read back
-    // what landed in `useLocation().state`.
+    // state.isComment tells the destination route whether it's loading a
+    // comment thread (true) or the story root (false). Drives the
+    // Header's "comments" pill and feed-tab deactivation. Two cases:
+    //   parentId === itemId → parent IS the story → isComment: false
+    //   parentId !== itemId → parent is another comment → isComment: true
 
     it('writes state.isComment=false when the parent IS the focal item (story root)', () => {
-      // mockComment.parentId === 12345; render with itemId === 12345 so
-      // the parent IS the focal story. Clicking parent should land on the
-      // story page with isComment=false (we're going to the story, not to
-      // another comment).
+      // parentId === itemId === 12345 — clicking parent goes to the
+      // story (not another comment).
       render(
         <Routes>
           <Route
@@ -237,10 +244,8 @@ describe('CommentArticle', () => {
     });
 
     it('writes state.isComment=true when the parent is another comment (not the focal item)', () => {
-      // parentId differs from itemId — the parent is another comment in
-      // the tree, not the story root. Clicking parent should land on a
-      // comment view (isComment=true), which causes the Header to render
-      // its "comments" pill and suppress feed highlighting.
+      // parentId !== itemId — clicking parent goes to a comment view,
+      // which surfaces the Header "comments" pill and suppresses feed highlights.
       render(
         <Routes>
           <Route
@@ -268,9 +273,8 @@ describe('CommentArticle', () => {
     });
 
     it('writes state.isComment=false on the thread/title link (always the story root)', () => {
-      // The thread-title link always points at the focal story, so its
-      // state is always isComment=false — independent of whether the
-      // current comment is nested or top-level.
+      // Thread-title link always points at the focal story —
+      // isComment=false regardless of nesting.
       render(
         <Routes>
           <Route

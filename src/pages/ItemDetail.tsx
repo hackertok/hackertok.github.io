@@ -1,7 +1,7 @@
 import { useParams, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useItemWithComments } from '../hooks/useItemWithComments';
-import { ItemDetailSkeleton, CommentDetail, StateView, CommentsSection, ItemArticle } from '../components';
+import { ItemDetailSkeleton, CommentDetail, StateView, CommentsSection, ItemArticle, PageStage } from '../components';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
@@ -12,11 +12,8 @@ export function ItemDetail() {
   const { id } = useParams();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
-  // Back target for the "Back to feed" action on error/not-found states.
-  // Priority: fromUser > fromDomain > feed > home. The user-submissions
-  // page is the most specific origin (a story is authored by exactly one
-  // user but lives on one domain and may belong to many feeds), so it wins
-  // when set. Default to home when nothing is known.
+  // Back target for "Back to feed" on error/not-found.
+  // Priority: fromUser > fromDomain > feed > home (most specific wins).
   const feedFrom = locationState?.from;
   const fromDomain = locationState?.fromDomain;
   const fromUser = locationState?.fromUser;
@@ -40,8 +37,7 @@ export function ItemDetail() {
     : error ? 'Failed to load item'
     : (item && 'title' in item ? item.title : undefined);
   useDocumentTitle(documentTitle);
-  
-  // Scroll to top on navigation
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [id]);
@@ -54,10 +50,10 @@ export function ItemDetail() {
     );
   }
 
-  // Show full skeleton only if item is loading
-  if (itemLoading && !item) {
-    return <ItemDetailSkeleton />;
-  }
+  // CRITICAL: branches below MUST gate on `!itemLoading` — the early
+  // `(itemLoading && !item)` skeleton short-circuit is gone, so
+  // without these gates loading would fall through to not-found
+  // (item is null during load) or attempt the CommentDetail redirect.
 
   if (error && !isItemRetrying) {
     return (
@@ -72,11 +68,18 @@ export function ItemDetail() {
     );
   }
 
+  // Pre-emptive retry skeleton — fires while useAutoRetry is between
+  // attempts. Wraps with the same chrome the post-load render uses
+  // so the gutter matches.
   if (error && isItemRetrying) {
-    return <ItemDetailSkeleton />;
+    return (
+      <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
+        <ItemDetailSkeleton />
+      </div>
+    );
   }
 
-  if (!item) {
+  if (!itemLoading && !item) {
     return (
       <div className="page-state-center-padded">
         <StateView variant="not-found" action={{ label: 'Back to feed', to: feedPath }} />
@@ -84,17 +87,35 @@ export function ItemDetail() {
     );
   }
 
-  // Comment permalink: render dedicated comment detail page
-  if (item.type === 'comment') {
+  if (!itemLoading && item?.type === 'comment') {
     return <CommentDetail commentId={id} initialData={{ author: item.author, text: item.text, createdAt: item.createdAt, parentId: item.parent }} />;
   }
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-      <ItemArticle item={item} className="mb-6 pb-4 border-b border-border" />
-      <section>
-        <CommentsSection comments={comments} commentsLoading={commentsLoading} commentsError={commentsError} onRetry={() => void refresh()} />
-      </section>
+      {/* `loading={itemLoading || commentsLoading}` holds the skeleton
+          until both header and comments are ready. Trade-off: cached-
+          item / stale-comments adds ~200-500ms to the skeleton, but
+          visual coherence wins over the alternative (header lands,
+          then comments cascade separately, reading as disjointed). */}
+      <PageStage
+        loading={itemLoading || commentsLoading}
+        skeleton={<ItemDetailSkeleton />}
+      >
+        {item && item.type !== 'comment' && (
+          <>
+            <ItemArticle item={item} className="mb-6 pb-4 border-b border-border" />
+            <section>
+              <CommentsSection
+                comments={comments}
+                commentsError={commentsError}
+                onRetry={() => void refresh()}
+                storyAuthor={item.author}
+              />
+            </section>
+          </>
+        )}
+      </PageStage>
     </div>
   );
 }

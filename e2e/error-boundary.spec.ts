@@ -5,9 +5,8 @@ test.describe('Error Boundary', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
   test('displays error UI when a component crashes', async ({ page }) => {
-    // Set up mocks that return a malformed item to trigger a React render crash.
-    // Making "title" an object causes "Objects are not valid as a React child"
-    // when React tries to render {item.title} in the JSX.
+    // Malformed title (object instead of string) makes React throw
+    // "Objects are not valid as a React child" when rendering {item.title}.
     await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
       await route.fulfill({ json: mockTopItemIds });
     });
@@ -19,7 +18,6 @@ test.describe('Error Boundary', () => {
       const match = url.match(/\/item\/(\d+)\.json/);
       const id = match ? parseInt(match[1], 10) : 0;
 
-      // Return an item with title as an object — React will throw during render
       await route.fulfill({
         json: {
           id,
@@ -50,17 +48,14 @@ test.describe('Error Boundary', () => {
       });
     });
 
-    // Navigate to an item detail page — the malformed title triggers a crash
     await page.goto('/#/item/12345');
 
-    // ErrorBoundary should render its fallback UI
     await expect(page.getByText('Something went wrong')).toBeVisible({ timeout: 10000 });
 
-    // Should show the "Back to Home" recovery link
     const backLink = page.getByRole('link', { name: /back to home/i });
     await expect(backLink).toBeVisible();
 
-    // Clicking "Back to Home" should recover the app
+    // Recovery link must navigate AND remount the tree past the boundary.
     await backLink.click();
     await expect(page).toHaveURL(/\/#\//);
   });

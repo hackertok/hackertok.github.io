@@ -21,7 +21,7 @@ describe('CommentDetail', () => {
   it('shows skeleton while loading', () => {
     renderCommentDetail(1001);
 
-    // Should show loading skeleton initially (animate-pulse container)
+    // animate-pulse container is the skeleton wrapper.
     const skeleton = document.querySelector('.animate-pulse');
     expect(skeleton).toBeInTheDocument();
   });
@@ -35,10 +35,9 @@ describe('CommentDetail', () => {
 
     renderCommentDetail(1001, initialData);
 
-    // Author should be visible immediately (from initialData)
+    // initialData renders synchronously; replies arrive after the async fetch.
     expect(screen.getByText('patio11')).toBeInTheDocument();
 
-    // Replies should load later
     await waitFor(() => {
       expect(screen.getByText('tptacek')).toBeInTheDocument();
     });

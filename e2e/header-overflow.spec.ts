@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
 
 // End-to-end coverage for the responsive header's "More" overflow dropdown.
@@ -12,8 +12,10 @@ import { setupApiMocks } from './fixtures/api-mocks';
 //
 // Routing-side: the existing Header tests prove that the active contextual
 // pill ("user") sits at index 0 and the 3 feed tabs follow. We rely on
-// that here by navigating to `/user/pg`, where the User pill is always
-// visible at index 0 — the rest is then up to the packer.
+// that here by navigating to `/submitted/pg` — the canonical route for
+// the User pill (the profile detail at `/user/:id` deliberately does NOT
+// activate it; see `deriveHeaderState`) — where the pill is always
+// visible at index 0 and the rest is up to the packer.
 
 test.describe('Header overflow — More dropdown', () => {
   // Pin a viewport narrow enough that the User pill + the 3 feed tabs
@@ -26,23 +28,27 @@ test.describe('Header overflow — More dropdown', () => {
     await setupApiMocks(page);
   });
 
-  test('shows the "More tabs" trigger when nav items overflow', async ({ page }) => {
-    await page.goto('/#/user/pg');
+  // User pill paint is the readiness signal: it proves the header has
+  // mounted and run its first ResizeObserver-driven packing pass, AND
+  // that the contextual-pill priority ordering put "user" at index 0.
+  // Both are preconditions for every overflow assertion below.
+  const userPill = (page: Page) =>
+    page.locator('header nav span', { hasText: 'user' });
 
-    // Wait for the user-page content to render so the header has a chance
-    // to mount and run its first packing pass via ResizeObserver.
-    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+  test('shows the "More tabs" trigger when nav items overflow', async ({ page }) => {
+    await page.goto('/#/submitted/pg');
+    await expect(userPill(page)).toBeVisible();
 
     const moreBtn = page.getByRole('button', { name: 'More tabs' });
     await expect(moreBtn).toBeVisible();
     await expect(moreBtn).toHaveAttribute('aria-haspopup', 'menu');
-    // Pre-open: menu is closed, no menuitems are mounted in the portal.
+    // Closed menus must NOT mount their portal content.
     await expect(page.getByRole('menuitem')).toHaveCount(0);
   });
 
   test('opens the menu on click and reveals hidden feed tabs as menuitems', async ({ page }) => {
-    await page.goto('/#/user/pg');
-    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+    await page.goto('/#/submitted/pg');
+    await expect(userPill(page)).toBeVisible();
 
     await page.getByRole('button', { name: 'More tabs' }).click();
 
@@ -56,8 +62,8 @@ test.describe('Header overflow — More dropdown', () => {
   });
 
   test('clicking a hidden feed in the menu navigates to that route', async ({ page }) => {
-    await page.goto('/#/user/pg');
-    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+    await page.goto('/#/submitted/pg');
+    await expect(userPill(page)).toBeVisible();
 
     // Sanity-check the precondition before exercising the menu: at this
     // viewport (320px) with the User pill active at index 0, the packer
@@ -71,15 +77,19 @@ test.describe('Header overflow — More dropdown', () => {
     ).toHaveCount(0);
 
     await page.getByRole('button', { name: 'More tabs' }).click();
-    // Wait for the menu to render before fishing inside it.
     await expect(page.getByRole('menuitem').first()).toBeVisible();
 
-    // Show MUST exist as a menuitem (we just asserted it isn't in the
-    // inline nav, and the packer never drops items entirely).
+    // Show MUST exist as a menuitem — the inline-nav assertion above proved
+    // it's not in the bar, and the packer never drops items entirely.
     const showItem = page.getByRole('menuitem', { name: 'show' });
     await expect(showItem).toBeVisible();
     await showItem.click();
-    await expect(page).toHaveURL(/#\/show/);
+    // On this viewport SwipeStoryViewer mounts for /show and immediately
+    // replaces the URL with /item/:firstShowId (objectID 99999 in the
+    // mock) — racing Playwright's first poll. Same pattern as the
+    // domain-filter URL assertion. Either form is a pass: both prove
+    // navigation reached the show feed.
+    await expect(page).toHaveURL(/#\/(show|item\/99999)/);
   });
 
   test('Escape closes the open menu', async ({ page, browserName }) => {
@@ -90,8 +100,8 @@ test.describe('Header overflow — More dropdown', () => {
       'Programmatic keyboard input not reliable on mobile webkit',
     );
 
-    await page.goto('/#/user/pg');
-    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+    await page.goto('/#/submitted/pg');
+    await expect(userPill(page)).toBeVisible();
 
     await page.getByRole('button', { name: 'More tabs' }).click();
     await expect(page.getByRole('menuitem').first()).toBeVisible();
@@ -109,8 +119,8 @@ test.describe('Header overflow — More dropdown', () => {
       'Programmatic keyboard input not reliable on mobile webkit',
     );
 
-    await page.goto('/#/user/pg');
-    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+    await page.goto('/#/submitted/pg');
+    await expect(userPill(page)).toBeVisible();
 
     await page.getByRole('button', { name: 'More tabs' }).focus();
     await page.keyboard.press('Enter');
@@ -131,7 +141,6 @@ test.describe('Theme toggle — tooltip on hover', () => {
 
   test('hovering the theme toggle reveals the tooltip text', async ({ page }) => {
     await page.goto('/#/');
-    // Wait for content load so Tooltip provider is mounted.
     await expect(
       page.getByText('Rust Is the Future of JavaScript Infrastructure').first(),
     ).toBeVisible();
@@ -139,9 +148,8 @@ test.describe('Theme toggle — tooltip on hover', () => {
     const toggle = page.getByTestId('theme-toggle');
     await toggle.hover();
 
-    // TooltipProvider in App.tsx is configured with delayDuration=250ms.
-    // The tooltip role + accessible name comes from the rendered
-    // TooltipContent inside the Radix portal.
+    // 3000ms covers TooltipProvider's 250ms delayDuration plus portal
+    // mount + slack for slow CI.
     await expect(
       page.getByRole('tooltip', { name: /switch to (dark|light) mode/i }),
     ).toBeVisible({ timeout: 3000 });

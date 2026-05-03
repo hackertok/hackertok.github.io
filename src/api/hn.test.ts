@@ -19,7 +19,6 @@ import {
 describe('hn API utilities', () => {
   describe('formatTimeAgo', () => {
     beforeEach(() => {
-      // Mock Date.now for consistent tests
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-02-21T12:00:00Z'));
     });
@@ -562,15 +561,13 @@ describe('hn API utilities', () => {
 
     it('uses default limit of 20', async () => {
       const result = await fetchTopStories();
-      
-      // Should return available items up to limit
+
       expect(result.length).toBeLessThanOrEqual(20);
     });
 
     it('sorts items by gravity score', async () => {
       const result = await fetchTopStories(20);
-      
-      // Items should be sorted by gravity (higher points relative to age)
+
       expect(result.length).toBeGreaterThan(0);
     });
   });
@@ -678,25 +675,20 @@ describe('hn API utilities', () => {
     });
 
     it('defaults commentCount to 0 when descendants missing', async () => {
-      // Note: Mock returns item with descendants for unknown IDs
-      // This test verifies the normalizer handles the field correctly
       const result = await fetchItemOnly(12345);
       expect(result.type).not.toBe('comment');
       if (result.type === 'comment') throw new Error('unexpected');
-      
-      // Mock item 12345 has descendants: 137
+
       expect(result.type !== 'job' ? result.commentCount : 0).toBe(137);
     });
   });
 
   describe('error handling', () => {
     it('formatTimeAgo handles zero timestamp as falsy', () => {
-      // Zero is falsy in JavaScript, so returns empty string
       expect(formatTimeAgo(0)).toBe('');
     });
 
     it('formatTimeAgo handles negative timestamp', () => {
-      // Very old date (before Unix epoch) - should not crash
       expect(() => formatTimeAgo(-1000000)).not.toThrow();
     });
 

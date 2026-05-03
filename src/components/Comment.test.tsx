@@ -66,11 +66,9 @@ describe('Comment', () => {
       expect(authorLink).toHaveAttribute('href', '/user/testuser');
     });
 
-    // Author guard: the literal HN `'unknown'` placeholder (seen on
-    // degraded Algolia payloads) and any empty-string fallback that slips
-    // through `?? ''` upstream both render as a plain span (NOT a link),
-    // with the visible label "unknown" so the `›` byline marker doesn't
-    // sit alone. See `isKnownAuthor` for the centralised guard rule.
+    // The literal HN 'unknown' placeholder (degraded Algolia payloads) and
+    // any empty-string fallback must render as a plain span — never a
+    // link. See `isKnownAuthor` for the centralised guard rule.
     it.each([
       { label: 'literal "unknown"', author: 'unknown', id: 100 },
       { label: 'empty string', author: '', id: 101 },
@@ -92,12 +90,69 @@ describe('Comment', () => {
       },
     );
 
-    // Integration smoke test for the sanitize → dangerouslySetInnerHTML path.
-    // The unit suite in `utils/sanitize.test.ts` covers `sanitizeHtml`'s
-    // output exhaustively; these `it.each` assertions just pin that each
-    // recognised HN URL family actually reaches the rendered DOM via
-    // `Comment.tsx` (and isn't bypassed by a future refactor that, say,
-    // routes around the rewriter for one branch).
+    // OP badge must be a SIBLING (not child) of the author span/link so
+    // the link's accessible name stays exactly the handle.
+    it('renders an OP badge when storyAuthor matches comment.author', () => {
+      render(<Comment comment={mockComment} storyAuthor="testuser" />);
+
+      // aria-label="Original poster" for screen readers, visible "OP" for sighted users.
+      expect(screen.getByLabelText('Original poster')).toBeInTheDocument();
+      expect(screen.getByText('OP')).toBeInTheDocument();
+    });
+
+    it('does not render an OP badge when storyAuthor differs from comment.author', () => {
+      render(<Comment comment={mockComment} storyAuthor="someone-else" />);
+
+      expect(screen.queryByLabelText('Original poster')).not.toBeInTheDocument();
+      expect(screen.queryByText('OP')).not.toBeInTheDocument();
+    });
+
+    // 'unknown' / '' story author must NOT decorate every fallback comment
+    // author — without `isKnownAuthor(storyAuthor)`, '' === '' would surface
+    // the badge for every anonymous comment.
+    it.each([
+      { label: 'literal "unknown"', storyAuthor: 'unknown' },
+      { label: 'empty string', storyAuthor: '' },
+    ])(
+      'does not render OP badge when storyAuthor is the $label',
+      ({ storyAuthor }) => {
+        const comment = createComment({
+          id: 200,
+          author: 'unknown',
+          text: '<p>Anonymous</p>',
+          createdAt: Date.now() - 3600000,
+        });
+        render(<Comment comment={comment} storyAuthor={storyAuthor} />);
+
+        expect(screen.queryByLabelText('Original poster')).not.toBeInTheDocument();
+      },
+    );
+
+    // Regression: OP badge inside the Link would change its accessible
+    // name to "<author>OP" and break every getByRole('link', { name }) assertion.
+    it('keeps the author Link accessible name unchanged when OP', () => {
+      render(<Comment comment={mockComment} storyAuthor="testuser" />);
+
+      const link = screen.getByRole('link', { name: 'testuser' });
+      expect(link).toHaveAttribute('href', '/user/testuser');
+    });
+
+    // The relative time IS the permalink — visible "X ago" text is the
+    // link's accessible name. Replaces the old hover-revealed `#` glyph.
+    it('wraps the relative time in a permalink to /item/<id>', () => {
+      render(<Comment comment={mockComment} />);
+
+      const timeEl = screen.getByText(/ago/i);
+      const permalink = timeEl.closest('a');
+      expect(permalink).not.toBeNull();
+      expect(permalink).toHaveAttribute('href', '/item/1');
+    });
+
+    // Integration smoke test for the sanitize → dangerouslySetInnerHTML
+    // path. utils/sanitize.test.ts covers sanitizeHtml exhaustively; these
+    // assertions just pin that each rewritten URL family actually reaches
+    // the rendered DOM via Comment.tsx (catches a refactor that bypasses
+    // the rewriter for one branch).
     it.each([
       { kind: 'item', sourcePath: 'item?id=99999', expectedHref: '#/item/99999', expectedText: 'item:99999' },
       { kind: 'user', sourcePath: 'user?id=pg', expectedHref: '#/user/pg', expectedText: 'user:pg' },

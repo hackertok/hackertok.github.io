@@ -5,19 +5,18 @@ import { registerPriorityFetch, unregisterPriorityFetch } from '../utils/fetchPr
 import { useNetworkStatus } from './useNetworkStatus';
 import type { Item, Comment } from '../types';
 
-/**
- * Hook to fetch item and comments
- * @param {number|string} itemId - Item ID to fetch
- * @param {object} options - Hook options
- * @param {object} options.initialItem - Optional pre-loaded item data (avoids redundant fetch)
- * @param {boolean} options.skipOrderingCompletion - Skip background re-fetch for deep ordering (mobile swipe mode)
- * @param {boolean} options.isPriority - If true, fetch immediately; if false, wait for priority fetches to complete first (mobile serialization)
- * @param {boolean} options.deferComments - If true, skip comment fetch entirely (for far panels in mobile swipe view)
- */
 interface UseItemWithCommentsOptions {
+  /** Pre-loaded item data (avoids the redundant item fetch). */
   initialItem?: Item | null;
+  /** Skip background re-fetch for deep comment ordering (mobile swipe mode). */
   skipOrderingCompletion?: boolean;
+  /**
+   * When true, fetch immediately. When false, wait for any in-flight priority
+   * fetches to complete first — the mobile swipe view uses this to serialize
+   * far-panel fetches behind the visible panel's fetch.
+   */
   isPriority?: boolean;
+  /** Skip comment fetch entirely (for far panels in mobile swipe view). */
   deferComments?: boolean;
 }
 
@@ -34,14 +33,12 @@ interface UseItemWithCommentsResult {
 }
 
 export function useItemWithComments(itemId: number | string, { initialItem = null, skipOrderingCompletion = false, isPriority = true, deferComments = false }: UseItemWithCommentsOptions = {}): UseItemWithCommentsResult {
-  // Check cache at initialization time (runs once per mount)
   const initialCache = getCachedItem(itemId);
   
   // Lazy initialization from cache or initialItem for instant render
   const [item, setItem] = useState(() => initialItem ?? initialCache?.item ?? null);
   const [comments, setComments] = useState(() => initialCache?.comments ?? null);
   
-  // If we have initialItem, don't show item loading state
   const [itemLoading, setItemLoading] = useState(!initialItem && !initialCache?.item);
   const [commentsLoading, setCommentsLoading] = useState(!initialCache?.comments);
   const [error, setError] = useState<string | null>(null);
@@ -51,69 +48,58 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   // Ref to the main effect's AbortController so the reconnect handler can abort stale fetches
   const controllerRef = useRef<AbortController | null>(null);
 
-  // Effect Events: read values without triggering effect re-run
-  // These allow reading current props/state in effects and cleanup without adding them as dependencies
-  
-  // Read non-reactive options (configuration that shouldn't cause re-sync)
+  // Effect Events read current props/state without re-syncing the effect.
+
   const getStableOptions = useEffectEvent(() => ({
     isPriority,
     initialItem,
     skipOrderingCompletion
   }));
 
-  // Read current state for comparisons (without reacting to state changes)
   const getStateSnapshot = useEffectEvent(() => ({
     currentItemId: item?.id,
     hasComments: !!comments,
     currentItem: item
   }));
 
-  // Cleanup decision logic (needs current itemId and deferComments)
   const shouldSkipAbort = useEffectEvent((effectItemId: number | string) => {
-    // Check if itemId changed (effectItemId is OLD, itemId is current)
     const isItemIdChanging = effectItemId !== itemId;
-    // Only skip abort if:
-    // 1. itemId is NOT changing (same item)
-    // 2. AND deferComments is transitioning TO true (becoming deferred)
-    // This lets the fetch complete in the background - it will unregister itself
+    // Skip abort only when itemId is unchanged AND we're transitioning into
+    // deferred mode — the fetch will finish in the background and unregister
+    // itself.
     return !isItemIdChanging && deferComments;
   });
   
   useEffect(() => {
-    // Read stable options via Effect Event (won't cause re-sync when they change)
     const { isPriority, initialItem, skipOrderingCompletion } = getStableOptions();
-    // Read current state snapshot for comparisons
     const { currentItemId, hasComments, currentItem } = getStateSnapshot();
     
-    // Capture itemId for this effect instance (to detect itemId changes in cleanup)
+    // Captured for cleanup: lets us detect itemId changes when the effect re-runs.
     const effectItemId = itemId;
-    // Deferred panels: skip comment fetch entirely (item already initialized via useState)
     if (deferComments) {
       return;
     }
     
     const cached = getCachedItem(itemId);
     
-    // We have item from either initialItem prop or cache
     const hasItem = initialItem ?? cached?.item;
     
-    // Check if state has a different item's data (itemId changed)
     const stateHasDifferentItem = currentItem && String(currentItemId) !== String(itemId);
     
-    // If cache has comments that we don't have in state yet, OR if itemId changed, sync from cache
-    // This handles: 1) prefetch populated cache after mount, 2) navigation to cached item
+    // Sync from cache when:
+    //   1) prefetch populated the cache after mount, or
+    //   2) navigation to a (cached) item.
     if (cached?.isFresh && cached?.comments && (!hasComments || stateHasDifferentItem)) {
       setComments(cached.comments);
       setCommentsLoading(false);
-      // Sync item too if needed
       if (cached.item && (!currentItem || stateHasDifferentItem)) {
         setItem(cached.item);
         setItemLoading(false);
       }
     } else if (stateHasDifferentItem) {
-      // itemId changed but new item is NOT in cache (or cache is stale)
-      // Reset state to loading to prevent showing wrong item's content
-      // Use initialItem if provided AND it matches the new itemId
+      // itemId changed and the new item isn't (freshly) cached — reset to a
+      // loading state so we don't render the previous item's content. Reuse
+      // initialItem only when it actually matches the new itemId.
       const validInitialItem = initialItem && String(initialItem.id) === String(itemId) 
         ? initialItem 
         : null;
@@ -124,35 +110,31 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       setCommentsError(null);
     }
     
-    // Determine if we need to fetch: either no cache, stale cache, or partial ordering
     const needsFullFetch = !cached?.isFresh || !hasItem || !cached?.comments;
-    // Skip ordering completion in mobile swipe mode (users swipe fast, deep order doesn't matter)
+    // Mobile swipe mode skips ordering completion — users swipe fast and deep
+    // order isn't visible.
     const needsOrderingCompletion = !skipOrderingCompletion && cached?.isFresh && cached?.orderedDepth < 3;
     
-    // If cache is fresh AND fully ordered, skip fetch entirely
     if (cached?.isFresh && hasItem && cached?.comments && cached?.orderedDepth >= 3) {
       return;
     }
     
-    // Track if we registered priority (for cleanup)
     let didRegister = false;
     const controller = new AbortController();
     controllerRef.current = controller;
     
-    // SYNC: Priority panels register immediately (before any async work)
-    // This ensures non-priority panels will wait even if their effect runs first
+    // SYNC: priority panels register BEFORE any async work so non-priority
+    // panels wait even if their effect happens to run first.
     if (isPriority && needsFullFetch && !cached?.comments) {
       registerPriorityFetch();
       didRegister = true;
     }
 
     async function loadItem() {
-      // If we have initialItem, use it directly - no fetch needed
       if (initialItem) {
         return initialItem;
       }
       
-      // Only set loading if we don't have cached item
       if (!cached?.item) {
         setItemLoading(true);
       }
@@ -182,10 +164,8 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     }
 
     async function loadComments(itemData: Item | null, isBackgroundReorder = false) {
-      // Check abort before expensive fetch
       if (controller.signal.aborted) return;
       
-      // Only set loading if we don't have cached comments AND not a background reorder
       const shouldSetLoading = !cached?.comments && !isBackgroundReorder;
       if (shouldSetLoading) {
         setCommentsLoading(true);
@@ -198,13 +178,12 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
           setCommentsLoading(false);
           setCommentsError(null);
           
-          // Cache the complete item with comments and full ordering
           if (itemData) {
             setCachedItem(itemId, itemData, commentsData, 3);
           }
           
-          // Unregister priority now that comments are loaded
-          // This allows section prefetch and other lower-priority fetches to proceed
+          // Unregister priority so section prefetch and other lower-priority
+          // fetches can proceed.
           if (didRegister) {
             unregisterPriorityFetch();
             didRegister = false;
@@ -212,7 +191,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
         }
       } catch (err) {
         if (!controller.signal.aborted && !(err instanceof Error && err.name === 'AbortError')) {
-          // Comments failed but item succeeded - still usable, but surface the error
+          // Comments failed but item succeeded — still usable, but surface the error.
           setCommentsLoading(false);
           setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
           console.warn('Failed to load comments:', err);
@@ -231,14 +210,12 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       setIsNotFound(false);
       
       if (needsOrderingCompletion && hasItem) {
-        // We have cached/initial data with partial ordering - show it immediately
-        // and fetch fully ordered comments in the background
+        // Show partial-ordering data immediately, complete ordering in background.
         await loadComments(initialItem ?? cached.item, true);
       } else if (needsFullFetch) {
-        // Need to fetch item and/or comments
         const itemData = hasItem ? (initialItem ?? cached?.item) : await loadItem();
         
-        // Then load comments (skip for comment items — they use a different fetch path)
+        // Comment items use a different fetch path (useCommentDetail via Algolia /items).
         if (itemData && itemData.type !== 'comment' && !controller.signal.aborted) {
           await loadComments(itemData, false);
         }
@@ -248,12 +225,11 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     void load();
 
     return () => {
-      // Use Effect Event for cleanup decision (reads current itemId and deferComments)
       if (shouldSkipAbort(effectItemId)) {
         return;
       }
       
-      // Cleanup due to itemId change, unmount, or becoming non-deferred - abort the fetch
+      // Cleanup from itemId change, unmount, or becoming non-deferred.
       controller.abort();
       controllerRef.current = null;
       if (didRegister) {
@@ -290,7 +266,6 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     // Abort the hanging fetch so its promise settles (AbortError, swallowed by the effect)
     controllerRef.current?.abort();
 
-    // Re-fetch comments directly
     const controller = new AbortController();
     controllerRef.current = controller;
     setCommentsLoading(true);
@@ -318,7 +293,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   // Combined loading state for backward compatibility
   const loading = itemLoading && commentsLoading;
 
-  // Refresh function for pull-to-refresh
+  // Pull-to-refresh handler.
   const refresh = useCallback(async () => {
     setError(null);
     setIsNotFound(false);

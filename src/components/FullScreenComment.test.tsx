@@ -69,7 +69,7 @@ describe('FullScreenComment', () => {
 
     render(<FullScreenComment commentId={999999} />);
 
-    // Auto-retry exhausts 3 attempts with 2s+4s+8s backoff before showing error
+    // 30s waitFor + 35s test timeout cover the 2+4+8s auto-retry backoff.
     await waitFor(() => {
       expect(screen.getByText('Failed to load comment')).toBeInTheDocument();
     }, { timeout: 30000 });

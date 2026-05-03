@@ -11,17 +11,14 @@ interface InitialState {
   sessionState: ListSessionState | null;
 }
 
-// Initialize state from session (instant back) or cache (persistent)
+// Prefer session state for instant back-nav; fall back to localStorage cache.
 function getInitialState(type: FeedType): InitialState {
-  // First check session state for instant back navigation
   const sessionState = getListSessionState(type);
   if (sessionState && sessionState.storyIds.length > 0) {
-    // We have session state - reconstruct stories from LocalStorage cache
+    // Reconstruct ordered story list from the LocalStorage cache.
     const cached = getCachedFeed(type);
     if (cached && cached.stories.length > 0) {
-      // Create a map for fast lookup
       const storyMap = new Map(cached.stories.map(s => [s.id, s]));
-      // Reconstruct stories in session order
       const stories = sessionState.storyIds
         .map((id: number) => storyMap.get(id))
         .filter((s): s is StoryItem => Boolean(s));
@@ -38,7 +35,6 @@ function getInitialState(type: FeedType): InitialState {
     }
   }
   
-  // Fall back to cache
   const cached = getCachedFeed(type);
   if (cached && cached.stories.length > 0) {
     return {
@@ -97,13 +93,11 @@ export function useInfiniteStories(type: FeedType = 'top') {
         const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
         
         if (positionRef.current === 0) {
-          // First load: fetch current front page from Algolia (single fast request)
           const frontPage = await fetchTopStories(20);
           
-          // Check if we've been reset during the fetch
           if (versionRef.current !== currentVersion) return;
           
-          // For revalidation, we replace all stories, so don't filter by seenIds
+          // Revalidation REPLACES all stories — clear seenIds so nothing gets dropped.
           if (isRevalidating) {
             seenIdsRef.current.clear();
           }
@@ -116,7 +110,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
             return true;
           });
           
-          // Cache fresh stories (only first page)
           if (newStories.length > 0) {
             setCachedFeed(type, newStories);
             setIsFromCache(false);
@@ -125,17 +118,15 @@ export function useInfiniteStories(type: FeedType = 'top') {
           
           positionRef.current = 1; // Next load will be yesterday
         } else {
-          // Subsequent loads: day-based pagination using Algolia
+          // Subsequent loads: day-based pagination using Algolia.
           let attempts = 0;
           const maxAttempts = 5; // Try up to 5 days if current day has no stories
 
           while (newStories.length === 0 && attempts < maxAttempts && positionRef.current < 365) {
             const dayStories = await fetchFrontPageForDay(positionRef.current);
             
-            // Check if we've been reset during the fetch
             if (versionRef.current !== currentVersion) return;
             
-            // Filter out duplicates
             const uniqueStories = dayStories.filter(story => {
               if (seenIdsRef.current.has(story.id)) {
                 return false;
@@ -150,13 +141,11 @@ export function useInfiniteStories(type: FeedType = 'top') {
           }
         }
 
-        // Final staleness check before updating state
         if (versionRef.current !== currentVersion) return;
 
         if (newStories.length === 0 && positionRef.current >= 365) {
           setHasMore(false);
         } else if (newStories.length > 0) {
-          // If revalidating, replace stories instead of appending
           if (isRevalidating) {
             setStories(newStories);
           } else {
@@ -164,19 +153,16 @@ export function useInfiniteStories(type: FeedType = 'top') {
           }
         }
       } else if (type === 'best') {
-        // Best stories: offset-based pagination using Firebase
+        // Offset-based pagination via Firebase /beststories.
         const isRevalidatingBest = hasStaleCacheRef.current && positionRef.current === 0;
         const result = await fetchBestStories(positionRef.current, 30);
         
-        // Check if we've been reset during the fetch
         if (versionRef.current !== currentVersion) return;
         
-        // For revalidation, we replace all stories, so don't filter by seenIds
         if (isRevalidatingBest) {
           seenIdsRef.current.clear();
         }
         
-        // Filter out duplicates
         const uniqueStories = result.stories.filter(story => {
           if (seenIdsRef.current.has(story.id)) {
             return false;
@@ -185,7 +171,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
           return true;
         });
 
-        // Cache first page of best stories
         if (positionRef.current === 0 && uniqueStories.length > 0) {
           setCachedFeed(type, uniqueStories);
           setIsFromCache(false);
@@ -196,7 +181,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
         setHasMore(result.hasMore);
         
         if (uniqueStories.length > 0) {
-          // If revalidating, replace stories instead of appending
           if (isRevalidatingBest) {
             setStories(uniqueStories);
           } else {
@@ -204,20 +188,17 @@ export function useInfiniteStories(type: FeedType = 'top') {
           }
         }
       } else if (type === 'show' || type === 'ask') {
-        // Show HN / Ask HN stories: day-based pagination (top 20 per 24-hour window) using Algolia
+        // Show HN / Ask HN: day-based pagination, top 20 per 24-hour window, via Algolia.
         const fetchFn = type === 'show' ? fetchShowStories : fetchAskStories;
         const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
         const result = await fetchFn(positionRef.current);
         
-        // Check if we've been reset during the fetch
         if (versionRef.current !== currentVersion) return;
         
-        // For revalidation, we replace all stories, so don't filter by seenIds
         if (isRevalidating) {
           seenIdsRef.current.clear();
         }
         
-        // Filter out duplicates
         const uniqueStories = result.stories.filter(story => {
           if (seenIdsRef.current.has(story.id)) {
             return false;
@@ -226,7 +207,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
           return true;
         });
 
-        // Cache first window of stories
         if (positionRef.current === 0 && uniqueStories.length > 0) {
           setCachedFeed(type, uniqueStories);
           setIsFromCache(false);
@@ -237,7 +217,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
         setHasMore(result.hasMore);
         
         if (uniqueStories.length > 0) {
-          // If revalidating, replace stories instead of appending
           if (isRevalidating) {
             setStories(uniqueStories);
           } else {
@@ -246,12 +225,11 @@ export function useInfiniteStories(type: FeedType = 'top') {
         }
       }
     } catch (err) {
-      // Only set error if not stale
+      // Stale-response guard: only surface errors from the current request.
       if (versionRef.current === currentVersion) {
         setError(err instanceof Error ? err.message : String(err));
       }
     } finally {
-      // Only clear loading if not stale
       if (versionRef.current === currentVersion) {
         setLoading(false);
       }
@@ -259,14 +237,12 @@ export function useInfiniteStories(type: FeedType = 'top') {
   }, [loading, hasMore, type]);
 
   const reset = useCallback(() => {
-    // Increment version to invalidate any in-flight requests
     versionRef.current += 1;
     
-    // Re-initialize from cache for the current type
     const initial = getInitialState(type);
     setStories(initial.stories);
     setIsFromCache(initial.isFromCache);
-    // Reset session state - we're starting fresh, not restoring
+    // We're starting fresh, not restoring — so explicitly drop session-restore flags.
     setIsFromSession(false);
     setInitialScrollY(0);
     hasStaleCacheRef.current = initial.isFromCache;
@@ -276,7 +252,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
     setHasMore(true);
     positionRef.current = 0;
     seenIdsRef.current.clear();
-    // Clear session state when explicitly reset
     clearListSessionState(type);
   }, [type]);
 
