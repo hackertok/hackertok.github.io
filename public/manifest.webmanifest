@@ -1,7 +1,7 @@
 {
   "name": "HackerTok - Your daily dose of Hacker News",
   "short_name": "HackerTok",
-  "description": "A modern Hacker News client. Swipe or scroll through stories, read comments, and enjoy dark mode. Works beautifully on any device.",
+  "description": "An open-source, blazingly fast, progressive Hacker News client. Swipe or scroll through stories, read comments, and install as an app.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

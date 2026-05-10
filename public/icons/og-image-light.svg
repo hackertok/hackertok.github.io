@@ -3,21 +3,8 @@
   <desc id="og-desc">Your daily dose of Hacker News</desc>
 
   <!--
-    Particle roam animations are split into two layers:
-
-      • mid  (hk-r*): medium drifts (~22–32px, ~25% softer than the
-                      first iteration), 15–25s — primary motion
-      • far  (hk-f*): subtle drifts (8–18px), 21–34s — background shimmer
-
-    The centered logo / text / tagline group is intentionally static. A
-    handful of far-layer particles paint AFTER the centered group so they
-    drift in front of the dark gap between the logo and the wordmark.
-
-    GitHub renders this SVG via <img>, which permits CSS animations but
-    blocks JS and external resources. Static renderers (sharp/librsvg,
-    used by scripts/generate-icons.js to emit og-image.png) freeze
-    animations at t=0, so particles appear as decorative dots in the
-    social card preview.
+    Light-theme variant of og-image.svg for GitHub's
+    prefers-color-scheme <picture> support.
   -->
   <style><![CDATA[
     /* Mid layer — 15–25s, ~22–32px drifts. */
@@ -42,30 +29,11 @@
     .hk-f5 { animation: hk-far-5 28s ease-in-out infinite; }
     .hk-f6 { animation: hk-far-6 34s ease-in-out infinite; }
 
-    /* Bracket spin — applied to a wrapper <g> around each bracket so it
-       composes with the inner text's translate (hk-r* classes) without
-       fighting the same `animation` shorthand. transform-box: fill-box
-       resolves transform-origin to the wrapper's content bbox (i.e. the
-       glyph), so each bracket wobbles around its own visual center.
-       Durations (12/13/16/20s) are coprime-ish with roam durations so
-       spin and drift drift in and out of phase. */
     .hk-s1 { animation: hk-spin-1 12s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
     .hk-s2 { animation: hk-spin-2 16s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
     .hk-s3 { animation: hk-spin-3 20s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
     .hk-s4 { animation: hk-spin-4 13s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 
-    /* Tagline chromatic-aberration tear — red and cyan layers sit at
-       opacity 0 directly behind the peach main layer (same x), so at
-       rest the tagline reads as clean peach text only. During each
-       burst, opacity snaps to 1 and the layer jump-cuts through a few
-       displaced positions, then snaps back invisible. step-end timing
-       makes every transition a hard digital cut.
-
-       Each cycle contains MULTIPLE bursts of varying length, jump
-       count, and amplitude (some are barely-perceptible 3-jump flickers
-       at ±3px, others are 5-jump tears at ±6-7px). Cycle lengths are
-       coprime-ish (13s and 19s, LCM 247s) so red+cyan burst alignment
-       barely repeats over a full minute. */
     .hk-glitch-r { animation: hk-glitch-r 13s step-end infinite; }
     .hk-glitch-c { animation: hk-glitch-c 19s step-end infinite; }
 
@@ -159,13 +127,11 @@
     @keyframes hk-glitch-r {
       0%, 28%, 100% { opacity: 0; transform: translate(0, 0); }
 
-      /* Burst 1: small flicker, 3 jumps, ±3px (~0.5s on a 13s cycle) */
       29% { opacity: 1; transform: translate(-3px, 0); }
       31% { opacity: 1; transform: translate(2px, 1px); }
       32% { opacity: 1; transform: translate(-3px, 0); }
       33% { opacity: 0; transform: translate(0, 0); }
 
-      /* Burst 2: pronounced tear, 5 jumps, ±6px (~1s on a 13s cycle) */
       71% { opacity: 1; transform: translate(-6px, 0); }
       73% { opacity: 1; transform: translate(3px, -1px); }
       75% { opacity: 1; transform: translate(-2px, 0); }
@@ -176,20 +142,17 @@
     @keyframes hk-glitch-c {
       0%, 17%, 100% { opacity: 0; transform: translate(0, 0); }
 
-      /* Burst 1: 3 jumps, ±5px (~0.8s on a 19s cycle) */
       18% { opacity: 1; transform: translate(5px, 0); }
       20% { opacity: 1; transform: translate(-2px, 1px); }
       21% { opacity: 1; transform: translate(3px, 0); }
       22% { opacity: 0; transform: translate(0, 0); }
 
-      /* Burst 2: 4 jumps, ±7px (~1s on a 19s cycle) */
       54% { opacity: 1; transform: translate(7px, -1px); }
       56% { opacity: 1; transform: translate(-3px, 0); }
       57% { opacity: 1; transform: translate(4px, 1px); }
       58% { opacity: 1; transform: translate(-2px, 0); }
       59% { opacity: 0; transform: translate(0, 0); }
 
-      /* Burst 3: 2 jumps, ±4px (~0.6s on a 19s cycle) */
       87% { opacity: 1; transform: translate(4px, 0); }
       89% { opacity: 1; transform: translate(-2px, 1px); }
       90% { opacity: 0; transform: translate(0, 0); }
@@ -206,51 +169,40 @@
   ]]></style>
 
   <!-- Background -->
-  <rect width="1200" height="630" fill="#1a1511"/>
+  <rect width="1200" height="630" fill="#ffffff"/>
 
-  <!--
-    Behind layer — particles painted before the centered design. Each
-    particle gets a unique (class, animation-delay) combo so no two trace
-    the same path in the same phase.
-  -->
+  <!-- Behind layer particles -->
   <g>
     <!-- Top strip -->
-    <circle cx="150"  cy="80"  r="4"   fill="#f36303" opacity="0.45" class="hk-r1"  style="animation-delay: -2.6s" />
-    <circle cx="360"  cy="120"  r="3"   fill="#878787" opacity="0.40" class="hk-r4"  style="animation-delay: -1.3s" />
-    <circle cx="540"  cy="105" r="5"   fill="#f36303" opacity="0.40" class="hk-r3"  style="animation-delay: -4.2s" />
-    <circle cx="710"  cy="60"  r="3"   fill="#878787" opacity="0.40" class="hk-r1b" />
+    <circle cx="150"  cy="80"  r="4"   fill="#f36303" opacity="0.35" class="hk-r1"  style="animation-delay: -2.6s" />
+    <circle cx="360"  cy="120"  r="3"   fill="#878787" opacity="0.30" class="hk-r4"  style="animation-delay: -1.3s" />
+    <circle cx="540"  cy="105" r="5"   fill="#f36303" opacity="0.30" class="hk-r3"  style="animation-delay: -4.2s" />
+    <circle cx="710"  cy="60"  r="3"   fill="#878787" opacity="0.30" class="hk-r1b" />
     <circle cx="870"  cy="90"  r="4"   fill="#ffb280" opacity="0.40" class="hk-r2b" />
-    <circle cx="1100" cy="55"  r="2.5" fill="#f36303" opacity="0.45" class="hk-f5"  style="animation-delay: -3.7s" />
+    <circle cx="1100" cy="55"  r="2.5" fill="#f36303" opacity="0.35" class="hk-f5"  style="animation-delay: -3.7s" />
 
     <!-- Bottom strip -->
-    <circle cx="180"  cy="540" r="4"   fill="#f36303" opacity="0.40" class="hk-r6"  style="animation-delay: -2.5s" />
-    <circle cx="400"  cy="580" r="3"   fill="#878787" opacity="0.40" class="hk-f4"  style="animation-delay: -2.8s" />
+    <circle cx="180"  cy="540" r="4"   fill="#f36303" opacity="0.30" class="hk-r6"  style="animation-delay: -2.5s" />
+    <circle cx="400"  cy="580" r="3"   fill="#878787" opacity="0.30" class="hk-f4"  style="animation-delay: -2.8s" />
     <circle cx="610"  cy="530" r="5"   fill="#ffb280" opacity="0.40" class="hk-r5"  style="animation-delay: -1.4s" />
-    <circle cx="800"  cy="565" r="3"   fill="#f36303" opacity="0.45" class="hk-r3c" style="animation-delay: -3.5s" />
-    <circle cx="1020" cy="540" r="4"   fill="#878787" opacity="0.35" class="hk-r2"  style="animation-delay: -3.0s" />
+    <circle cx="800"  cy="565" r="3"   fill="#f36303" opacity="0.35" class="hk-r3c" style="animation-delay: -3.5s" />
+    <circle cx="1020" cy="540" r="4"   fill="#878787" opacity="0.25" class="hk-r2"  style="animation-delay: -3.0s" />
 
     <!-- Middle strip -->
-    <circle cx="60"   cy="200" r="3"   fill="#878787" opacity="0.35" class="hk-f6"  style="animation-delay: -2.0s" />
+    <circle cx="60"   cy="200" r="3"   fill="#878787" opacity="0.25" class="hk-f6"  style="animation-delay: -2.0s" />
     <circle cx="1145" cy="200" r="3"   fill="#ffb280" opacity="0.40" class="hk-f2"  style="animation-delay: -1.5s" />
-    <circle cx="1170" cy="290" r="3"   fill="#f36303" opacity="0.40" class="hk-f4"  style="animation-delay: -7.5s" />
-    <circle cx="40"   cy="380" r="3.5" fill="#f36303" opacity="0.40" class="hk-r4"  style="animation-delay: -8.7s" />
-    <circle cx="50"   cy="490" r="2.5" fill="#878787" opacity="0.35" class="hk-f1"  style="animation-delay: -7.0s" />
+    <circle cx="1170" cy="290" r="3"   fill="#f36303" opacity="0.30" class="hk-f4"  style="animation-delay: -7.5s" />
+    <circle cx="40"   cy="380" r="3.5" fill="#f36303" opacity="0.30" class="hk-r4"  style="animation-delay: -8.7s" />
+    <circle cx="50"   cy="490" r="2.5" fill="#878787" opacity="0.25" class="hk-f1"  style="animation-delay: -7.0s" />
     <circle cx="1140" cy="460" r="2.5" fill="#ffb280" opacity="0.35" class="hk-f6"  style="animation-delay: -8.5s" />
     <circle cx="370" cy="285" r="2.5" fill="#ffb280" opacity="0.30" class="hk-f5" style="animation-delay: -9.0s" />
-    <circle cx="770" cy="305" r="2"   fill="#f36303" opacity="0.30" class="hk-f2" style="animation-delay: -6.0s" />
-    <circle cx="910" cy="290" r="2"   fill="#878787" opacity="0.30" class="hk-f5" style="animation-delay: -9.0s" />
+    <circle cx="770" cy="305" r="2"   fill="#f36303" opacity="0.25" class="hk-f2" style="animation-delay: -6.0s" />
+    <circle cx="910" cy="290" r="2"   fill="#878787" opacity="0.25" class="hk-f5" style="animation-delay: -9.0s" />
     <circle cx="370" cy="365" r="2"   fill="#ffb280" opacity="0.30" class="hk-f2" style="animation-delay: -6.0s" />
   </g>
 
-  <!--
-    Bracket / syntax accents.
-    Each bracket is double-wrapped: the outer <g class="hk-sN"> rotates
-    the glyph in place (transform-box: fill-box keeps the pivot at the
-    glyph's own center), the inner <text class="hk-rN"> translates as
-    part of the drift system. Two brackets reuse hk-s1/hk-s2 with
-    inline animation-delay so their wobbles desync.
-  -->
-  <g font-family="ui-monospace, 'SF Mono', 'Fira Code', Menlo, monospace" fill="#878787" opacity="0.35" font-weight="300">
+  <!-- Bracket / syntax accents -->
+  <g font-family="ui-monospace, 'SF Mono', 'Fira Code', Menlo, monospace" fill="#878787" opacity="0.30" font-weight="300">
     <g class="hk-s1"                                ><text x="290"  y="80"  font-size="36" class="hk-r3"  >{</text></g>
     <g class="hk-s2"                                ><text x="934"  y="150" font-size="36" class="hk-r1c" style="animation-delay: -7.5s">&gt;</text></g>
     <g class="hk-s3"                                ><text x="40"   y="310" font-size="32" class="hk-r1"  style="animation-delay: -5.5s">&lt;</text></g>
@@ -282,9 +234,7 @@
       <tspan fill="#f36303">Hacker</tspan><tspan fill="#878787">Tok</tspan>
     </text>
 
-    <!-- Tagline. Red + cyan layers stack behind the peach main layer at
-         the same x; opacity-gated by the glitch keyframes (invisible at
-         rest, visible only during the burst). -->
+    <!-- Tagline -->
     <g>
       <!-- Red layer (revealed left during glitch) -->
       <text x="145" y="105" font-family="Verdana, Geneva, sans-serif" font-weight="bold" font-size="53" fill="#ff6666" fill-opacity="0.6" text-anchor="middle" class="hk-glitch-r">
