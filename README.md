@@ -1,13 +1,29 @@
 <div id="banner" align="center">
-
-<img src="public/icons/og-image.svg" alt="HackerTok" />
-
+  <a href="https://hackertok.github.io" target="_blank" rel="noopener">
+    <picture>
+      <source media="(prefers-color-scheme: light)" srcset="public/icons/og-image-light.svg" />
+      <img src="public/icons/og-image.svg" alt="HackerTok" />
+    </picture>
+  </a>
 </div>
 
-## Overview
+<br/>
+<br/>
 
-HackerTok reimagines Hacker News with a fluid, adaptive UI. Swipe or scroll through stories and comments — fast,
-private, and installable.
+<div align="center">
+  <h2>
+    An open-source, blazingly fast, progressive Hacker News client.
+  </h2>
+</div>
+
+<p align="center">
+  <a href="https://github.com/hackertok/hackertok.github.io/actions/workflows/ci.yml">
+    <img alt="HackerTok continuous integration status on main." src="https://github.com/hackertok/hackertok.github.io/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
+  <a href="https://github.com/hackertok/hackertok.github.io/actions/workflows/deploy.yml">
+    <img alt="HackerTok deployment status to GitHub Pages." src="https://github.com/hackertok/hackertok.github.io/actions/workflows/deploy.yml/badge.svg" /></a>
+</p>
+
+<br/>
 
 ## ✨ Features
 
@@ -20,20 +36,6 @@ private, and installable.
 | 📲 **Installable PWA**        | Add to home screen for a native app experience                 |
 | ♿ **Accessible**              | WCAG-tested with keyboard navigation and screen reader support |
 | ⚖️ **Open Source**            | Free as in freedom, licensed under AGPL-3.0                    |
-
-## 📦 Scripts
-
-| Command                 | Description                         |
-|-------------------------|-------------------------------------|
-| `npm run dev`           | Start development server with HMR   |
-| `npm run build`         | Build for production                |
-| `npm run preview`       | Preview production build locally    |
-| `npm run test`          | Run tests in watch mode             |
-| `npm run test:coverage` | Run tests with coverage report      |
-| `npm run typecheck`     | Type-check with TypeScript          |
-| `npm run e2e`           | Run end-to-end tests                |
-| `npm run icons`         | Generate PNG icons from SVG sources |
-| `npm run lint`          | Lint code with ESLint               |
 
 ## 📜 License
 
