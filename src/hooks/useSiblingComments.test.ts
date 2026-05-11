@@ -28,19 +28,19 @@ describe('useSiblingComments', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(result.current.siblingIds).toEqual([1001, 1002, 1003]);
+    expect(result.current.siblingIds).toEqual([1001, 1002, 1003, 1004]);
     expect(result.current.currentIndex).toBe(0);
   });
 
   it('fetches siblings from parent kids list', async () => {
-    // Default MSW handlers: 1001's parent is 12345, whose kids = [1001, 1002, 1003].
+    // Default MSW handlers: 1001's parent is 12345, whose kids = [1001, 1002, 1003, 1004].
     const { result } = renderHook(() => useSiblingComments(1001));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(result.current.siblingIds).toEqual([1001, 1002, 1003]);
+    expect(result.current.siblingIds).toEqual([1001, 1002, 1003, 1004]);
     expect(result.current.currentIndex).toBe(0);
     expect(result.current.error).toBeNull();
   });
@@ -52,7 +52,7 @@ describe('useSiblingComments', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(result.current.siblingIds).toEqual([1001, 1002, 1003]);
+    expect(result.current.siblingIds).toEqual([1001, 1002, 1003, 1004]);
     expect(result.current.currentIndex).toBe(1);
   });
 
@@ -176,7 +176,7 @@ describe('useSiblingComments', () => {
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
-    expect(result.current.siblingIds).toEqual([1001, 1002, 1003]);
+    expect(result.current.siblingIds).toEqual([1001, 1002, 1003, 1004]);
 
     server.use(
       http.get(`${FIREBASE_API}/item/:id.json`, ({ params }) => {

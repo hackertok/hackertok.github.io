@@ -10,7 +10,7 @@ export const mockItem = {
   score: 284,
   time: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago
   descendants: 137,
-  kids: [1001, 1002, 1003],
+  kids: [1001, 1002, 1003, 1004],
   type: 'story',
 };
 
@@ -72,6 +72,19 @@ export const mockAlgoliaCommentItem1003 = {
   author: 'dang',
   text: 'Worth reading the follow-up discussion linked in the article.',
   created_at_i: Math.floor(Date.now() / 1000) - 600,
+  parent_id: 12345,
+  story_id: 12345,
+  children: [],
+};
+
+// OP comment — author matches mockItem.by ('leerob') so the OP badge renders,
+// exercising .op-badge contrast in accessibility tests.
+export const mockAlgoliaCommentItem1004 = {
+  id: 1004,
+  type: 'comment',
+  author: 'leerob',
+  text: 'Author here — thanks for the discussion! I updated the benchmarks section based on feedback.',
+  created_at_i: Math.floor(Date.now() / 1000) - 300,
   parent_id: 12345,
   story_id: 12345,
   children: [],
@@ -230,6 +243,16 @@ export const handlers = [
         type: 'comment',
       });
     }
+    if (id === 1004) {
+      return HttpResponse.json({
+        id: 1004,
+        by: 'leerob',
+        text: 'Author here — thanks for the discussion! I updated the benchmarks section based on feedback.',
+        time: Math.floor(Date.now() / 1000) - 300,
+        parent: 12345,
+        type: 'comment',
+      });
+    }
     
     // Return a generic item for other IDs
     return HttpResponse.json({
@@ -364,6 +387,7 @@ export const handlers = [
       1001: mockAlgoliaCommentItem,
       1002: mockAlgoliaCommentItem1002,
       1003: mockAlgoliaCommentItem1003,
+      1004: mockAlgoliaCommentItem1004,
     };
 
     if (algoliaItems[id]) {

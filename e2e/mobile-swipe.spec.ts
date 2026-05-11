@@ -399,7 +399,7 @@ test.describe('Mobile Direct Item Access', () => {
     await page.goto('/#/item/55555');
 
     await expect(page.getByText('This item is not a story')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole('link', { name: /back to feed/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /back to home/i })).toBeVisible();
     await expect(page).toHaveTitle(/Item not available.*HackerTok/);
   });
 });

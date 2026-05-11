@@ -23,7 +23,7 @@ interface SwipeDomainStoryViewerProps {
  * filtering which has its own data source.
  *
  * Canonicalizes the raw `domain` prop once (matching the hook's internal
- * canonicalization) so `state.fromDomain`, `backHref`, and the user-visible
+ * canonicalization) so `state.fromDomain` and the user-visible
  * titles all agree on a single form regardless of how the URL was typed.
  * Without this, `/from/WWW.Foo.com/` would write `state.fromDomain` in its
  * non-canonical form, and the back link from a swiped-to item would point
@@ -46,7 +46,6 @@ export function SwipeDomainStoryViewer({ domain, initialItemId }: SwipeDomainSto
       loadMore={loadMore}
       initialItemId={initialItemId}
       backState={backState}
-      backHref={`/from/${canonical}`}
       titleFallback={`Submissions from ${canonical}`}
       emptyTitle={formatNoSubmissionsTitle(canonical)}
     />

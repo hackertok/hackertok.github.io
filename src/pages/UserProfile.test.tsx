@@ -116,7 +116,7 @@ describe('UserProfile', () => {
     it('renders the "user not found" StateView when Firebase returns null', async () => {
       renderProfile('ghost');
 
-      const link = await screen.findByRole('link', { name: /return to home/i });
+      const link = await screen.findByRole('link', { name: /back to home/i });
       expect(link).toHaveAttribute('href', '/');
       expect(screen.getByText(/no user with the id "ghost"/i)).toBeInTheDocument();
     });
@@ -124,7 +124,7 @@ describe('UserProfile', () => {
     it('sets the document title to "User not found"', async () => {
       renderProfile('ghost');
 
-      await screen.findByRole('link', { name: /return to home/i });
+      await screen.findByRole('link', { name: /back to home/i });
       await waitFor(() => {
         expect(document.title).toBe('User not found | HackerTok');
       });

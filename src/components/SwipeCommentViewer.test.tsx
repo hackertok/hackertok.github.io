@@ -37,10 +37,10 @@ describe('SwipeCommentViewer', () => {
       initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],
     });
 
-    // Parent 12345 has kids: [1001, 1002, 1003] → 3 panels.
+    // Parent 12345 has kids: [1001, 1002, 1003, 1004] → 4 panels.
     await waitFor(() => {
       const panels = screen.getAllByTestId('swipe-panel');
-      expect(panels.length).toBe(3);
+      expect(panels.length).toBe(4);
     });
 
     await waitFor(() => {
@@ -190,12 +190,13 @@ describe('SwipeCommentViewer', () => {
 
     await waitFor(() => {
       const panels = screen.getAllByTestId('swipe-panel');
-      expect(panels.length).toBe(3);
+      expect(panels.length).toBe(4);
     });
 
     const panels = screen.getAllByTestId('swipe-panel');
     expect(panels[0]).toHaveAttribute('data-item-id', '1001');
     expect(panels[1]).toHaveAttribute('data-item-id', '1002');
     expect(panels[2]).toHaveAttribute('data-item-id', '1003');
+    expect(panels[3]).toHaveAttribute('data-item-id', '1004');
   });
 });

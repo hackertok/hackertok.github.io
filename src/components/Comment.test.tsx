@@ -47,6 +47,13 @@ describe('Comment', () => {
       expect(screen.getByText(/hour ago/i)).toBeInTheDocument();
     });
 
+    it('marks the byline chevron as aria-hidden', () => {
+      render(<Comment comment={mockComment} />);
+
+      const chevron = screen.getByText('›');
+      expect(chevron).toHaveAttribute('aria-hidden', 'true');
+    });
+
     it('sanitizes HTML content', () => {
       const commentWithScript = {
         ...mockComment,

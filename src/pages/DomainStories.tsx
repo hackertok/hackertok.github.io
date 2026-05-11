@@ -36,7 +36,7 @@ export function DomainStories() {
         <StateView
           variant="not-found"
           title="No domain specified"
-          action={{ label: 'Return to Home', to: '/' }}
+          action={{ label: 'Back to Home', to: '/' }}
         />
       </div>
     );

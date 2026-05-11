@@ -81,7 +81,7 @@ export function UserProfile() {
         <StateView
           variant="not-found"
           title="No user specified"
-          action={{ label: 'Return to Home', to: '/' }}
+          action={{ label: 'Back to Home', to: '/' }}
         />
       </div>
     );
@@ -97,7 +97,7 @@ export function UserProfile() {
           variant="not-found"
           title="User not found"
           description={`No user with the id "${username}" exists.`}
-          action={{ label: 'Return to Home', to: '/' }}
+          action={{ label: 'Back to Home', to: '/' }}
         />
       </div>
     );

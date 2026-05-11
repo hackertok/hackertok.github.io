@@ -14,7 +14,7 @@ export const mockItem1 = {
   score: 284,
   time: now() - 3600,
   descendants: 137,
-  kids: [1001, 1002, 1003],
+  kids: [1001, 1002, 1003, 1004],
   type: 'story',
 };
 
@@ -273,6 +273,19 @@ export const mockAlgoliaCommentItem2001 = {
   text: 'Agreed. Worth noting that the Deno team has been investing heavily in this direction too.',
   created_at_i: now() - 900,
   parent_id: 1001,
+  story_id: 12345,
+  children: [],
+};
+
+// OP comment — author matches mockItem1.by ('leerob') so the OP badge renders,
+// exercising .op-badge contrast in the axe accessibility scans.
+export const mockAlgoliaCommentItem1004 = {
+  id: 1004,
+  type: 'comment',
+  author: 'leerob',
+  text: 'Author here — thanks for the discussion! I updated the benchmarks section based on feedback.',
+  created_at_i: now() - 300,
+  parent_id: 12345,
   story_id: 12345,
   children: [],
 };

@@ -174,7 +174,7 @@ test.describe('Domain Filter - Empty domain', () => {
     await expect(page.getByText('No domain specified')).toBeVisible();
 
     // Should have a link back to home that works
-    const homeLink = page.getByRole('link', { name: /Return to Home/i });
+    const homeLink = page.getByRole('link', { name: /Back to Home/i });
     await expect(homeLink).toBeVisible();
     await homeLink.click();
     // On mobile, swipe viewer immediately replaces /#/ with /#/item/{id}

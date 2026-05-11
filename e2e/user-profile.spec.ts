@@ -96,7 +96,7 @@ test.describe('User Profile - Desktop', () => {
     await expect(page.getByText(/no user with the id "nope" exists/i)).toBeVisible();
 
     // Action button surfaces a path back to home so the user is not stranded.
-    await expect(page.getByRole('link', { name: /return to home/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /back to home/i })).toBeVisible();
 
     // Document title reflects the error state, mirroring ItemDetail's pattern.
     await expect(page).toHaveTitle('User not found | HackerTok');

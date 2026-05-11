@@ -52,7 +52,7 @@ test.describe('Item Detail', () => {
 
     await expect(page).toHaveTitle(/(Item|Story) not found.*HackerTok/);
 
-    await expect(page.getByRole('link', { name: /back to feed/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /back to home/i })).toBeVisible();
 
     // URL must NOT silently swap to a different item's id (prevents bait-and-switch).
     expect(page.url()).toContain('99999999');
