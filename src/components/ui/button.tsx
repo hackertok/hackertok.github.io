@@ -5,8 +5,8 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 // Trimmed down to only the variants/sizes actually consumed in this app
-// (StateView uses `default` + `link` + `sm`; ThemeToggle uses `ghost` +
-// `icon`). The full shadcn matrix (destructive / outline / secondary +
+// (StateView uses `default` + `sm`; ThemeToggle uses `ghost` + `icon`).
+// The full shadcn matrix (destructive / outline / secondary +
 // xs / lg / icon-xs / icon-sm / icon-lg + size "default") was carrying
 // dead CSS tokens (--destructive-foreground, --secondary*, --ring,
 // --input) that nothing else referenced. Add a variant or size back
@@ -20,7 +20,6 @@ const buttonVariants = cva(
         default: "bg-primary text-primary-foreground hover:bg-accent-hover",
         ghost:
           "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50",
-        link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
         sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",

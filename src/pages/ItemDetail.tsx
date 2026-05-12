@@ -1,29 +1,13 @@
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useItemWithComments } from '../hooks/useItemWithComments';
 import { ItemDetailSkeleton, CommentDetail, StateView, CommentsSection, ItemArticle, PageStage } from '../components';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
-import { FEED_PATHS } from '../config/feedTypes';
-import type { LocationState } from '../types';
 
 export function ItemDetail() {
   const { id } = useParams();
-  const location = useLocation();
-  const locationState = location.state as LocationState | null;
-  // Back target for "Back to feed" on error/not-found.
-  // Priority: fromUser > fromDomain > feed > home (most specific wins).
-  const feedFrom = locationState?.from;
-  const fromDomain = locationState?.fromDomain;
-  const fromUser = locationState?.fromUser;
-  const feedPath = fromUser
-    ? `/submitted/${fromUser}`
-    : fromDomain
-      ? `/from/${fromDomain}`
-      : feedFrom
-        ? FEED_PATHS[feedFrom]
-        : '/';
   const { item, comments, itemLoading, commentsLoading, error, isNotFound, commentsError, refresh } = useItemWithComments(id ?? '');
 
   const { isOnline } = useNetworkStatus();
@@ -45,7 +29,7 @@ export function ItemDetail() {
   if (!id) {
     return (
       <div className="page-state-center-padded">
-        <StateView variant="not-found" action={{ label: 'Back to feed', to: feedPath }} />
+        <StateView variant="not-found" action={{ label: 'Back to Home', to: '/' }} />
       </div>
     );
   }
@@ -62,7 +46,7 @@ export function ItemDetail() {
           variant={isNotFound ? 'not-found' : 'error'}
           title={isNotFound ? undefined : 'Failed to load item'}
           description={isNotFound ? undefined : error}
-          action={isNotFound ? { label: 'Back to feed', to: feedPath } : { label: 'Try Again', onClick: () => { resetItemRetry(); void refresh(); } }}
+          action={isNotFound ? { label: 'Back to Home', to: '/' } : { label: 'Try Again', onClick: () => { resetItemRetry(); void refresh(); } }}
         />
       </div>
     );
@@ -82,7 +66,7 @@ export function ItemDetail() {
   if (!itemLoading && !item) {
     return (
       <div className="page-state-center-padded">
-        <StateView variant="not-found" action={{ label: 'Back to feed', to: feedPath }} />
+        <StateView variant="not-found" action={{ label: 'Back to Home', to: '/' }} />
       </div>
     );
   }

@@ -13,15 +13,15 @@
   --card-foreground: oklch(0.22 0.01 60);    /* same as foreground */
   --muted: oklch(0.94 0.008 60);             /* warm cream-100 */
   --muted-foreground: oklch(0.55 0.02 60);   /* warm gray-500 */
-  --accent: oklch(0.55 0.195 44);            /* WCAG AA text on light bg */
-  --accent-foreground: oklch(0.995 0.003 60);
-  --accent-hover: oklch(0.51 0.195 44);      /* darker orange for hover */
+  --accent: oklch(0.673 0.195 44);           /* logo orange — unified across themes */
+  --accent-foreground: oklch(0.22 0.01 60);  /* near-black (5.43:1 on accent bg) */
+  --accent-hover: oklch(0.63 0.195 44);      /* darker orange for hover */
   --border: oklch(0.90 0.008 60);            /* warm cream-200 */
   --destructive: oklch(0.58 0.22 27);        /* red-500 */
   --skeleton: oklch(0.90 0.008 60);          /* warm cream-200 */
   --viewed: oklch(0.55 0.01 60);             /* dimmed for read stories */
   --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
-  --pill-glow: 0 2px 8px oklch(0.55 0.195 44 / 0.25);
+  --pill-glow: 0 2px 8px oklch(0.673 0.195 44 / 0.3);
   --header-height: 53px;
   --network-bar-height: 0px;
 
@@ -46,15 +46,10 @@
   --card-foreground: oklch(0.92 0.005 60);   /* same as foreground */
   --muted: oklch(0.28 0.012 60);             /* warm gray-800 */
   --muted-foreground: oklch(0.65 0.02 60);   /* warm gray-400 */
-  --accent: oklch(0.673 0.195 44);
-  --accent-foreground: oklch(0.22 0.01 60);  /* near-black */
-  --accent-hover: oklch(0.63 0.195 44);      /* darker orange for hover */
   --border: oklch(0.30 0.012 60);            /* warm gray-700 */
   --destructive: oklch(0.65 0.20 27);        /* red-400 */
   --skeleton: oklch(0.30 0.012 60);          /* warm gray-700 */
   --viewed: oklch(0.62 0.01 60);             /* dimmed for read stories */
-  --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
-  --pill-glow: 0 2px 8px oklch(0.673 0.195 44 / 0.3);
 }
 
 /* Wire CSS variables into Tailwind utility classes */
@@ -105,10 +100,8 @@
    (14.5px / 1.62 line-height) than HN's defaults so dense threads stay
    readable. `p { margin: 0 }` + `p + p` adjacency replaces the old
    bottom-margin approach so the last paragraph never adds an unbalanced
-   gap. `a` (HN link styling with `break-all` for long URLs) and `i`
-   (italic) are intentionally `@apply`-ed because they need to inherit
-   Tailwind's `text-accent` token resolution; the rest are explicit so
-   the OKLCH `color-mix` calls survive without hand-mapping. */
+   gap. Links use a subtle accent-tinted pill with a bottom border
+   for high contrast in both themes. */
 .comment-content {
   font-size: 14.5px;
   line-height: 1.62;
@@ -124,7 +117,19 @@
 }
 
 .comment-content a {
-  @apply text-accent underline break-all;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+  text-decoration: none;
+  border-bottom: 1.5px solid color-mix(in oklch, var(--accent) 45%, transparent);
+  border-radius: 3px;
+  padding: 1px 4px;
+  word-break: break-all;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.comment-content a:hover {
+  background: color-mix(in oklch, var(--accent) 20%, transparent);
+  border-bottom-color: var(--accent);
 }
 
 .comment-content blockquote {
@@ -658,7 +663,7 @@ body.swipe-mode {
   font-weight: 700;
   letter-spacing: 0.4px;
   background: color-mix(in oklch, var(--accent) 14%, transparent);
-  color: var(--accent);
+  color: var(--foreground);
   border-radius: 3px;
   vertical-align: 1px;
   line-height: 1.4;

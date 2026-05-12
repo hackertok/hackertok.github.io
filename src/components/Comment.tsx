@@ -63,7 +63,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
           already conveys parent location, so a denser row would only
           add noise. */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-0.5 comment-byline">
-        <span className="text-accent/80 text-base leading-none">›</span>
+        <span className="text-accent/80 text-base leading-none" aria-hidden="true">›</span>
         {/* OP variant: `OpWrap` (shared with AuthorByline) places the
             badge as a SIBLING of the Link so the handle's accessible
             name stays clean, and the `gap-1.5` spacing is identical

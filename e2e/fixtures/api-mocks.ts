@@ -165,6 +165,17 @@ export async function setupApiMocks(page: Page) {
           type: 'comment',
         },
       });
+    } else if (id === 1004) {
+      await route.fulfill({
+        json: {
+          id: 1004,
+          by: 'leerob',
+          text: 'Author here — thanks for the discussion! I updated the benchmarks section based on feedback.',
+          time: Math.floor(Date.now() / 1000) - 300,
+          parent: 12345,
+          type: 'comment',
+        },
+      });
     } else {
       // Generic story for unknown IDs so byline/comments-link clicks
       // never 404 in tests that don't pin them.
@@ -219,8 +230,16 @@ export async function setupApiMocks(page: Page) {
           parent_id: 12345,
           story_id: 12345,
         },
+        {
+          objectID: '1004',
+          author: 'leerob',
+          comment_text: 'Author here — thanks for the discussion! I updated the benchmarks section based on feedback.',
+          created_at_i: Math.floor(Date.now() / 1000) - 300,
+          parent_id: 12345,
+          story_id: 12345,
+        },
       ];
-      nbHits = 3;
+      nbHits = 4;
     } else if (tags.includes('show_hn')) {
       hits = [mockShowHNItem1, mockShowHNItem2];
       nbHits = 2;

@@ -42,17 +42,17 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('loads sibling comments as swipeable panels', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    // Parent story 12345 has kids: [1001, 1002, 1003] → 3 panels.
-    await waitForSwipeReady(page, 3);
+    // Parent story 12345 has kids: [1001, 1002, 1003, 1004] → 4 panels.
+    await waitForSwipeReady(page, 4);
 
     const panels = page.getByTestId('swipe-panel');
-    await expect(panels).toHaveCount(3);
+    await expect(panels).toHaveCount(4);
   });
 
   test('can swipe to next sibling comment', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    await waitForSwipeReady(page, 3);
+    await waitForSwipeReady(page, 4);
 
     const container = page.getByTestId('swipe-container');
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
@@ -67,7 +67,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('can swipe through multiple siblings and back', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    await waitForSwipeReady(page, 3);
+    await waitForSwipeReady(page, 4);
 
     const container = page.getByTestId('swipe-container');
     const width = await container.evaluate((el) => el.getBoundingClientRect().width);
@@ -111,7 +111,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('swipe uses replaceState — no extra history entries', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    await waitForSwipeReady(page, 3);
+    await waitForSwipeReady(page, 4);
 
     const container = page.getByTestId('swipe-container');
     const width = await container.evaluate((el) => el.getBoundingClientRect().width);
@@ -275,7 +275,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
   test('swipe to sibling then click parent navigates to story viewer', async ({ page }) => {
     await page.goto('/#/item/1001');
-    await waitForSwipeReady(page, 3);
+    await waitForSwipeReady(page, 4);
 
     const container = page.getByTestId('swipe-container');
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
@@ -302,11 +302,11 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     await page.getByRole('link', { name: 'parent' }).click();
     await expect(page).toHaveURL(/\/item\/1001/, { timeout: 10000 });
 
-    // 1001's siblings are [1001, 1002, 1003] → confirms we're in the
+    // 1001's siblings are [1001, 1002, 1003, 1004] → confirms we're in the
     // comment viewer with the correct sibling set.
     await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
     await expect(page).toHaveTitle(/Comment by patio11/);
 
-    await waitForSwipeReady(page, 3);
+    await waitForSwipeReady(page, 4);
   });
 });

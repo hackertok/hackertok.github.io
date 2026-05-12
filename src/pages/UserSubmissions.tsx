@@ -32,7 +32,7 @@ export function UserSubmissions() {
         <StateView
           variant="not-found"
           title="No user specified"
-          action={{ label: 'Return to Home', to: '/' }}
+          action={{ label: 'Back to Home', to: '/' }}
         />
       </div>
     );

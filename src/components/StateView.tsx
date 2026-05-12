@@ -217,7 +217,6 @@ export function StateView({ variant, title, description, action, compact, classN
   const resolvedTitle = title ?? defaults.title;
   const resolvedDesc = description ?? defaults.description;
   const Scene = SCENES[variant];
-  const isButtonStyle = variant === 'error' || variant === 'not-found';
 
   if (compact) {
     return (
@@ -225,7 +224,7 @@ export function StateView({ variant, title, description, action, compact, classN
         <Scene compact />
         {resolvedTitle && <span className="text-muted-foreground text-sm">{resolvedTitle}</span>}
         {!resolvedTitle && resolvedDesc && <span className="text-muted-foreground text-sm">{resolvedDesc}</span>}
-        {action && <ActionElement action={action} isButtonStyle={false} />}
+        {action && <ActionElement action={action} />}
       </div>
     );
   }
@@ -241,12 +240,12 @@ export function StateView({ variant, title, description, action, compact, classN
       {resolvedDesc && (
         <p className="text-sm text-muted-foreground max-w-65 pb-7 leading-relaxed">{resolvedDesc}</p>
       )}
-      {action && <ActionElement action={action} isButtonStyle={isButtonStyle} />}
+      {action && <ActionElement action={action} />}
     </div>
   );
 }
 
-function ActionElement({ action, isButtonStyle }: { action: NonNullable<StateViewProps['action']>; isButtonStyle: boolean }) {
+function ActionElement({ action }: { action: NonNullable<StateViewProps['action']> }) {
   // Single swap covers ALL retry surfaces in the app — every retry/try-again
   // button across the codebase routes through StateView's `action` prop, so
   // adding RefreshCw here propagates to StoryList, DomainStories,
@@ -265,18 +264,8 @@ function ActionElement({ action, isButtonStyle }: { action: NonNullable<StateVie
     return (
       <Button
         asChild
-        variant={isButtonStyle ? 'default' : 'link'}
+        variant="default"
         size="sm"
-        // Strip the size variant's height + padding (and the conditional
-        // `has-[>svg]:px-2.5` for retry icons, whose `:has()` pseudo-class
-        // selector specificity would otherwise beat plain `p-0`) for the
-        // inline `link` branch so it renders as a true text link, matching
-        // the pre-shadcn behavior. No current callsite uses `action.to` with
-        // `isButtonStyle=false` (i.e. `variant` `empty`, `deleted`, or `end`
-        // in non-compact layout); today `action.to` appears only on `not-found`
-        // or `error`, both `isButtonStyle=true`, but the override keeps the
-        // link branch visually correct for any future caller.
-        className={isButtonStyle ? undefined : 'h-auto p-0 has-[>svg]:px-0'}
       >
         <Link to={action.to} onClick={action.onClick}>
           {buttonContent}

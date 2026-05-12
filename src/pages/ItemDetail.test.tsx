@@ -8,8 +8,6 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import { FIREBASE_API, ALGOLIA_API } from '../config/api';
 import { mockAlgoliaCommentItem } from '../mocks/handlers';
-import type { LocationState } from '../types';
-import type { InitialEntry } from 'react-router';
 
 // Render ItemDetail inside a route so useParams() resolves :id
 function renderItemDetail(itemId: number) {
@@ -18,18 +16,6 @@ function renderItemDetail(itemId: number) {
       <Route path="/item/:id" element={<ItemDetail />} />
     </Routes>,
     { initialEntries: [`/item/${itemId}`] }
-  );
-}
-
-function renderItemDetailWithState(itemId: number, state?: LocationState) {
-  const entry: InitialEntry = state
-    ? { pathname: `/item/${itemId}`, state }
-    : `/item/${itemId}`;
-  return render(
-    <Routes>
-      <Route path="/item/:id" element={<ItemDetail />} />
-    </Routes>,
-    { initialEntries: [entry] }
   );
 }
 
@@ -74,64 +60,18 @@ describe('ItemDetail', () => {
     });
   });
 
-  describe('back-to-feed action on not-found', () => {
-    // Null response → NotFoundError → isNotFound=true → "Back to feed" link.
+  describe('back-to-home action on not-found', () => {
     beforeEach(() => {
       server.use(
         http.get(`${FIREBASE_API}/item/:id.json`, () => HttpResponse.json(null)),
       );
     });
 
-    it('points to /from/:domain when state.fromDomain is set', async () => {
-      renderItemDetailWithState(99999999, { fromDomain: 'example.com' });
+    it('links to / with "Back to Home" label', async () => {
+      renderItemDetail(99999999);
 
-      const link = await screen.findByRole('link', { name: /back to feed/i });
-      expect(link).toHaveAttribute('href', '/from/example.com');
-    });
-
-    it('points to the feed path when state.from is set', async () => {
-      renderItemDetailWithState(99999999, { from: 'best' });
-
-      const link = await screen.findByRole('link', { name: /back to feed/i });
-      expect(link).toHaveAttribute('href', '/best');
-    });
-
-    it('points to / when no navigation state is provided', async () => {
-      renderItemDetailWithState(99999999);
-
-      const link = await screen.findByRole('link', { name: /back to feed/i });
+      const link = await screen.findByRole('link', { name: /back to home/i });
       expect(link).toHaveAttribute('href', '/');
-    });
-
-    it('prefers fromDomain over from when both are present', async () => {
-      // Currently mutually exclusive in production, but the priority
-      // (fromDomain wins as the more specific origin) is pinned defensively.
-      renderItemDetailWithState(99999999, {
-        from: 'best',
-        fromDomain: 'example.com',
-      });
-
-      const link = await screen.findByRole('link', { name: /back to feed/i });
-      expect(link).toHaveAttribute('href', '/from/example.com');
-    });
-
-    it('points to /submitted/:user when state.fromUser is set', async () => {
-      renderItemDetailWithState(99999999, { fromUser: 'pg' });
-
-      const link = await screen.findByRole('link', { name: /back to feed/i });
-      expect(link).toHaveAttribute('href', '/submitted/pg');
-    });
-
-    it('prefers fromUser over fromDomain when both are present', async () => {
-      // Origin priority: fromUser > fromDomain > from. Locked defensively.
-      renderItemDetailWithState(99999999, {
-        from: 'best',
-        fromDomain: 'example.com',
-        fromUser: 'pg',
-      });
-
-      const link = await screen.findByRole('link', { name: /back to feed/i });
-      expect(link).toHaveAttribute('href', '/submitted/pg');
     });
   });
 

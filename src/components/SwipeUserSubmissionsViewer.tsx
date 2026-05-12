@@ -26,10 +26,6 @@ interface SwipeUserSubmissionsViewerProps {
  * Used on mobile for `/submitted/:id` and for `/item/:id` arrivals whose
  * `location.state` carries `fromUser`.
  *
- * `backHref` points back to the list (`/submitted/:username`), not the
- * profile (`/user/:username`), matching the convention used by every other
- * swipe viewer (return to the list you came from). The user can navigate to
- * the profile from the list page.
  */
 export function SwipeUserSubmissionsViewer({
   username,
@@ -50,7 +46,6 @@ export function SwipeUserSubmissionsViewer({
       loadMore={loadMore}
       initialItemId={initialItemId}
       backState={backState}
-      backHref={`/submitted/${username}`}
       titleFallback={`Submissions by ${username}`}
       emptyTitle={formatNoUserSubmissionsTitle(username)}
     />

@@ -9,7 +9,7 @@ import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
 import { fetchItemOnly, NotFoundError } from '../api/hn';
 import { getRecentlyViewedIds, getSessionViewedIds, markViewedWithTime } from '../utils/viewedItems';
-import { FEED_TYPE_TITLES, FEED_PATHS } from '../config/feedTypes';
+import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
 import { StateView } from './StateView';
 import type { StoryItem, FeedType, LocationState } from '../types';
@@ -26,8 +26,6 @@ interface SwipeStoryViewerCoreProps {
   /** LocationState written to per-item URL via navigate(..., { state }). Also used
    *  to detect history-navigation vs fresh direct link (determines anchor behavior). */
   backState: LocationState;
-  /** Target of the "Back to feed" action in the injected-error UI */
-  backHref: string;
   /** Document-title fallback when no current story is selected */
   titleFallback?: string;
   /** When provided, a "no results" state is rendered after the fetch completes
@@ -55,7 +53,6 @@ export function SwipeStoryViewerCore({
   loadMore,
   initialItemId,
   backState,
-  backHref,
   titleFallback,
   emptyTitle,
 }: SwipeStoryViewerCoreProps) {
@@ -454,7 +451,7 @@ export function SwipeStoryViewerCore({
           variant={isInjectedNotFound ? 'not-found' : 'error'}
           title={isNonStoryError ? 'This item is not a story' : isInjectedNotFound ? undefined : 'Failed to load item'}
           description={isInjectedNotFound ? undefined : injectedError}
-          action={isInjectedNotFound ? { label: 'Back to feed', to: backHref } : { label: 'Try Again', onClick: () => void navigate(0) }}
+          action={isInjectedNotFound ? { label: 'Back to Home', to: '/' } : { label: 'Try Again', onClick: () => void navigate(0) }}
         />
       </div>
     );
@@ -623,7 +620,6 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
       loadMore={loadMore}
       initialItemId={initialItemId}
       backState={backState}
-      backHref={FEED_PATHS[type]}
       titleFallback={FEED_TYPE_TITLES[type]}
     />
   );
