@@ -30,7 +30,7 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
     // the whole header as one unit at slot 0 (no delay) so the focal
     // point reads cleanly instead of cascading inside itself.
     <article className={`${className} story-stage-leader`}>
-      <h1 className={`text-xl font-semibold mb-2 leading-snug ${viewed ? 'text-viewed' : 'text-foreground'}`}>
+      <h1 className={`text-xl font-semibold mb-2 leading-snug break-words ${viewed ? 'text-viewed' : 'text-foreground'}`}>
         {item.url ? (
           <a
             href={item.url}

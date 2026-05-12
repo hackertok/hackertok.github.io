@@ -4,6 +4,11 @@
 /* Enable class-based dark mode (toggle with .dark class on html element) */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Override browser default cursor: default on buttons */
+button {
+  cursor: pointer;
+}
+
 /* ── Design Tokens ──────────────────────────────────────────────────── */
 /* Light mode (default) — warm stone/taupe palette */
 :root {
@@ -106,6 +111,7 @@
   font-size: 14.5px;
   line-height: 1.62;
   color: var(--foreground);
+  overflow-wrap: break-word;
 }
 
 .comment-content p {
@@ -161,7 +167,7 @@
   overflow-x: auto;
   margin: 0.75em 0;
   border: 1px solid var(--border);
-  white-space: pre-wrap;
+  white-space: pre;
 }
 
 /* Reset the inline code styling inside a <pre> so the block doesn't

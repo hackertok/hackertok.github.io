@@ -58,15 +58,15 @@ describe('usePackedNav', () => {
     expect(result.current.showOverflow).toBe(false);
   });
 
-  it('keeps the active item (items[0]) visible even when no other items fit', () => {
+  it('packs all items into overflow when none fit the budget', () => {
     // budget = 130 - 105 = 25; comments alone is 96 → exceeds budget.
-    // The active item is preserved anyway.
+    // All items go into overflow.
     const { result } = renderHook(() =>
       usePackedNav(makeFakeRef(130), ITEMS_4, { overflowWidth: 105, gap: 4 }),
     );
 
-    expect(keys(result.current.visible)).toEqual(['comments']);
-    expect(keys(result.current.hidden)).toEqual(['best', 'show', 'ask']);
+    expect(keys(result.current.visible)).toEqual([]);
+    expect(keys(result.current.hidden)).toEqual(['comments', 'best', 'show', 'ask']);
     expect(result.current.showOverflow).toBe(true);
   });
 

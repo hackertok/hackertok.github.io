@@ -189,6 +189,151 @@ describe('sanitizeHtml', () => {
     });
   });
 
+  describe('auto-linking bare URLs', () => {
+    it('wraps a bare https URL in an <a> tag', () => {
+      const result = sanitizeHtml('<p>https://example.com</p>');
+      expect(result).toContain('<a');
+      expect(result).toContain('href="https://example.com"');
+      expect(result).toContain('rel="noreferrer"');
+    });
+
+    it('wraps a bare http URL in an <a> tag', () => {
+      const result = sanitizeHtml('<p>http://example.com</p>');
+      expect(result).toContain('<a');
+      expect(result).toContain('href="http://example.com"');
+    });
+
+    it('auto-links multiple URLs in separate paragraphs', () => {
+      const html = '<p>https://a.com</p><p>https://b.com</p>';
+      const result = sanitizeHtml(html);
+      expect(result).toContain('href="https://a.com"');
+      expect(result).toContain('href="https://b.com"');
+    });
+
+    it('auto-links a URL surrounded by text', () => {
+      const result = sanitizeHtml('Visit https://example.com for info');
+      expect(result).toContain('href="https://example.com"');
+      expect(result).toContain('Visit ');
+      expect(result).toContain(' for info');
+    });
+
+    it('does not double-link an already-linked URL', () => {
+      const html = '<a href="https://example.com">https://example.com</a>';
+      const result = sanitizeHtml(html);
+      const linkCount = (result.match(/<a /g) ?? []).length;
+      expect(linkCount).toBe(1);
+    });
+
+    it('does not auto-link URLs inside <code>', () => {
+      const result = sanitizeHtml('<code>https://example.com</code>');
+      expect(result).not.toContain('<a');
+    });
+
+    it('does not auto-link URLs inside <pre>', () => {
+      const result = sanitizeHtml('<pre>https://example.com</pre>');
+      expect(result).not.toContain('<a');
+    });
+
+    it('preserves query strings and fragments in auto-linked URLs', () => {
+      const url = 'https://example.com/path?key=val&amp;other=2#frag';
+      const result = sanitizeHtml(`<p>${url}</p>`);
+      expect(result).toContain('href="https://example.com/path?key=val&amp;other=2#frag"');
+    });
+
+    it('rewrites auto-linked HN item URLs to internal routes', () => {
+      const result = sanitizeHtml('<p>https://news.ycombinator.com/item?id=12345</p>');
+      expect(result).toContain('href="#/item/12345"');
+    });
+
+    it('wraps a bare email address in a mailto: link', () => {
+      const result = sanitizeHtml('Contact me at user@example.com for info');
+      expect(result).toContain('href="mailto:user@example.com"');
+      expect(result).toContain('>user@example.com<');
+    });
+
+    it('does not auto-link obfuscated emails', () => {
+      const result = sanitizeHtml('user at gmail dot com');
+      expect(result).not.toContain('mailto:');
+      expect(result).not.toContain('<a');
+    });
+
+    it('auto-links email alongside URL in same content', () => {
+      const result = sanitizeHtml('<p>Email me@test.com or visit https://test.com</p>');
+      expect(result).toContain('href="mailto:me@test.com"');
+      expect(result).toContain('href="https://test.com"');
+    });
+
+    it('does not auto-link email inside <code>', () => {
+      const result = sanitizeHtml('<code>user@example.com</code>');
+      expect(result).not.toContain('mailto:');
+    });
+
+    it('excludes trailing period from auto-linked URL', () => {
+      const result = sanitizeHtml('Visit https://example.com.');
+      expect(result).toContain('href="https://example.com"');
+      expect(result).toContain('example.com</a>.');
+    });
+
+    it('excludes trailing comma from auto-linked URL', () => {
+      const result = sanitizeHtml('See https://example.com, and more');
+      expect(result).toContain('href="https://example.com"');
+    });
+
+    it('excludes trailing parenthesis from auto-linked URL', () => {
+      const result = sanitizeHtml('(https://example.com)');
+      expect(result).toContain('href="https://example.com"');
+    });
+
+    it('excludes trailing semicolon from auto-linked URL', () => {
+      const result = sanitizeHtml('url: https://example.com;');
+      expect(result).toContain('href="https://example.com"');
+    });
+
+    it('excludes trailing punctuation from URL with path', () => {
+      const result = sanitizeHtml('https://example.com/path?q=1#frag.');
+      expect(result).toContain('href="https://example.com/path?q=1#frag"');
+    });
+
+    it('does not misclassify a URL containing @ as an email', () => {
+      const result = sanitizeHtml('See https://medium.com/@author/post here');
+      expect(result).toContain('href="https://medium.com/@author/post"');
+      expect(result).not.toContain('mailto:');
+    });
+
+    it('auto-links entity-encoded bare URLs from HN API', () => {
+      // HN encodes slashes as &#x2F; in its API responses
+      const result = sanitizeHtml('site: https:&#x2F;&#x2F;www.example.com');
+      expect(result).toContain('href="https://www.example.com"');
+    });
+
+    it('does not auto-link a leading-dot email like .user@example.com', () => {
+      const result = sanitizeHtml('.user@example.com');
+      // The valid substring "user@example.com" may still match, but the
+      // leading dot must not be part of the linked address.
+      expect(result).not.toContain('href="mailto:.user@example.com"');
+    });
+
+    it('does not auto-link consecutive-dot emails like user..name@test.com', () => {
+      const result = sanitizeHtml('user..name@test.com');
+      expect(result).not.toContain('href="mailto:user..name@test.com"');
+    });
+
+    it('does not auto-link bare-special-char locals like %@example.com', () => {
+      const result = sanitizeHtml('%@example.com');
+      expect(result).not.toContain('mailto:');
+    });
+
+    it('does not auto-link dot-only locals like .@test.com or ..@test.com', () => {
+      expect(sanitizeHtml('.@test.com')).not.toContain('mailto:');
+      expect(sanitizeHtml('..@test.com')).not.toContain('mailto:');
+    });
+
+    it('does not auto-link emails with leading-dot domains like user@.example.com', () => {
+      const result = sanitizeHtml('user@.example.com');
+      expect(result).not.toContain('mailto:');
+    });
+  });
+
   describe('attribute filtering', () => {
     it('preserves allowed attributes', () => {
       const result = sanitizeHtml('<a href="https://example.com" class="link">text</a>');

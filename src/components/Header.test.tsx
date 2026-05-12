@@ -542,5 +542,52 @@ describe('Header', () => {
       expect(within(trigger).getByText('more')).toBeInTheDocument();
       expect(trigger.querySelector('svg')).not.toBeNull();
     });
+
+    it('renders a contextual item as a non-link menuitem when it overflows', () => {
+      // On ultra-narrow viewports the packer can push every item —
+      // including the contextual pill at index 0 — into the dropdown.
+      // The contextual branch in renderMenuItem must produce a plain
+      // <DropdownMenuItem> (not an <a>) with aria-current="page".
+      mockPackedNav.state = {
+        visible: [],
+        hidden: ['comments', 'best', 'show', 'ask'],
+        showOverflow: true,
+      };
+
+      render(<Header />, {
+        initialEntries: [
+          { pathname: '/item/12345', state: { isComment: true } },
+        ],
+      });
+      openMore();
+
+      const commentsItem = screen.getByRole('menuitem', { name: 'comments' });
+      expect(commentsItem).toHaveAttribute('aria-current', 'page');
+      // Contextual items are not links — they represent the current page.
+      expect(commentsItem).not.toHaveAttribute('href');
+    });
+
+    it('hides the hairline separator when all items overflow (visible is empty)', () => {
+      // When the packer puts everything into the dropdown, visibleItems
+      // is []. The separator between inline pills and the "More" trigger
+      // must not render — there's nothing to separate.
+      mockPackedNav.state = {
+        visible: [],
+        hidden: ['comments', 'best', 'show', 'ask'],
+        showOverflow: true,
+      };
+
+      render(<Header />, {
+        initialEntries: [
+          { pathname: '/item/12345', state: { isComment: true } },
+        ],
+      });
+
+      const nav = screen.getByRole('navigation', { name: 'Sections' });
+      // Query only the hairline <span> separator, not the chevron SVG
+      // inside the "More" button (which also carries aria-hidden).
+      const separator = nav.querySelector('span[aria-hidden="true"]');
+      expect(separator).toBeNull();
+    });
   });
 });

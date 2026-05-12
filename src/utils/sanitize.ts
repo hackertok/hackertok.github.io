@@ -296,9 +296,75 @@ purify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
+/**
+ * Wraps bare `http(s)://` URLs and email addresses in text nodes with
+ * `<a>` tags so DOMPurify's afterSanitizeAttributes hook can add
+ * `rel="noreferrer"` and rewrite HN / self-host links automatically.
+ * Skips text inside existing `<a>`, `<code>`, and `<pre>` elements to
+ * avoid double-linking or mangling code blocks.
+ */
+
+// Match URLs and emails in a single pass (module-level to avoid
+// recompilation). The URL branch ends with a character-class that
+// excludes common trailing punctuation so "Visit https://x.com."
+// links only "https://x.com".
+// The email branch requires alphanumeric segments separated by
+// dots/special chars — rejecting leading/trailing/consecutive dots
+// and bare-special-char local parts (e.g. `.@`, `..@`, `%@`).
+const LINKABLE = /(https?:\/\/[^\s<>]*[^\s<>.,;:!?'")\]}>]|[a-zA-Z0-9]+(?:[._%+-][a-zA-Z0-9]+)*@[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,})/g;
+
+function autoLinkUrls(html: string): string {
+  if (typeof document === 'undefined') return html;
+
+  // Fast path: skip DOM work when there's nothing that could match.
+  // Check for 'http' (not '://') because HN entity-encodes slashes as
+  // &#x2F;, so raw HTML contains "https:&#x2F;&#x2F;" not "https://".
+  if (!html.includes('http') && !html.includes('@')) return html;
+
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  const fragment = template.content;
+
+  const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) {
+    const t = walker.currentNode as Text;
+    if (t.parentElement?.closest('a, code, pre')) continue;
+    if (LINKABLE.test(t.textContent || '')) nodes.push(t);
+    LINKABLE.lastIndex = 0;
+  }
+
+  // Nothing to link — return original HTML without serializing.
+  if (nodes.length === 0) return html;
+
+  for (const textNode of nodes) {
+    const parts = textNode.textContent.split(LINKABLE);
+    if (parts.length <= 1) continue;
+
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < parts.length; i++) {
+      if (!parts[i]) continue;
+      if (i % 2 === 1) {
+        // Odd index = captured match (URL or email).
+        const a = document.createElement('a');
+        a.href = parts[i].startsWith('http') ? parts[i] : `mailto:${parts[i]}`;
+        a.textContent = parts[i];
+        frag.appendChild(a);
+      } else {
+        frag.appendChild(document.createTextNode(parts[i]));
+      }
+    }
+    textNode.parentNode?.replaceChild(frag, textNode);
+  }
+
+  const div = document.createElement('div');
+  div.appendChild(fragment);
+  return div.innerHTML;
+}
+
 export function sanitizeHtml(html: string | null | undefined): string {
   if (!html || typeof html !== 'string') {
     return '';
   }
-  return purify.sanitize(html, PURIFY_CONFIG);
+  return purify.sanitize(autoLinkUrls(html), PURIFY_CONFIG);
 }
