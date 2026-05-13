@@ -129,29 +129,18 @@ test.describe('Header overflow — More dropdown', () => {
   });
 });
 
-test.describe('Theme toggle — tooltip on hover', () => {
-  // Hover-driven tooltip text is unique to this control (it's the only
-  // icon-only header button). Mobile devices don't fire hover events the
-  // same way, so we restrict to non-mobile projects.
-  test.skip(({ browserName }) => browserName === 'webkit', 'No hover on mobile webkit');
-
+test.describe('Theme toggle — accessible label', () => {
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
   });
 
-  test('hovering the theme toggle reveals the tooltip text', async ({ page }) => {
+  test('theme toggle button has an accessible label describing the action', async ({ page }) => {
     await page.goto('/#/');
     await expect(
       page.getByText('Rust Is the Future of JavaScript Infrastructure').first(),
     ).toBeVisible();
 
     const toggle = page.getByTestId('theme-toggle');
-    await toggle.hover();
-
-    // 3000ms covers TooltipProvider's 250ms delayDuration plus portal
-    // mount + slack for slow CI.
-    await expect(
-      page.getByRole('tooltip', { name: /switch to (dark|light) mode/i }),
-    ).toBeVisible({ timeout: 3000 });
+    await expect(toggle).toHaveAccessibleName(/switch to (dark|light) mode/i);
   });
 });

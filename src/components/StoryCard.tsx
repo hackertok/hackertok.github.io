@@ -172,7 +172,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
   return (
     <article ref={setRefs} className={wrapperClass} style={wrapperStyle} data-testid="story-card" data-story-id={story.id} data-viewed={viewed}>
       <div className="space-y-1.5">
-        <h2 className="text-lg md:text-xl leading-[1.35] md:leading-[1.3] font-semibold">
+        <h2 className="text-lg md:text-xl leading-[1.35] md:leading-[1.3] font-semibold break-words">
           {story.url ? (
             <a
               href={story.url}

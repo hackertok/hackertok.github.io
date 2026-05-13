@@ -35,21 +35,22 @@ export interface UsePackedNavOptions {
 const UNMEASURED = Number.POSITIVE_INFINITY;
 
 /**
- * Greedy nav-overflow packing. Always shows `items[0]`; progressively
- * hides the trailing items into the overflow menu when the container
- * shrinks below the items' total width. Returns the packed slices as
- * the original item objects (not just keys) — generic over `T extends
- * PackableItem` so callers can attach render data alongside `width`
- * and read it straight off the result without a separate lookup.
+ * Greedy nav-overflow packing. Progressively hides trailing items into
+ * the overflow menu when the container shrinks below the items' total
+ * width. No item is force-included — if the budget is too small for
+ * even the first item, every item lands in the overflow menu. Returns
+ * the packed slices as the original item objects (not just keys) —
+ * generic over `T extends PackableItem` so callers can attach render
+ * data alongside `width` and read it straight off the result without
+ * a separate lookup.
  *
- * Callers control which item lands at index 0 — put the one most worth
- * preserving when space runs out there. The Header puts the active
- * contextual pill (Comments / User / From) there when one exists,
- * falling back to the canonical first feed tab so the user always has
- * at least one piece of route context visible. Mid-array active feed
- * tabs CAN still be packed into the overflow menu (the consumer is
- * expected to mirror the active treatment into the menu item via
- * `aria-current` + active styling, as Header does).
+ * Items are packed strictly left-to-right; the consumer controls
+ * priority by ordering the input array. The Header puts the active
+ * contextual pill (Comments / User / From) at index 0 when one exists,
+ * falling back to the canonical first feed tab — but neither position
+ * guarantees visibility on extremely narrow viewports. The consumer is
+ * expected to mirror the active treatment into the overflow menu item
+ * via `aria-current` + active styling (as Header does).
  *
  * On first render and in environments without DOM layout (jsdom, SSR), the
  * container width is treated as Infinity so every item is visible and the
@@ -142,15 +143,12 @@ export function usePackedNav<T extends PackableItem>(
     }
 
     // Overflow case — reserve space for the trigger and pack greedily.
-    // The first item (caller's "active") is always visible, even if it
-    // alone exceeds the budget: we'd rather overflow the active pill than
-    // drop the only piece of context the user has on the page.
     const budget = containerWidth - options.overflowWidth;
-    const visible: T[] = [items[0]];
-    let used = items[0].width;
+    const visible: T[] = [];
+    let used = 0;
 
-    for (let i = 1; i < items.length; i++) {
-      const next = used + options.gap + items[i].width;
+    for (let i = 0; i < items.length; i++) {
+      const next = used + (i > 0 ? options.gap : 0) + items[i].width;
       if (next <= budget) {
         visible.push(items[i]);
         used = next;

@@ -226,6 +226,17 @@ export function Header() {
   // case that NavLink's auto-aria-current can't see, and we want the
   // attribute we set here to actually stick.
   const renderMenuItem = (item: NavItemSpec) => {
+    if (item.kind === 'contextual') {
+      return (
+        <DropdownMenuItem
+          key={item.key}
+          className="bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground capitalize"
+          aria-current="page"
+        >
+          {item.key}
+        </DropdownMenuItem>
+      );
+    }
     const feed = item.key as NavFeedType;
     return (
       <DropdownMenuItem
@@ -309,21 +320,12 @@ export function Header() {
             {visibleItems.map(renderNavItem)}
             {showOverflow && (
               <>
-                {/* Hairline separator (GitHub-style) demarcating primary
-                    nav from the secondary overflow trigger. `h-5` (20px)
-                    sits inside the pill height (~28px) leaving ~4px margin
-                    top/bottom so it reads as a divider not a border;
-                    `mx-1.5` adds 6px on each side which combines with the
-                    parent `gap-1` to give 10px breathing room on each
-                    side. We use `bg-muted-foreground/40` rather than the
-                    project's `--border` token because in dark mode the
-                    `--border` cream-700 is too low-contrast against the
-                    dark card surface — at this micro-line size, the
-                    divider needs a touch more visual weight to read. */}
-                <span
-                  aria-hidden="true"
-                  className="h-5 w-px bg-muted-foreground/40 mx-1.5"
-                />
+                {visibleItems.length > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="h-5 w-px bg-muted-foreground/40 mx-1.5"
+                  />
+                )}
                 {/* "More ⌄" pill (GitHub-repo-header pattern). Custom
                     className (vs reusing navLinkClass) so we can use gap-2
                     between text and chevron — matches the wider GitHub
