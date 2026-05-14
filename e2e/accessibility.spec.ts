@@ -418,12 +418,17 @@ test.describe('Accessibility - prefers-reduced-motion', () => {
     // hides the cards in the skeleton state. If the cascade ever leaks
     // into reduced-motion, AT users would see opacity:0 cards or
     // motion they explicitly opted out of.
-    const cardStyles = await card.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return { animationName: style.animationName, opacity: style.opacity };
-    });
-    expect(cardStyles.animationName).toBe('none');
-    expect(cardStyles.opacity).toBe('1');
+    //
+    // We use waitForFunction instead of a one-shot evaluate because
+    // WebKit may not have fully resolved @media-query styles at the
+    // instant the element is attached — polling avoids a race between
+    // DOM attachment and style computation.
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.stagger-fade');
+      if (!el) return false;
+      const s = getComputedStyle(el);
+      return s.animationName === 'none' && s.opacity === '1';
+    }, undefined, { timeout: 5000 });
 
     // .skeleton-overlay should be `display: none` under reduced motion
     // — the choreography is skipped entirely, the user lands directly
