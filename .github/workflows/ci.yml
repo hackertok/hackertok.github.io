@@ -11,15 +11,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   license-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -27,8 +31,27 @@ jobs:
       - name: Install production dependencies only
         run: npm ci --omit=dev
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
       - name: Install Grant
-        run: curl -sSfL https://get.anchore.io/grant | sudo sh -s -- -b /usr/local/bin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          GRANT_VERSION=$(curl -sSfL -H "Authorization: Bearer ${GH_TOKEN}" \
+            https://api.github.com/repos/anchore/grant/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          curl -sSfL -O "https://github.com/anchore/grant/releases/download/v${GRANT_VERSION}/grant_${GRANT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL -O "https://github.com/anchore/grant/releases/download/v${GRANT_VERSION}/grant_${GRANT_VERSION}_checksums.txt"
+          curl -sSfL -O "https://github.com/anchore/grant/releases/download/v${GRANT_VERSION}/grant_${GRANT_VERSION}_checksums.txt.sig"
+          curl -sSfL -O "https://github.com/anchore/grant/releases/download/v${GRANT_VERSION}/grant_${GRANT_VERSION}_checksums.txt.pem"
+          cosign verify-blob \
+            --signature "grant_${GRANT_VERSION}_checksums.txt.sig" \
+            --certificate "grant_${GRANT_VERSION}_checksums.txt.pem" \
+            --certificate-identity-regexp "^https://github.com/anchore/grant/" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "grant_${GRANT_VERSION}_checksums.txt"
+          sha256sum --check --ignore-missing "grant_${GRANT_VERSION}_checksums.txt"
+          sudo tar -xzf "grant_${GRANT_VERSION}_linux_amd64.tar.gz" -C /usr/local/bin grant
 
       - name: Check licenses
         run: grant check dir:.
@@ -37,10 +60,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -65,10 +88,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: 'npm'
