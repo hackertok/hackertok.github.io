@@ -40,3 +40,4 @@ require-known-license: true
 ignore-packages:
   - hackertok      # Root package (we control its license)
   - "actions/*"    # GitHub Actions (detected by Grant's cataloger)
+  - "sigstore/*"   # Sigstore actions (cosign-installer)
