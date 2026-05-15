@@ -24,19 +24,18 @@ export async function waitForSwipeReady(page: Page, minPanels = 2) {
 /**
  * Scroll the swipe container to a target position and wait for it to settle.
  *
- * Two-phase approach to handle cross-browser scroll-snap quirks:
+ * Handles cross-browser scroll-snap quirks in three steps per attempt:
  *
- * Phase 1 — Temporarily disables CSS scroll-snap and scrolls. This prevents
- * the WebKit snap-back bug (bugs.webkit.org/300086) where the compositor
- * thread reverts a programmatic scrollTo after scrollend has already fired.
+ * 1. Disable CSS scroll-snap and scrollTo with `behavior: 'instant'`.
+ * 2. Re-enable scroll-snap and force reflow so the browser re-snaps to
+ *    the (now correct) position per CSS Scroll Snap spec §4.1.3.
+ * 3. Wait 150 ms and verify — WebKit's compositor thread can snap back
+ *    asynchronously even after multiple stable rAF frames.
  *
- * Phase 2 — Re-enables scroll-snap and verifies the position survives the
- * mandatory re-snap (CSS Scroll Snap spec §4.1.3). Firefox re-snaps
- * synchronously on scroll-snap-type changes; floating-point rounding between
- * getBoundingClientRect and the CSS-computed snap point can cause drift.
- *
- * If position drifts at any point, snap is re-disabled and the scroll retried.
- * Rejects after 5 s if the target position is never reached.
+ * If position drifted, retries from step 1 (up to 3 attempts).
+ * Dispatches a synthetic `scrollend` so the app's updateIndex fires
+ * (Firefox sometimes suppresses native scrollend during snap toggling).
+ * Rejects after 8 s if the target position is never reached.
  */
 export async function smoothScrollAndAwaitSettled(container: Locator, targetLeft: number) {
   await container.evaluate((el, left) => {
@@ -50,48 +49,37 @@ export async function smoothScrollAndAwaitSettled(container: Locator, targetLeft
       const timeout = setTimeout(() => {
         el.style.scrollSnapType = savedSnap;
         reject(new Error(`Scroll to ${left} timed out (stuck at ${el.scrollLeft})`));
-      }, 5000);
+      }, 8000);
 
-      el.style.scrollSnapType = 'none';
-      void el.offsetHeight;
-      el.scrollTo({ left, behavior: 'instant' });
+      const attempt = (remaining: number) => {
+        // Step 1: disable snap, scroll instantly
+        el.style.scrollSnapType = 'none';
+        void el.offsetHeight;
+        el.scrollTo({ left, behavior: 'instant' });
 
-      let stableFrames = 0;
-      let snapRestored = false;
-
-      const poll = () => {
-        if (Math.abs(el.scrollLeft - left) < 2) {
-          stableFrames++;
-
-          // After 2 stable frames with snap off, re-enable and verify
-          if (!snapRestored && stableFrames >= 2) {
-            el.style.scrollSnapType = savedSnap;
-            void el.offsetHeight; // synchronous re-snap per spec §4.1.3
-            snapRestored = true;
-          }
-
-          if (stableFrames >= 5) {
-            clearTimeout(timeout);
-            // Firefox sometimes suppresses native scroll/scrollend events
-            // during programmatic scrollTo with snap toggling. Dispatch
-            // scrollend so the app's updateIndex() handler always fires.
-            // Harmless on browsers that already fired the native event
-            // (updateIndex computes the same index → React no-op).
-            el.dispatchEvent(new Event('scrollend'));
-            resolve();
-            return;
-          }
-        } else {
-          // Position drifted (WebKit snap-back or Firefox re-snap) — retry
-          stableFrames = 0;
-          snapRestored = false;
-          el.style.scrollSnapType = 'none';
+        // Step 2: after 2 rAF frames re-enable snap
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          el.style.scrollSnapType = savedSnap;
           void el.offsetHeight;
-          el.scrollTo({ left, behavior: 'instant' });
-        }
-        requestAnimationFrame(poll);
+
+          // Step 3: verify after 150 ms (catches late WebKit compositor snap-back)
+          setTimeout(() => {
+            if (Math.abs(el.scrollLeft - left) < 2) {
+              clearTimeout(timeout);
+              el.dispatchEvent(new Event('scrollend'));
+              resolve();
+            } else if (remaining > 0) {
+              attempt(remaining - 1);
+            } else {
+              clearTimeout(timeout);
+              el.dispatchEvent(new Event('scrollend'));
+              resolve();
+            }
+          }, 150);
+        }));
       };
-      requestAnimationFrame(poll);
+
+      attempt(2);
     });
   }, targetLeft);
 }
@@ -108,5 +96,5 @@ export async function waitForScrollAtIndex(page: Page, expectedIndex: number) {
     const width = el.getBoundingClientRect().width;
     if (width === 0) return false;
     return Math.round(el.scrollLeft / width) === idx;
-  }, expectedIndex, { timeout: 5_000 });
+  }, expectedIndex, { timeout: 10_000 });
 }

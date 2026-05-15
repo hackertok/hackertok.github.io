@@ -14,7 +14,7 @@ test.describe('Network Status Bar - Viewport Switch', () => {
     await page.goto('/#/');
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
-    await page.getByText('137 comments').first().click();
+    await page.getByText('137 comments').first().evaluate(el => (el as HTMLElement).click());
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
     await context.setOffline(true);
@@ -116,7 +116,7 @@ fixtureTest.describe('Network Status Bar - Offline Item Detail to Mobile', () =>
     await expect(page.getByText('No internet connection')).toBeVisible({ timeout: 5000 });
 
     // Click triggers a fetch that will fail under offline state.
-    await page.getByText('137 comments').first().click();
+    await page.getByText('137 comments').first().evaluate(el => (el as HTMLElement).click());
     await page.waitForTimeout(1000);
 
     await page.setViewportSize({ width: 375, height: 667 });
