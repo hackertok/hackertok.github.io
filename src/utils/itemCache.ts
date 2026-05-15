@@ -84,6 +84,7 @@ export function setCachedItem(itemId: number | string, item: Item, comments: Com
 function pruneItemCache(removeCount = 0): void {
   try {
     const itemKeys = [];
+    const corruptKeys: string[] = [];
     
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -92,10 +93,16 @@ function pruneItemCache(removeCount = 0): void {
           const data = JSON.parse(localStorage.getItem(key)!) as { timestamp?: number };
           itemKeys.push({ key, timestamp: data.timestamp ?? 0 });
         } catch {
-          // Corrupted entry, remove it
-          localStorage.removeItem(key);
+          // Corrupted entry, collect for removal after the scan
+          corruptKeys.push(key);
         }
       }
+    }
+    
+    // Remove corrupted entries in a separate pass to avoid
+    // mutating localStorage indices during the scan loop.
+    for (const key of corruptKeys) {
+      localStorage.removeItem(key);
     }
     
     // Sort by timestamp (oldest first)

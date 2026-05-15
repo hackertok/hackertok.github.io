@@ -197,6 +197,19 @@ describe('itemCache', () => {
       expect(localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}corrupted`)).toBeNull();
       expect(getCachedItem(123)).not.toBeNull();
     });
+
+    it('removes all adjacent corrupted entries during pruning', () => {
+      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}corrupt_a`, '{bad json');
+      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}corrupt_b`, '{also bad');
+      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}corrupt_c`, '{still bad');
+
+      setCachedItem(123, mockItem, mockComments);
+
+      expect(localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}corrupt_a`)).toBeNull();
+      expect(localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}corrupt_b`)).toBeNull();
+      expect(localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}corrupt_c`)).toBeNull();
+      expect(getCachedItem(123)).not.toBeNull();
+    });
   });
 
 });

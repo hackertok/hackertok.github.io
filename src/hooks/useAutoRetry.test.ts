@@ -180,4 +180,36 @@ describe('useAutoRetry', () => {
     await act(async () => { vi.advanceTimersByTime(30000); });
     expect(retryFn).not.toHaveBeenCalled();
   });
+
+  it('counts reconnect retries toward maxAttempts', async () => {
+    const retryFn = vi.fn();
+    type Props = Parameters<typeof useAutoRetry>[0];
+
+    const initialProps: Props = { error: 'fail', retryFn, isOnline: true, maxAttempts: 2 };
+    const { result, rerender } = renderHook(
+      (props: Props) => useAutoRetry(props),
+      { initialProps },
+    );
+
+    // Go offline before the first backoff timer fires
+    rerender({ error: 'fail', retryFn, isOnline: false, maxAttempts: 2 });
+
+    // Come back online → reconnect retry (counts as attempt 1)
+    rerender({ error: 'fail', retryFn, isOnline: true, maxAttempts: 2 });
+    await act(async () => { vi.advanceTimersByTime(500); });
+    expect(retryFn).toHaveBeenCalledTimes(1);
+
+    // Flicker again → reconnect retry (counts as attempt 2 → giveUp)
+    rerender({ error: 'fail', retryFn, isOnline: false, maxAttempts: 2 });
+    rerender({ error: 'fail', retryFn, isOnline: true, maxAttempts: 2 });
+    await act(async () => { vi.advanceTimersByTime(500); });
+    expect(retryFn).toHaveBeenCalledTimes(2);
+
+    // A third flicker must NOT produce another retry — maxAttempts reached
+    rerender({ error: 'fail', retryFn, isOnline: false, maxAttempts: 2 });
+    rerender({ error: 'fail', retryFn, isOnline: true, maxAttempts: 2 });
+    await act(async () => { vi.advanceTimersByTime(500); });
+    expect(retryFn).toHaveBeenCalledTimes(2); // still 2 — no extra retry
+    expect(result.current.giveUp).toBe(true);
+  });
 });

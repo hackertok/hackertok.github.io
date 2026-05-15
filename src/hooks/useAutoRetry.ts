@@ -114,6 +114,7 @@ export function useAutoRetry({
     if (wasOffline && isOnline && error && enabled && attempts < maxAttempts) {
       clearTimer();
       timerRef.current = setTimeout(() => {
+        setAttempts(a => a + 1);
         retryInFlightRef.current = true;
         retryFnRef.current();
       }, RECONNECT_DELAY);

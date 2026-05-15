@@ -3,6 +3,7 @@ import { StateView } from './StateView';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
+  resetKey?: string;
 }
 
 interface ErrorBoundaryState {
@@ -22,6 +23,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught:', error, errorInfo);
+  }
+
+  componentDidUpdate(prevProps: ErrorBoundaryProps) {
+    if (this.props.resetKey !== prevProps.resetKey && this.state.hasError) {
+      this.setState({ hasError: false, error: null });
+    }
   }
 
   render() {
