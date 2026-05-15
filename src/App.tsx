@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, useParams, useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
@@ -175,6 +175,14 @@ function NotFoundPage() {
   );
 }
 
+// Resets the ErrorBoundary when the route changes so stale error
+// state is cleared automatically — without this, browser back/forward
+// navigation leaves the user stuck on the error screen.
+function LocationAwareErrorBoundary({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>;
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -182,7 +190,7 @@ function App() {
         <NetworkStatusProvider>
           <ScrollContainerProvider>
             <HashRouter>
-              <ErrorBoundary>
+              <LocationAwareErrorBoundary>
                 <div className="min-h-screen bg-background text-foreground">
                   <Header />
                   <NetworkStatusBar />
@@ -200,7 +208,7 @@ function App() {
                     </Routes>
                   </MainContent>
                 </div>
-              </ErrorBoundary>
+              </LocationAwareErrorBoundary>
             </HashRouter>
           </ScrollContainerProvider>
         </NetworkStatusProvider>
