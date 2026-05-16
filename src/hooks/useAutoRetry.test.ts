@@ -99,15 +99,20 @@ describe('useAutoRetry', () => {
     expect(retryFn).toHaveBeenCalledTimes(1);
   });
 
-  it('preserves attempts when error clears during in-flight retry', async () => {
-    const retryFn = vi.fn();
+  it('preserves attempts when error clears during in-flight Promise retry', async () => {
+    // Only Promise-returning retryFn can track in-flight state.
+    // While the Promise is pending, an optimistic error-clear should NOT
+    // reset attempts — the fetch may still fail.
+    let resolveRetry!: () => void;
+    const retryFn = vi.fn(() => new Promise<void>(r => { resolveRetry = r; }));
+
     const initialProps: UseAutoRetryProps = { error: 'fail', retryFn, isOnline: true };
     const { rerender } = renderHook(
       (props: UseAutoRetryProps) => useAutoRetry(props),
       { initialProps },
     );
 
-    // 1st retry fires — retryInFlightRef becomes true
+    // 1st retry fires — retryInFlightRef becomes true (Promise pending)
     await act(async () => { vi.advanceTimersByTime(2000); });
     expect(retryFn).toHaveBeenCalledTimes(1);
 
@@ -116,6 +121,8 @@ describe('useAutoRetry', () => {
 
     // Error returns (retry's fetch failed) — should use 2nd backoff (4s)
     rerender({ error: 'still failing', retryFn, isOnline: true });
+    // Reject the in-flight Promise to settle it
+    await act(async () => { resolveRetry(); });
     retryFn.mockClear();
 
     await act(async () => { vi.advanceTimersByTime(2000); });
@@ -211,5 +218,103 @@ describe('useAutoRetry', () => {
     await act(async () => { vi.advanceTimersByTime(500); });
     expect(retryFn).toHaveBeenCalledTimes(2); // still 2 — no extra retry
     expect(result.current.giveUp).toBe(true);
+  });
+
+  it('resets attempts after a successful Promise-returning retry', async () => {
+    let resolveRetry!: () => void;
+    const retryFn = vi.fn(() => new Promise<void>(r => { resolveRetry = r; }));
+
+    const initialProps: UseAutoRetryProps = { error: 'fail', retryFn, isOnline: true };
+    const { result, rerender } = renderHook(
+      (props: UseAutoRetryProps) => useAutoRetry(props),
+      { initialProps },
+    );
+
+    // 1st retry fires — retryFn returns a Promise
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(retryFn).toHaveBeenCalledTimes(1);
+
+    // Error clears (optimistic clear by the retried fetch)
+    rerender({ error: null, retryFn, isOnline: true });
+
+    // Retry Promise resolves (fetch succeeded — error stays null)
+    await act(async () => { resolveRetry(); });
+
+    // New error should start from attempt 0 (2s delay, not 4s)
+    rerender({ error: 'new fail', retryFn, isOnline: true });
+    expect(result.current.giveUp).toBe(false);
+    retryFn.mockClear();
+
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(retryFn).toHaveBeenCalledTimes(1); // fires at 2s, proving attempts reset
+  });
+
+  it('does not accumulate attempts across separate successful retry cycles', async () => {
+    let resolveRetry!: () => void;
+    const retryFn = vi.fn(() => new Promise<void>(r => { resolveRetry = r; }));
+
+    const initialProps: UseAutoRetryProps = { error: 'fail', retryFn, isOnline: true };
+    const { result, rerender } = renderHook(
+      (props: UseAutoRetryProps) => useAutoRetry(props),
+      { initialProps },
+    );
+
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      retryFn.mockClear();
+      // Wait for retry to fire (always 2s if attempts reset properly)
+      await act(async () => { vi.advanceTimersByTime(2000); });
+      expect(retryFn).toHaveBeenCalledTimes(1);
+
+      // Retry succeeds: error clears, Promise resolves
+      rerender({ error: null, retryFn, isOnline: true });
+      await act(async () => { resolveRetry(); });
+
+      if (cycle < 3) {
+        // Trigger next error cycle
+        rerender({ error: `fail ${cycle + 1}`, retryFn, isOnline: true });
+      }
+    }
+
+    // After 3 separate SUCCESSFUL retries, the 4th error must NOT give up
+    rerender({ error: 'fail 4', retryFn, isOnline: true });
+    expect(result.current.giveUp).toBe(false);
+    expect(result.current.isRetrying).toBe(true);
+  });
+
+  it('preserves attempts when isOnline toggles during in-flight Promise retry', async () => {
+    let rejectRetry!: (err: Error) => void;
+    const retryFn = vi.fn(() => new Promise<void>((_res, rej) => {
+      rejectRetry = rej;
+    }));
+
+    const initialProps: UseAutoRetryProps = { error: 'fail', retryFn, isOnline: true };
+    const { rerender } = renderHook(
+      (props: UseAutoRetryProps) => useAutoRetry(props),
+      { initialProps },
+    );
+
+    // 1st retry fires at 2s — Promise is pending
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(retryFn).toHaveBeenCalledTimes(1);
+
+    // retryFn clears error optimistically (simulating what loadMore does)
+    rerender({ error: null, retryFn, isOnline: true });
+
+    // Network toggles while Promise is still pending
+    rerender({ error: null, retryFn, isOnline: false });
+    rerender({ error: null, retryFn, isOnline: true });
+
+    // Promise rejects (fetch failed)
+    await act(async () => { rejectRetry(new Error('network')); });
+
+    // Error returns — should use 2nd backoff (4s), not 1st (2s)
+    rerender({ error: 'still failing', retryFn, isOnline: true });
+    retryFn.mockClear();
+
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(retryFn).not.toHaveBeenCalled(); // must not fire at 2s
+
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(retryFn).toHaveBeenCalledTimes(1); // fires at 4s
   });
 });

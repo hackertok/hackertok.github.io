@@ -442,12 +442,12 @@ describe('useDomainInfiniteStories', () => {
       );
 
       await act(async () => {
-        await result.current.loadMore();
+        await result.current.loadMore().catch(() => { /* error set internally */ });
       });
       await waitFor(() => expect(result.current.error).toBe('flaky'));
 
       await act(async () => {
-        await result.current.loadMore();
+        await result.current.loadMore().catch(() => { /* error set internally */ });
       });
       await waitFor(() =>
         expect(result.current.stories.map((s) => s.id)).toEqual([1, 2, 3, 4]),

@@ -13,7 +13,7 @@ export function ItemDetail() {
   const { isOnline } = useNetworkStatus();
   const { isRetrying: isItemRetrying, resetRetry: resetItemRetry } = useAutoRetry({
     error: isNotFound ? null : error,
-    retryFn: () => void refresh(),
+    retryFn: refresh,
     isOnline,
   });
   const documentTitle = (!id || isNotFound || (!itemLoading && !item))
@@ -46,7 +46,7 @@ export function ItemDetail() {
           variant={isNotFound ? 'not-found' : 'error'}
           title={isNotFound ? undefined : 'Failed to load item'}
           description={isNotFound ? undefined : error}
-          action={isNotFound ? { label: 'Back to Home', to: '/' } : { label: 'Try Again', onClick: () => { resetItemRetry(); void refresh(); } }}
+          action={isNotFound ? { label: 'Back to Home', to: '/' } : { label: 'Try Again', onClick: () => { resetItemRetry(); void refresh().catch(() => { /* error state set internally */ }); } }}
         />
       </div>
     );
@@ -93,7 +93,7 @@ export function ItemDetail() {
               <CommentsSection
                 comments={comments}
                 commentsError={commentsError}
-                onRetry={() => void refresh()}
+                onRetry={refresh}
                 storyAuthor={item.author}
               />
             </section>

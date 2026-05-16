@@ -314,6 +314,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setIsNotFound(err instanceof NotFoundError);
+      throw err;
     } finally {
       setItemLoading(false);
       setCommentsLoading(false);

@@ -74,7 +74,7 @@ export function FullScreenComment({ commentId, onAuthorLoaded }: FullScreenComme
   if (error && !isRetrying) {
     return (
       <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
-        <StateView variant="error" title="Failed to load comment" description={error} action={{ label: 'Retry', onClick: retry }} />
+        <StateView variant="error" title="Failed to load comment" description={error} action={{ label: 'Retry', onClick: () => void retry().catch(() => { /* error state set internally */ }) }} />
       </div>
     );
   }

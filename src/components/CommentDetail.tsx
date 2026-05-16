@@ -76,7 +76,7 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
           variant="error"
           title="Failed to load comment"
           description={error}
-          action={{ label: 'Retry', onClick: retry }}
+          action={{ label: 'Retry', onClick: () => void retry().catch(() => { /* error state set internally */ }) }}
         />
       </div>
     );
