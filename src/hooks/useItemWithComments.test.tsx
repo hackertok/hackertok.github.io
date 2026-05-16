@@ -887,7 +887,7 @@ describe('useItemWithComments', () => {
       );
 
       await act(async () => {
-        await result.current.refresh();
+        await result.current.refresh().catch(() => { /* error set internally */ });
       });
 
       expect(result.current.error).toBeTruthy();

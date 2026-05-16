@@ -14,7 +14,11 @@ import {
   fetchItemOnly,
   fetchAlgoliaItem,
   normalizeAlgoliaItemChildren,
+  NotFoundError,
 } from './hn';
+import { http, HttpResponse } from 'msw';
+import { server } from '../mocks/server';
+import { FIREBASE_API } from '../config/api';
 
 describe('hn API utilities', () => {
   describe('formatTimeAgo', () => {
@@ -632,6 +636,17 @@ describe('hn API utilities', () => {
       
       await expect(fetchFirebaseItem(12345, controller.signal))
         .rejects.toThrow();
+    });
+
+    it('throws NotFoundError when Firebase returns null for non-existent item', async () => {
+      server.use(
+        http.get(`${FIREBASE_API}/item/:id.json`, () => {
+          return HttpResponse.json(null);
+        }),
+      );
+
+      await expect(fetchFirebaseItem(99999)).rejects.toThrow(NotFoundError);
+      await expect(fetchFirebaseItem(99999)).rejects.toThrow('Item 99999 not found');
     });
   });
 

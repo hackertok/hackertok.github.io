@@ -34,8 +34,10 @@ test.describe('Mobile Swipe Viewer', () => {
 
     const container = page.getByTestId('swipe-container');
 
-    // Need at least 2 panels mounted before scroll-snap has a target.
-    await waitForSwipeReady(page, 2);
+    // Wait for pagination panels (stories.length < 10 auto-load) so
+    // DOM mutations from appending stories don't overlap with the scroll
+    // (Firefox re-snaps on snap-child changes during scroll-settle).
+    await waitForSwipeReady(page, 6);
 
     // getBoundingClientRect is more reliable than clientWidth (handles zoom).
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
@@ -58,7 +60,9 @@ test.describe('Mobile Swipe Viewer', () => {
 
     await expect(page.getByTestId('swipe-panel').first()).toBeVisible();
 
-    await waitForSwipeReady(page, 2);
+    // Wait for pagination panels (stories.length < 10 auto-load) so
+    // DOM mutations from appending stories don't interfere with snap.
+    await waitForSwipeReady(page, 6);
 
     const panelWidth = await container.evaluate(el => el.getBoundingClientRect().width);
 
@@ -138,7 +142,10 @@ test.describe('Mobile Swipe Viewer', () => {
     // Initial / → /item/12345 redirect must settle before scripted swipes.
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
 
-    await waitForSwipeReady(page, 2);
+    // Wait for pagination panels (stories.length < 10 auto-load) so
+    // DOM mutations from appending stories don't overlap with the scroll
+    // (Firefox re-snaps on snap-child changes during scroll-settle).
+    await waitForSwipeReady(page, 6);
 
     const width = await container.evaluate((el) => el.getBoundingClientRect().width);
 
@@ -161,7 +168,10 @@ test.describe('Mobile Swipe Viewer', () => {
     // and the programmatic-scroll flag have cleared before we swipe.
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
     const container = page.getByTestId('swipe-container');
-    await waitForSwipeReady(page, 3);
+    // Wait for pagination panels (stories.length < 10 auto-load) so
+    // DOM mutations from appending stories don't overlap with the scroll
+    // (Firefox re-snaps on snap-child changes during scroll-settle).
+    await waitForSwipeReady(page, 6);
     const width = await container.evaluate((el) => el.getBoundingClientRect().width);
 
     await smoothScrollAndAwaitSettled(container, width);
@@ -240,7 +250,10 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
     const container = page.getByTestId('swipe-container');
-    await waitForSwipeReady(page, 2);
+    // Wait for pagination panels (stories.length < 10 auto-load) so
+    // DOM mutations from appending stories don't overlap with the scroll
+    // (Firefox re-snaps on snap-child changes during scroll-settle).
+    await waitForSwipeReady(page, 6);
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
 
     // Swipe to index 1 (item 12346 — "SQLite Does Not Do Full FSYNC by Default")
@@ -273,7 +286,10 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
     const container = page.getByTestId('swipe-container');
-    await waitForSwipeReady(page, 3);
+    // Wait for pagination panels (stories.length < 10 auto-load) so
+    // DOM mutations from appending stories don't overlap with the scroll
+    // (Firefox re-snaps on snap-child changes during scroll-settle).
+    await waitForSwipeReady(page, 6);
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
 
     // Swipe to index 1, then index 2 (item 12347 — "Why We Moved from React to htmx")
@@ -306,7 +322,10 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
     const container = page.getByTestId('swipe-container');
-    await waitForSwipeReady(page, 2);
+    // Wait for pagination panels (stories.length < 10 auto-load) so
+    // DOM mutations from appending stories don't overlap with the scroll
+    // (Firefox re-snaps on snap-child changes during scroll-settle).
+    await waitForSwipeReady(page, 6);
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
 
     // Swipe to index 1 so we have a non-trivial position
@@ -338,16 +357,25 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
     const container = page.getByTestId('swipe-container');
-    await waitForSwipeReady(page, 3);
+
+    // The auto-load fires immediately (stories.length < 10) at index 0,
+    // adding pagination items before any swipe. Wait for those panels so
+    // DOM mutations from appending stories don't overlap with the scroll
+    // (Firefox re-snaps on snap-child changes during scroll-settle).
+    await waitForSwipeReady(page, 6);
+
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
 
     // Swipe to the last item in the initial batch
     await smoothScrollAndAwaitSettled(container, panelWidth * 2);
-    await waitForScrollAtIndex(page, 2);
-    await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
 
-    // Wait for more panels to be loaded (pagination items should appear)
-    await expect(page.locator('[data-testid="swipe-panel"]').nth(3)).toBeAttached({ timeout: 10000 });
+    // Use expect.poll to tolerate brief Firefox scroll-snap drift
+    // from loading-panel toggles at the tail of the container.
+    await expect.poll(() => container.evaluate(
+      (el) => Math.round(el.scrollLeft / el.getBoundingClientRect().width)
+    ), { timeout: 10000 }).toBe(2);
+
+    await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
 
     // The total panel count should be more than the initial 3
     const panelCount = await page.locator('[data-testid="swipe-panel"]').count();

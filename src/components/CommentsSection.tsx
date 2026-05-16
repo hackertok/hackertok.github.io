@@ -7,7 +7,7 @@ import type { Comment } from '../types';
 interface CommentsSectionProps {
   comments: Comment[] | null;
   commentsError: string | null;
-  onRetry: () => void;
+  onRetry: () => void | Promise<void>;
   /**
    * Forwarded to CommentTree so OP detection works in nested replies.
    * Defaults to `''`; the OP guard short-circuits on empty/unknown.
@@ -31,7 +31,7 @@ export function CommentsSection({ comments, commentsError, onRetry, storyAuthor 
   });
 
   if (commentsError && !comments?.length && !isRetrying) {
-    return <StateView variant="error" compact description="Failed to load comments" action={{ label: 'Retry', onClick: onRetry }} />;
+    return <StateView variant="error" compact description="Failed to load comments" action={{ label: 'Retry', onClick: () => void onRetry()?.catch(() => { /* error state set internally */ }) }} />;
   }
   if (commentsError && !comments?.length && isRetrying) {
     return <CommentSkeletonTree count={6} />;

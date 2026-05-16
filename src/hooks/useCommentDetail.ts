@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchAlgoliaItem, fetchFirebaseItem, normalizeAlgoliaItemChildren } from '../api/hn';
 import type { Comment } from '../types';
 
@@ -24,7 +24,7 @@ interface UseCommentDetailResult {
   itemAuthor: string | null;
   loading: boolean;
   error: string | null;
-  retry: () => void;
+  retry: () => Promise<void>;
 }
 
 interface InitialData {
@@ -49,58 +49,68 @@ export function useCommentDetail(
   const [itemAuthor, setItemAuthor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const retry = useCallback(() => setRetryCount(c => c + 1), []);
+  const controllerRef = useRef<AbortController | null>(null);
 
+  const load = useCallback(async (signal: AbortSignal) => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      const item = await fetchAlgoliaItem(commentId, signal);
+      if (signal.aborted) return;
+
+      setComment({
+        id: item.id,
+        author: item.author ?? '',
+        text: item.text ?? '',
+        createdAt: item.created_at_i * 1000,
+        parentId: item.parent_id,
+      });
+      setItemId(item.story_id ?? null);
+      setReplies(normalizeAlgoliaItemChildren(item.children ?? []));
+      setLoading(false);
+
+      // Fetch parent title + author in background (non-blocking).
+      // The author drives OP detection; landing ~100-300ms after the
+      // comment renders means the badge pops in late, which is the
+      // accepted trade-off vs delaying the focal render.
+      if (item.story_id) {
+        try {
+          const parentItem = await fetchFirebaseItem(item.story_id, signal);
+          if (!signal.aborted && parentItem) {
+            if (parentItem.title) setItemTitle(parentItem.title);
+            if (parentItem.by) setItemAuthor(parentItem.by);
+          }
+        } catch {
+          // Degrade gracefully — title link still works with itemId
+          // alone; OP badge stays off (consumers guard with
+          // `isKnownAuthor(itemAuthor)`).
+        }
+      }
+    } catch (err) {
+      if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
+      setError(err instanceof Error ? err.message : String(err));
+      setLoading(false);
+      throw err;
+    }
+  }, [commentId]);
+
+  const retry = useCallback(async () => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    await load(controller.signal);
+  }, [load]);
+
+  // Initial load + re-fetch when commentId changes.
   useEffect(() => {
     const controller = new AbortController();
-
-    async function load() {
-      setError(null);
-      setLoading(true);
-
-      try {
-        const item = await fetchAlgoliaItem(commentId, controller.signal);
-        if (controller.signal.aborted) return;
-
-        setComment({
-          id: item.id,
-          author: item.author ?? '',
-          text: item.text ?? '',
-          createdAt: item.created_at_i * 1000,
-          parentId: item.parent_id,
-        });
-        setItemId(item.story_id ?? null);
-        setReplies(normalizeAlgoliaItemChildren(item.children ?? []));
-        setLoading(false);
-
-        // Fetch parent title + author in background (non-blocking).
-        // The author drives OP detection; landing ~100-300ms after the
-        // comment renders means the badge pops in late, which is the
-        // accepted trade-off vs delaying the focal render.
-        if (item.story_id) {
-          try {
-            const parentItem = await fetchFirebaseItem(item.story_id, controller.signal);
-            if (!controller.signal.aborted && parentItem) {
-              if (parentItem.title) setItemTitle(parentItem.title);
-              if (parentItem.by) setItemAuthor(parentItem.by);
-            }
-          } catch {
-            // Degrade gracefully — title link still works with itemId
-            // alone; OP badge stays off (consumers guard with
-            // `isKnownAuthor(itemAuthor)`).
-          }
-        }
-      } catch (err) {
-        if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setLoading(false);
-      }
-    }
-
-    void load();
-    return () => controller.abort();
-  }, [commentId, retryCount]);
+    controllerRef.current = controller;
+    load(controller.signal).catch(() => { /* error state set internally */ });
+    return () => {
+      controllerRef.current?.abort();
+    };
+  }, [load]);
 
   return { comment, replies, itemId, itemTitle, itemAuthor, loading, error, retry };
 }

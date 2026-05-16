@@ -228,6 +228,7 @@ export function useInfiniteStories(type: FeedType = 'top') {
       // Stale-response guard: only surface errors from the current request.
       if (versionRef.current === currentVersion) {
         setError(err instanceof Error ? err.message : String(err));
+        throw err;
       }
     } finally {
       if (versionRef.current === currentVersion) {

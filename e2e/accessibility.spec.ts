@@ -26,11 +26,16 @@ function attachIncomplete(results: AxeResults) {
  * trips the WCAG 4.5:1 threshold for every animated element.
  *
  * The skeleton overlay is unmounted when `PageStage` reaches the
- * `'done'` state at t=1200ms after `loading` flips false, which is a
- * cheap proxy for "cascade finished, real elements at opacity 1".
- * Waiting on its disappearance gives axe deterministic resting-state
- * colours without disabling animations entirely (which would make the
- * test stop exercising the normal-motion path).
+ * `'done'` state via `setTimeout(1200ms)` after `loading` flips
+ * false — a cheap proxy for "cascade finished, real elements at
+ * opacity 1". Waiting on its disappearance gives axe deterministic
+ * resting-state colours without disabling animations entirely (which
+ * would make the test stop exercising the normal-motion path).
+ *
+ * No explicit timeout override — Playwright's configured
+ * `expect.timeout` (10s) provides ~8.8s of margin over the ~1.2s
+ * nominal timer, which absorbs even heavy timer jitter from 4-browser
+ * parallel execution.
  *
  * On mobile, the homepage and item-detail routes render as a swipe
  * stack of `<FullScreenItem>` panels — each with its own `PageStage`
@@ -44,8 +49,8 @@ function attachIncomplete(results: AxeResults) {
  */
 async function waitForCascadeSettled(page: Page) {
   await expect(
-    page.locator('.page-stage').first().locator('.skeleton-overlay')
-  ).toHaveCount(0, { timeout: 3000 });
+    page.locator('.page-stage').first().locator('.skeleton-overlay'),
+  ).toHaveCount(0);
 }
 
 test.describe('Accessibility', () => {

@@ -258,6 +258,7 @@ export function useDomainInfiniteStories(rawDomain: string) {
     } catch (err) {
       if (versionRef.current !== currentVersion) return;
       setError(err instanceof Error ? err.message : String(err));
+      throw err;
     } finally {
       // Only clear flags if this fetch is still the current version.
       // If domain changed mid-flight, the reset block already cleared them and
@@ -275,7 +276,7 @@ export function useDomainInfiniteStories(rawDomain: string) {
   useEffect(() => {
     if (!domain) return;
     if (stories.length === 0 && !inFlightRef.current) {
-      void loadMore();
+      void loadMore().catch(() => { /* error state set internally */ });
     }
   }, [domain, stories.length, loadMore]);
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchFirebaseItem } from '../api/hn';
 
 interface UseSiblingCommentsResult {
@@ -6,7 +6,7 @@ interface UseSiblingCommentsResult {
   currentIndex: number;
   loading: boolean;
   error: string | null;
-  retry: () => void;
+  retry: () => Promise<void>;
 }
 
 export function useSiblingComments(commentId: number | string): UseSiblingCommentsResult {
@@ -14,11 +14,9 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const retry = useCallback(() => setRetryCount(c => c + 1), []);
+  const controllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
+  const load = useCallback(async (signal: AbortSignal) => {
     const numericId = Number(commentId);
 
     // Reset to show at least this comment while loading
@@ -27,43 +25,56 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
     setError(null);
     setLoading(true);
 
-    async function load() {
-      try {
-        const item = await fetchFirebaseItem(numericId, controller.signal);
-        if (controller.signal.aborted) return;
+    try {
+      const item = await fetchFirebaseItem(numericId, signal);
+      if (signal.aborted) return;
 
-        // No parent → top-level comment or deleted; show just this one.
-        if (item.parent == null) {
-          setSiblingIds([numericId]);
-          setCurrentIndex(0);
-          setLoading(false);
-          return;
-        }
-
-        // parent.kids[] holds sibling IDs in HN ranking order.
-        const parent = await fetchFirebaseItem(item.parent, controller.signal);
-        if (controller.signal.aborted) return;
-
-        const kids = parent?.kids;
-        if (kids && kids.length > 0) {
-          setSiblingIds(kids);
-          const idx = kids.indexOf(numericId);
-          setCurrentIndex(idx >= 0 ? idx : 0);
-        } else {
-          setSiblingIds([numericId]);
-          setCurrentIndex(0);
-        }
+      // No parent → top-level comment or deleted; show just this one.
+      if (item.parent == null) {
+        setSiblingIds([numericId]);
+        setCurrentIndex(0);
         setLoading(false);
-      } catch (err) {
-        if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setLoading(false);
+        return;
       }
-    }
 
-    void load();
-    return () => controller.abort();
-  }, [commentId, retryCount]);
+      // parent.kids[] holds sibling IDs in HN ranking order.
+      const parent = await fetchFirebaseItem(item.parent, signal);
+      if (signal.aborted) return;
+
+      const kids = parent?.kids;
+      if (kids && kids.length > 0) {
+        setSiblingIds(kids);
+        const idx = kids.indexOf(numericId);
+        setCurrentIndex(idx >= 0 ? idx : 0);
+      } else {
+        setSiblingIds([numericId]);
+        setCurrentIndex(0);
+      }
+      setLoading(false);
+    } catch (err) {
+      if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
+      setError(err instanceof Error ? err.message : String(err));
+      setLoading(false);
+      throw err;
+    }
+  }, [commentId]);
+
+  const retry = useCallback(async () => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    await load(controller.signal);
+  }, [load]);
+
+  // Initial load + re-fetch when commentId changes.
+  useEffect(() => {
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    load(controller.signal).catch(() => { /* error state set internally */ });
+    return () => {
+      controllerRef.current?.abort();
+    };
+  }, [load]);
 
   return { siblingIds, currentIndex, loading, error, retry };
 }

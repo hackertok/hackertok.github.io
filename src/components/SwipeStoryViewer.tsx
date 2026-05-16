@@ -158,7 +158,7 @@ export function SwipeStoryViewerCore({
   const { isOnline } = useNetworkStatus();
   const { isRetrying, giveUp, resetRetry } = useAutoRetry({
     error,
-    retryFn: () => void loadMore(),
+    retryFn: loadMore,
     isOnline,
     enabled: !injectedError,
   });
@@ -174,7 +174,7 @@ export function SwipeStoryViewerCore({
   useEffect(() => {
     if (!didInitialLoadRef.current && stories.length < 10 && hasMore && !loading) {
       didInitialLoadRef.current = true;
-      void loadMore();
+      void loadMore().catch(() => { /* error state set internally */ });
     }
   }, [stories.length, hasMore, loading, loadMore]);
   
@@ -399,7 +399,7 @@ export function SwipeStoryViewerCore({
     const needsMore = storiesAhead < 5 || mergedStories.length < 10;
     
     if (needsMore && hasMore && !loading && !error) {
-      void loadMore();
+      void loadMore().catch(() => { /* error state set internally */ });
     }
   }, [currentIndex, mergedStories.length, hasMore, loading, loadMore, error]);
   
@@ -492,7 +492,7 @@ export function SwipeStoryViewerCore({
   if (error && mergedStories.length === 0 && !isRetrying) {
     return (
       <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
-        <StateView variant="error" title="Failed to load item" action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore(); } }} />
+        <StateView variant="error" title="Failed to load item" action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore().catch(() => { /* error state set internally */ }); } }} />
       </div>
     );
   }
@@ -584,7 +584,7 @@ export function SwipeStoryViewerCore({
             variant="error"
             title="Failed to load item"
             description={error}
-            action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore(); } }}
+            action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore().catch(() => { /* error state set internally */ }); } }}
           />
         </div>
       )}
@@ -603,10 +603,19 @@ interface SwipeStoryViewerProps {
  * cross-section prefetch warm-up.
  */
 export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps) {
-  const { stories, loading, error, hasMore, loadMore } = useInfiniteStories(type);
+  const { stories, loading, error, hasMore, loadMore, isFromCache, isFromSession } = useInfiniteStories(type);
 
   // Prefetch other sections in background for instant tab switching
   usePrefetchSections(type);
+
+  // Trigger revalidation eagerly — same as StoryList — so the replace
+  // happens at index 0, not mid-session after the user has swiped deep.
+  useEffect(() => {
+    if (isFromSession) return;
+    if (isFromCache && !loading && !error) {
+      void loadMore().catch(() => { /* error state set internally */ });
+    }
+  }, [isFromCache, loading, loadMore, isFromSession, error]);
 
   // Stable identity so SwipeStoryViewerCore's URL-sync effect does not re-run on every parent re-render.
   const backState = useMemo(() => ({ from: type }), [type]);

@@ -270,7 +270,11 @@ export async function fetchFirebaseItem(id: number | string, signal?: AbortSigna
   if (!response.ok) {
     throw new Error(`Failed to fetch item ${id}: ${response.status}`);
   }
-  return response.json() as Promise<FirebaseItem>;
+  const item = await response.json() as FirebaseItem | null;
+  if (item == null) {
+    throw new NotFoundError(`Item ${id} not found`);
+  }
+  return item;
 }
 
 // Algolia is much faster than Firebase here — 1-2 requests instead of hundreds
@@ -437,11 +441,6 @@ async function buildOrderedCommentTree(
 export async function fetchItemOnly(id: number | string, signal?: AbortSignal): Promise<Item> {
   const itemId = Number(id);
   const item = await fetchFirebaseItem(itemId, signal);
-  
-  if (!item) {
-    throw new NotFoundError(`Item ${id} not found`);
-  }
-  
   return normalizeFirebaseItem(item);
 }
 

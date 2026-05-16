@@ -87,19 +87,19 @@ export function InfiniteStoryListPage({
   const { isOnline } = useNetworkStatus();
   const { isRetrying, resetRetry } = useAutoRetry({
     error,
-    retryFn: () => void loadMore(),
+    retryFn: loadMore,
     isOnline,
   });
 
   useEffect(() => {
     if (inView && !loading && hasMore && !error) {
-      void loadMore();
+      void loadMore().catch(() => { /* error state set internally */ });
     }
   }, [inView, loading, hasMore, error, loadMore]);
 
   const retryLoadMore = useCallback(() => {
     resetRetry();
-    void loadMore();
+    void loadMore().catch(() => { /* error state set internally */ });
   }, [resetRetry, loadMore]);
 
   // Pre-PageStage error / retry-skeleton branches replace the whole

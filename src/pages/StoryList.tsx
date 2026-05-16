@@ -56,7 +56,7 @@ export function StoryList({ type }: { type: FeedType }) {
     // loadMore() sets loading→true then error→msg then loading→false,
     // which re-triggers this effect and loops.
     if ((stories.length === 0 || isFromCache) && !loading && !error) {
-      void loadMore();
+      void loadMore().catch(() => { /* error state set internally */ });
     }
   }, [stories.length, loading, loadMore, isFromCache, isFromSession, error]);
 

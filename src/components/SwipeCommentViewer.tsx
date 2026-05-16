@@ -120,7 +120,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
   if (error && siblingIds.length <= 1 && !isRetrying) {
     return (
       <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
-        <StateView variant="error" title="Failed to load comments" description={error} action={{ label: 'Retry', onClick: retry }} />
+        <StateView variant="error" title="Failed to load comments" description={error} action={{ label: 'Retry', onClick: () => void retry().catch(() => { /* error state set internally */ }) }} />
       </div>
     );
   }

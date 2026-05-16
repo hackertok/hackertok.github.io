@@ -72,7 +72,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
   const { isOnline } = useNetworkStatus();
   const { isRetrying } = useAutoRetry({
     error: isNotFound ? null : error,
-    retryFn: () => void refresh(),
+    retryFn: refresh,
     isOnline,
   });
 
@@ -86,7 +86,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
           variant={isNotFound ? 'not-found' : 'error'}
           title={isNotFound ? undefined : 'Failed to load item'}
           description={isNotFound ? undefined : error}
-          action={isNotFound ? undefined : { label: 'Retry', onClick: () => void refresh() }}
+          action={isNotFound ? undefined : { label: 'Retry', onClick: () => void refresh().catch(() => { /* error state set internally */ }) }}
         />
       </div>
     );
@@ -122,7 +122,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
               <CommentsSection
                 comments={comments}
                 commentsError={commentsError}
-                onRetry={() => void refresh()}
+                onRetry={refresh}
                 storyAuthor={item.author}
               />
             </section>
