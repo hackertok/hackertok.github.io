@@ -61,7 +61,9 @@ test.describe('User Submissions - Desktop', () => {
     await expect(page.getByText('Beating the Averages')).toBeVisible({ timeout: 10_000 });
 
     // First story's comments link — `mockUserStory1` has 187 comments.
-    await page.getByRole('link', { name: /187 comments/i }).first().click();
+    // Native click avoids Playwright's scrollIntoViewIfNeeded corrupting
+    // the scrollY captured by onBeforeNavigate → saveScrollPosition.
+    await page.getByRole('link', { name: /187 comments/i }).first().evaluate(el => (el as HTMLElement).click());
 
     await expect(page).toHaveURL(/\/item\/66666/);
 

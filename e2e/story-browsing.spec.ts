@@ -126,9 +126,12 @@ test.describe('Item Browsing - Desktop Scroll Restoration', () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(100);
 
     // Clicking the comments link triggers saveSessionState(scrollY).
+    // Use native click (via evaluate) instead of Playwright's click() to
+    // avoid Playwright's scrollIntoViewIfNeeded step, which can change
+    // window.scrollY before the React click handler captures it.
     const thirdCard = page.locator('[data-testid="story-card"][data-story-id="12347"]');
     const commentLink = thirdCard.getByRole('link', { name: /241.*comments?/i });
-    await commentLink.click();
+    await commentLink.evaluate(el => (el as HTMLElement).click());
 
     await expect(page).toHaveURL(/\/item\/12347/);
     await expect(page.getByText('Why We Moved from React to htmx').first()).toBeVisible();
@@ -138,10 +141,9 @@ test.describe('Item Browsing - Desktop Scroll Restoration', () => {
     // Restoration is rAF-based; wait for the list before polling scrollY.
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
-    // 80, not 100, to tolerate browser-specific restoration jitter.
     await expect.poll(
       () => page.evaluate(() => window.scrollY),
-      { timeout: 10000 }
+      { timeout: 10_000 }
     ).toBeGreaterThanOrEqual(80);
   });
 });

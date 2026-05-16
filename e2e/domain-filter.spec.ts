@@ -105,11 +105,13 @@ test.describe('Domain Filter - Header "from" button', () => {
 
     // The mock response for example.com puts mockDomainItem first, which has
     // 83 comments. Click the comments link on that card to navigate to the
-    // item detail page.
+    // item detail page.  Use native click to avoid Playwright's
+    // scrollIntoViewIfNeeded changing scrollY before the click handler
+    // captures it for session state.
     await page
       .getByRole('link', { name: /83 comments/i })
       .first()
-      .click();
+      .evaluate(el => (el as HTMLElement).click());
 
     await expect(page).toHaveURL(/\/item\/77777/);
 
@@ -142,7 +144,7 @@ test.describe('Domain Filter - Header "from" button', () => {
     await page
       .getByRole('link', { name: /83 comments/i })
       .first()
-      .click();
+      .evaluate(el => (el as HTMLElement).click());
     await expect(page).toHaveURL(/\/item\/77777/);
 
     await page.goBack();
