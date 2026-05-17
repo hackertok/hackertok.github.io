@@ -22,9 +22,9 @@ test.describe('Theme Toggle', () => {
     await expect(html).not.toHaveClass(/light/);
 
     await expect.poll(async () => {
-      return await page.evaluate(() => localStorage.getItem('theme'));
+      return await page.evaluate(() => localStorage.getItem('setting:theme'));
     }, { timeout: 5000 }).toBeTruthy();
-    const theme = await page.evaluate(() => localStorage.getItem('theme'));
+    const theme = await page.evaluate(() => localStorage.getItem('setting:theme'));
     expect(['dark', 'light']).toContain(theme);
   });
 
@@ -45,14 +45,14 @@ test.describe('Theme Toggle', () => {
     await toggle.click();
 
     await expect.poll(async () => {
-      return await page.evaluate(() => localStorage.getItem('theme'));
+      return await page.evaluate(() => localStorage.getItem('setting:theme'));
     }, { timeout: 5000 }).toBe('dark');
 
     await page.reload();
 
     await expect(page.getByTestId('theme-toggle')).toBeVisible();
 
-    const afterReloadTheme = await page.evaluate(() => localStorage.getItem('theme'));
+    const afterReloadTheme = await page.evaluate(() => localStorage.getItem('setting:theme'));
     expect(afterReloadTheme).toBe('dark');
 
     const html = page.locator('html');
