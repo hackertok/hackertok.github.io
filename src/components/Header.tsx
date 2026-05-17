@@ -89,22 +89,13 @@ export function Header() {
   const location = useLocation();
   const locationState = location.state as LocationState | null;
 
-  // All "what's active right now" derivation lives in the pure
-  // `deriveHeaderState` helper — see that module for the priority cascade
-  // (`comments > user > from`) and the canonical `Best > Show > Ask`
-  // ordering of feed tabs. Passing `locationState` by reference covers
-  // every field (`isComment`, `from`, `fromUser`, `fromDomain`) without
-  // having to enumerate them in the deps array.
+  // Active state derived in deriveHeaderState.
   const { navItems } = useMemo(
     () => deriveHeaderState(location.pathname, locationState),
     [location.pathname, locationState],
   );
 
-  // Attach the per-key width estimate for the packer. ICON_EXTRA is added
-  // at md+ where the leading lucide icon renders inline (the icon is hidden
-  // via `hidden md:inline-block` on mobile, so its width contribution is 0
-  // there). Spread keeps `key` / `kind` / `isActive` so the packer's slice
-  // output is directly renderable.
+  // Attach width estimates. ICON_EXTRA only at md+ (icons hidden on mobile).
   const packableItems: PackableNavItem[] = useMemo(
     () =>
       navItems.map((it) => ({
@@ -124,10 +115,7 @@ export function Header() {
     gap: NAV_GAP,
   });
 
-  // On mobile:
-  // - In swipe mode: always visible (like desktop)
-  // - In normal mode: show header when scrolling up or at top
-  // On desktop: always visible (not sticky)
+  // Mobile: hidden on scroll-down unless swipe mode.
   const mobileHidden = isSwipeMode
     ? false
     : scrollDirection === 'down' && !isAtTop;
@@ -150,12 +138,7 @@ export function Header() {
     }
   };
 
-  // `inline-flex items-center gap-1.5` so leading icons baseline-align with
-  // the label text on md+ viewports; on mobile the icons are gated to
-  // `hidden md:inline-block` and `gap-1.5` collapses to nothing because the
-  // hidden icon span is `display: none` and not in the flex flow.
-  // `capitalize` is a CSS-only treatment — DOM textContent stays lowercase
-  // so all `name: 'best'` / `hasText: 'from'` test assertions still match.
+  // Icons hidden on mobile; capitalize is CSS-only (DOM stays lowercase for test assertions).
   const navLinkClass = (isActive: boolean) =>
     `inline-flex items-center gap-1.5 capitalize px-2.5 py-1 rounded-lg text-sm font-medium ${
       isActive
@@ -163,15 +146,8 @@ export function Header() {
         : 'text-muted-foreground hover:text-foreground hover:bg-muted transition-colors'
     }`;
 
-  // Render a single feed nav item. We use plain `Link` (not `NavLink`)
-  // because `item.isActive` is the single source of truth for the
-  // active state — it captures BOTH literal route matches (`/best`)
-  // AND state-driven matches (`/item/X` with `state.from='best'`),
-  // whereas `NavLink` only knows about the former. NavLink also
-  // unconditionally overrides any user-passed `aria-current` prop
-  // with its own route-match-derived value, so passing one through
-  // it would silently no-op on the state-driven case — that was the
-  // exact bug this Link-based render was introduced to fix.
+  // Plain Link (not NavLink): item.isActive covers state-driven matches
+  // that NavLink can't see (e.g. /item/X with state.from='best').
   const renderFeedItem = (item: NavItemSpec) => {
     const feed = item.key as NavFeedType;
     const Icon = FEED_ICONS[feed];
@@ -208,23 +184,7 @@ export function Header() {
   const renderNavItem = (item: NavItemSpec) =>
     item.kind === 'feed' ? renderFeedItem(item) : renderContextualItem(item);
 
-  // Inside the overflow menu, every item renders as a menu item. Menu items
-  // are text-only — the leading icons used in the visible nav (for visual
-  // anchor on md+) would just add chrome to a row that already has its own
-  // typographic treatment via the menu surface, so we drop them here.
-  //
-  // The currently-active feed CAN land in this menu (e.g., user is on /show
-  // and Show was packed into the overflow). When it does, we mirror the
-  // visible-nav active treatment — `bg-accent text-accent-foreground` — so
-  // the user gets the same "this is where you are" signal whether the tab
-  // is in the row or in the dropdown. The hover:/focus: overrides win
-  // against the base `DropdownMenuItem` style which would otherwise re-apply
-  // `bg-muted` on hover/focus and erase the active fill.
-  //
-  // Uses plain `Link` via `asChild` (not `NavLink`) for the same reason
-  // renderFeedItem does — `item.isActive` already covers the state-from
-  // case that NavLink's auto-aria-current can't see, and we want the
-  // attribute we set here to actually stick.
+  // Overflow menu items — text-only, mirrors active treatment if needed.
   const renderMenuItem = (item: NavItemSpec) => {
     if (item.kind === 'contextual') {
       return (
@@ -272,19 +232,7 @@ export function Header() {
       `}
     >
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-2 md:py-1.5 lg:py-1">
-        {/* Outer flex: 3 children with gap-3 (12px) between them.
-            - Logo: intrinsic width
-            - Nav: flex-1 → fills remaining horizontal space; justify-end
-              keeps the nav's content right-aligned (so visually the nav
-              cluster hugs the theme toggle, like a `justify-between`
-              layout). `min-w-0` allows the nav to shrink below its content
-              size, which is what lets the packer hide items as the
-              container narrows. We measure `nav.offsetWidth` and the
-              `flex-1` ensures it equals the available budget — *not* the
-              sum of currently-rendered children. That's what makes the
-              packer self-stabilizing.
-            - Theme: intrinsic width, right-pinned
-        */}
+        {/* 3-col flex: logo (intrinsic) | nav (flex-1, min-w-0) | theme (intrinsic) */}
         <div className="flex items-center gap-3">
           <Link
             to="/"
@@ -326,12 +274,7 @@ export function Header() {
                     className="h-5 w-px bg-muted-foreground/40 mx-1.5"
                   />
                 )}
-                {/* "More ⌄" pill (GitHub-repo-header pattern). Custom
-                    className (vs reusing navLinkClass) so we can use gap-2
-                    between text and chevron — matches the wider GitHub
-                    spacing. The chevron stays static when the menu opens;
-                    open/closed state is communicated by the popover
-                    panel itself appearing or not. */}
+                {/* More pill — gap-2 for wider chevron spacing. */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -343,21 +286,7 @@ export function Header() {
                       <ChevronDown aria-hidden className="size-3.5" />
                     </button>
                   </DropdownMenuTrigger>
-                  {/* `align="end"` anchors the menu to the trigger's right
-                      edge so it never overflows the right side of the
-                      viewport on narrow screens; collisionPadding inside
-                      DropdownMenuContent then keeps it clear of the edge
-                      itself.
-
-                      Override the shared `min-w-[7rem]` (112px) default to
-                      `5rem` (80px). The default is sized for medium-length
-                      action labels ("Open in new tab", etc.) — overkill for
-                      this menu where the longest entry is "comments" (~70px
-                      rendered) and the typical entries are short feed names
-                      ("Show"/"Ask" ~50px). 80px gives the items a touch of
-                      breathing room past the longest label without leaving
-                      a wide column of empty popover surface to the right
-                      of short labels. */}
+                  {/* align="end" prevents right-overflow; min-w-[5rem] for short feed labels. */}
                   <DropdownMenuContent align="end" className="min-w-[5rem]">
                     {hiddenItems.map(renderMenuItem)}
                   </DropdownMenuContent>

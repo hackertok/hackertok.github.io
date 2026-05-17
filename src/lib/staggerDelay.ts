@@ -1,14 +1,7 @@
-/**
- * Per-card increment for the entry cascade. The first card sits at this
- * exact delay; subsequent cards decay toward zero as `i` grows.
- */
+/** Per-card increment for the entry cascade (ms). */
 export const STAGGER_PER_CARD_MS = 50;
 
-/**
- * Cap for the longest delay any card receives. Past the knee (slot 23),
- * every card lands at this single value so the cascade resolves in
- * bounded time even on long lists / deeply-nested reply threads.
- */
+/** Cap for the longest delay any card receives (ms). */
 export const STAGGER_CAP_MS = 600;
 
 // Knee is the slot at which the per-step delta would otherwise reach 0.

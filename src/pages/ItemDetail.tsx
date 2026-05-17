@@ -52,9 +52,7 @@ export function ItemDetail() {
     );
   }
 
-  // Pre-emptive retry skeleton — fires while useAutoRetry is between
-  // attempts. Wraps with the same chrome the post-load render uses
-  // so the gutter matches.
+  // Pre-emptive retry skeleton while useAutoRetry is between attempts.
   if (error && isItemRetrying) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">

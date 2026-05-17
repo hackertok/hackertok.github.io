@@ -97,11 +97,7 @@ async function doPrefetch(itemId: number, controller: AbortController) {
   }
 }
 
-/**
- * Background prefetch via a priority queue — items with lower `index` (top of
- * the list) prefetch first. Pair `startPrefetch`/`stopPrefetch` with
- * IntersectionObserver enter/leave events on a card.
- */
+/** Priority-queued background prefetch (lower index = higher priority). */
 export function usePrefetchItem() {
   const itemIdRef = useRef<number | null>(null);
   
@@ -139,10 +135,7 @@ export function usePrefetchItem() {
   return { startPrefetch, stopPrefetch };
 }
 
-/**
- * Batch-prefetch the next `count` items ahead of `currentIndex`. Used by
- * `SwipeStoryViewer` so adjacent panels are warm before the user swipes.
- */
+/** Prefetch next N items ahead of currentIndex. */
 export function usePrefetchItems(currentIndex: number, items: Item[], count = 3) {
   const prefetchedRef = useRef<Set<number>>(new Set());
   
@@ -166,7 +159,6 @@ export function usePrefetchItems(currentIndex: number, items: Item[], count = 3)
         continue;
       }
       
-      // Use the absolute list index as priority so closer items beat farther ones.
       prefetchQueue.set(itemId, { index: targetIndex });
       prefetchedRef.current.add(itemId);
     }

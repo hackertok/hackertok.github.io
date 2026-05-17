@@ -9,17 +9,7 @@ import { formatAbsoluteDate, formatTimeAgo, safeISOString } from '../api/hn';
 import { StateView, PageStage } from '../components';
 import { metaItemClass, metaPillClass } from '../lib/classes';
 
-/**
- * Header-only skeleton for the user profile page. About text is
- * optional on HN, so painting an about-block placeholder would create
- * a visual jump for users without one. The header is a stable canvas
- * every profile shares.
- *
- * Title `h-7` ≤ real `text-2xl` line-box (~32px) so PageStage's grid
- * stack sizes to the real h1 and there's no contraction when the
- * overlay unmounts. `mb-2` matches the real h1 (not `mb-3`) so the
- * meta row doesn't shift on swap.
- */
+/** Header-only skeleton — about text is optional so no about placeholder. */
 function UserProfileSkeleton() {
   return (
     <div className="animate-pulse">
@@ -133,11 +123,7 @@ export function UserProfile() {
           <article className="story-stage-leader">
             <header className="mb-6 pb-4 border-b border-border">
               <h1 className="text-2xl font-semibold text-foreground mb-2">{profile.id}</h1>
-              {/* Visible date is absolute (`October 9, 2006`); the
-                  `<time title>` surfaces the relative `X years ago`
-                  on hover. Submissions link uses CSS `capitalize` so
-                  DOM textContent stays lowercase `submissions`,
-                  preserving accessible-name assertions. */}
+              {/* Absolute date visible; relative on hover via <time title>. */}
               <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground">
                 <span className={metaItemClass}>
                   <Award aria-hidden className="size-3.5" />

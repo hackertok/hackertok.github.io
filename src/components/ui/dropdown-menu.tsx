@@ -60,9 +60,7 @@ function DropdownMenuItem({
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
       className={cn(
-        // Mirrors the nav-pill hover pattern used in the header itself so a
-        // dropdown nav item feels like the same "tab" surface as its visible
-        // siblings — text-sm font-medium capitalize + hover:bg-muted.
+        // Mirrors nav-pill hover pattern from the header.
         "relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm font-medium capitalize outline-none transition-colors",
         "hover:bg-muted hover:text-foreground focus:bg-muted focus:text-foreground",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",

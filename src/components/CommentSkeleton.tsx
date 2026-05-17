@@ -3,12 +3,7 @@ interface CommentSkeletonProps {
   widths?: number[];
 }
 
-// Heights / spacing must match the real Comment so PageStage doesn't
-// visibly contract on swap:
-//   - Byline row `min-h-5` = real `text-sm` line height (≈20px).
-//   - Byline pills `h-3.5` = real `text-sm` font height (14px).
-//   - Body lines `h-4` + `space-y-2` → 24px/line ≈ `.comment-content`'s
-//     `font-size: 14.5px; line-height: 1.62` (≈23.5px).
+// Heights ≤ real Comment to prevent PageStage contraction on swap.
 export function CommentSkeleton({ lineCount = 3, widths = [1, 0.92, 0.75] }: CommentSkeletonProps) {
   return (
     <div className="py-2">
@@ -66,16 +61,8 @@ export function CommentSkeletonTree({ count = 12 }: CommentSkeletonTreeProps) {
   );
 }
 
-// Skeleton for /item/<id> — inner content ONLY. The page chrome
-// (`max-w-6xl mx-auto px-4 …`) must be supplied by the consumer
-// (`ItemDetail` already wraps PageStage in it). Mounting the skeleton
-// without that chrome inside PageStage's overlay slot prevents the
-// "skeleton swaps to a slightly different skeleton" effect from
-// double-padding.
-//
-// Title is `h-6 w-4/5`. Real focal h1 is `text-xl leading-snug`
-// (~27.5px/line); 24px ≤ real height so PageStage's grid stack sizes
-// to the real title and there's no visible contraction at t=1200ms.
+// Inner content ONLY (chrome from consumer).
+// Title h-6 ≤ real h1 to prevent PageStage contraction.
 export function ItemDetailSkeleton() {
   return (
     <div className="animate-pulse">
@@ -84,7 +71,6 @@ export function ItemDetailSkeleton() {
           <div className="h-6 bg-skeleton rounded w-4/5" />
         </div>
 
-        {/* Meta info — 5 pills (points / domain / time / user / comments). */}
         <div className="flex items-center gap-x-3.5 gap-y-2 min-h-5">
           <div className="h-3 bg-skeleton rounded w-12" />
           <div className="h-3 bg-skeleton rounded w-20" />

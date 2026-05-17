@@ -13,11 +13,7 @@ interface SwipeCommentViewerProps {
   initialCommentId: string;
 }
 
-/**
- * Full-screen horizontal swipe comment viewer for mobile.
- * Displays sibling comments (children of the same parent) as swipeable panels.
- * Uses CSS Scroll Snap for native, smooth horizontal swiping.
- */
+/** Full-screen horizontal swipe comment viewer (mobile). */
 export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps) {
   const navigate = useNavigate();
   const location = useLocation();

@@ -5,11 +5,7 @@
  * We use a discriminated union so TypeScript can narrow by `type`.
  */
 
-// --- Feed type (which list endpoint to fetch) ---
-
 export type FeedType = 'top' | 'show' | 'ask' | 'best';
-
-// --- Item variants (discriminated union) ---
 
 interface ItemBase {
   id: number;
@@ -42,8 +38,6 @@ export interface JobItem extends ItemBase {
 
 export type Item = StoryItem | CommentItem | JobItem;
 
-// --- Comment types ---
-
 export interface Comment {
   id: number;
   author: string;
@@ -52,8 +46,6 @@ export interface Comment {
   parentId: number;
   children: Comment[];
 }
-
-// --- API response shapes ---
 
 export interface AlgoliaHit {
   objectID: string;
@@ -122,8 +114,6 @@ export interface AlgoliaItemResponse {
   children: AlgoliaItemChild[];
 }
 
-// --- Cache types ---
-
 export interface CachedItem {
   item: Item;
   comments: Comment[];
@@ -145,14 +135,10 @@ export interface ListSessionState {
   hasMore: boolean;
 }
 
-// --- Prefetch types ---
-
 export interface PrefetchResult {
   item: Item;
   comments: Comment[];
 }
-
-// --- Theme types ---
 
 export type Theme = 'light' | 'dark';
 
@@ -161,15 +147,11 @@ export interface ThemeContextValue {
   toggleTheme: () => void;
 }
 
-// --- Scroll container types ---
-
 export interface ScrollContainerContextValue {
   isSwipeMode: boolean;
   enableSwipeMode: () => void;
   disableSwipeMode: () => void;
 }
-
-// --- Router types ---
 
 export interface LocationState {
   from?: FeedType;
@@ -178,12 +160,7 @@ export interface LocationState {
   isComment?: boolean;
 }
 
-// --- User profile types ---
-
-// Firebase /user/:id.json shape. `delay` is intentionally omitted (vestigial
-// HN field never read by the UI). The `submitted` array is a raw activity
-// feed mixing story + comment + ask IDs; UserProfile never reads it (HN's
-// own profile page also doesn't render its size).
+// Firebase /user/:id.json shape. `delay` omitted (vestigial HN field).
 export interface UserProfile {
   id: string;
   created: number;       // unix seconds

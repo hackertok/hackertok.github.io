@@ -8,18 +8,8 @@ import { FullScreenChrome } from './FullScreenChrome';
 import { PageStage } from './PageStage';
 import { StateView } from './StateView';
 
-// Inner content ONLY — the `full-screen-item` + `px-4 py-4` chrome
-// MUST be supplied by the consumer (FullScreenComment wraps PageStage
-// in it; bare-context callers use `FullScreenCommentSkeletonPanel`).
-// Without this split, bare contexts had `px-4` once while PageStage
-// renders had it twice, making the bare skeleton render at a
-// different width than the post-load skeleton.
-//
-// Inner content mirrors the real `CommentArticle`: article wrapper
-// matches CommentArticle's default chrome; 4 meta-row pills mirror
-// `[author, time, parent, thread-title]`; body bars are sized to
-// `.comment-content`'s ~23.5px line height; tree count matches the
-// loading-branch count.
+// Inner content ONLY — consumer supplies the chrome.
+// Mirrors CommentArticle's shape.
 export function FullScreenCommentSkeleton() {
   return (
     <div className="animate-pulse">
@@ -40,8 +30,7 @@ export function FullScreenCommentSkeleton() {
   );
 }
 
-// Bare-context wrapper for `FullScreenCommentSkeleton` — see the
-// matching `FullScreenItemSkeletonPanel` comment for rationale.
+// Bare-context wrapper — supplies chrome around skeleton.
 export function FullScreenCommentSkeletonPanel() {
   return (
     <FullScreenChrome>
@@ -95,11 +84,8 @@ export function FullScreenComment({ commentId, onAuthorLoaded }: FullScreenComme
 
   return (
     <FullScreenChrome>
-      {/* `loading={!comment}` for parity with CommentDetail — the
-          form keeps refresh-on-same-instance from flashing the
-          skeleton during retry. No `triggerWhen` because
-          SwipeCommentViewer doesn't priority-gate; offscreen panels
-          burn their cascade in the dark (acceptable trade-off). */}
+      {/* loading={!comment} prevents skeleton flash on retry.
+          No triggerWhen — offscreen cascade ok. */}
       <PageStage loading={!comment} skeleton={<FullScreenCommentSkeleton />}>
         {comment && (
           <CommentArticle

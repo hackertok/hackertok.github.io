@@ -10,11 +10,7 @@ interface UseItemWithCommentsOptions {
   initialItem?: Item | null;
   /** Skip background re-fetch for deep comment ordering (mobile swipe mode). */
   skipOrderingCompletion?: boolean;
-  /**
-   * When true, fetch immediately. When false, wait for any in-flight priority
-   * fetches to complete first — the mobile swipe view uses this to serialize
-   * far-panel fetches behind the visible panel's fetch.
-   */
+  /** When true, fetch immediately; when false, wait for priority fetches first. */
   isPriority?: boolean;
   /** Skip comment fetch entirely (for far panels in mobile swipe view). */
   deferComments?: boolean;
@@ -47,8 +43,6 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
 
   // Ref to the main effect's AbortController so the reconnect handler can abort stale fetches
   const controllerRef = useRef<AbortController | null>(null);
-
-  // Effect Events read current props/state without re-syncing the effect.
 
   const getStableOptions = useEffectEvent(() => ({
     isPriority,

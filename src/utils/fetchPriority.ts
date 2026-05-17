@@ -1,17 +1,4 @@
-/**
- * Fetch Priority Coordinator
- * 
- * Ensures user-visible content (current item's comments) loads with highest priority
- * before background prefetching begins. Uses ref-counting to handle multiple mounted
- * components correctly.
- * 
- * Problem solved: On mobile with empty cache, prefetch hooks would compete with
- * the current item's comment fetch for network bandwidth, slowing the user's
- * immediate experience.
- * 
- * Solution: Priority fetches "hold the line" - prefetchers wait until all priority
- * fetches complete before starting their work.
- */
+/** Priority coordinator: user-visible fetches block background prefetching. */
 
 type PriorityListener = (isActive: boolean) => void;
 
@@ -23,16 +10,13 @@ function notifyListeners() {
   listeners.forEach(fn => fn(isActive));
 }
 
-/**
- * Register a priority fetch (user-visible content loading). Must be paired
- * with `unregisterPriorityFetch()`.
- */
+/** Register a priority fetch. Must pair with `unregisterPriorityFetch`. */
 export function registerPriorityFetch() {
   priorityFetchCount++;
   notifyListeners();
 }
 
-/** Call when the priority fetch completes (success or failure). */
+/** Call when priority fetch completes (success or failure). */
 export function unregisterPriorityFetch() {
   priorityFetchCount = Math.max(0, priorityFetchCount - 1);
   notifyListeners();
@@ -42,7 +26,7 @@ export function isPriorityFetchActive() {
   return priorityFetchCount > 0;
 }
 
-/** Subscribe to priority fetch state changes; returns an unsubscribe fn. */
+/** Subscribe to state changes; returns unsubscribe fn. */
 export function onPriorityFetchChange(fn: PriorityListener): () => void {
   listeners.add(fn);
   // Immediately notify with current state
@@ -50,10 +34,7 @@ export function onPriorityFetchChange(fn: PriorityListener): () => void {
   return () => listeners.delete(fn);
 }
 
-/**
- * Wait for all priority fetches to complete; resolves immediately when none
- * are active.
- */
+/** Resolves when no priority fetches are active. */
 export function waitForPriorityFetch(signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     // Set up abort handling first (before any early return)

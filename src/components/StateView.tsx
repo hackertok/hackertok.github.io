@@ -246,12 +246,7 @@ export function StateView({ variant, title, description, action, compact, classN
 }
 
 function ActionElement({ action }: { action: NonNullable<StateViewProps['action']> }) {
-  // Single swap covers ALL retry surfaces in the app — every retry/try-again
-  // button across the codebase routes through StateView's `action` prop, so
-  // adding RefreshCw here propagates to StoryList, DomainStories,
-  // UserSubmissions, UserProfile, ItemDetail, FullScreenItem, swipe viewers,
-  // CommentsSection, CommentDetail, FullScreenComment, and ErrorBoundary —
-  // no per-page edits needed.
+  // RefreshCw icon auto-added to any retry/try-again button.
   const isRetry = /try again|retry/i.test(action.label);
   const buttonContent = (
     <>

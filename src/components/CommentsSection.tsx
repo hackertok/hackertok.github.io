@@ -8,20 +8,11 @@ interface CommentsSectionProps {
   comments: Comment[] | null;
   commentsError: string | null;
   onRetry: () => void | Promise<void>;
-  /**
-   * Forwarded to CommentTree so OP detection works in nested replies.
-   * Defaults to `''`; the OP guard short-circuits on empty/unknown.
-   */
+  /** Story author for OP detection. */
   storyAuthor?: string;
 }
 
-/**
- * Comments rail under a story page (ItemDetail / FullScreenItem).
- *
- * The initial-load skeleton is owned by the parent PageStage now;
- * error / retry paths still render their own inline skeletons because
- * those fire AFTER PageStage has already transitioned to `'done'`.
- */
+/** Comments section below a story. Error/retry has its own skeletons. */
 export function CommentsSection({ comments, commentsError, onRetry, storyAuthor = '' }: CommentsSectionProps) {
   const { isOnline } = useNetworkStatus();
   const { isRetrying } = useAutoRetry({

@@ -9,16 +9,8 @@ import { PageStage } from './PageStage';
 import { StateView } from './StateView';
 import type { StoryItem } from '../types';
 
-// Inner content ONLY — the `full-screen-item` + `px-4 py-4` chrome
-// MUST be supplied by the consumer (FullScreenItem wraps PageStage
-// in it; bare-context callers use `FullScreenItemSkeletonPanel`).
-// Without this split, bare contexts had `px-4` once while PageStage
-// renders had it twice, making the bare skeleton render at a
-// different width than the post-load skeleton.
-//
-// Title `h-6 w-3/4` ≤ real focal h1's `text-xl leading-snug`
-// (~27.5px line box) so PageStage's grid stack sizes the cell to the
-// real h1 and there's no contraction when the overlay unmounts.
+// Inner content ONLY — consumer supplies chrome.
+// Title h-6 ≤ real h1 to prevent PageStage contraction.
 export function FullScreenItemSkeleton() {
   return (
     <div className="animate-pulse">
@@ -42,9 +34,7 @@ export function FullScreenItemSkeleton() {
   );
 }
 
-// Bare-context wrapper that supplies the same `full-screen-item` +
-// `px-4 py-4` chrome the post-load FullScreenItem renders, so the
-// gutter is consistent and the swap is invisible.
+// Bare-context wrapper matching post-load chrome.
 export function FullScreenItemSkeletonPanel() {
   return (
     <FullScreenChrome>
@@ -53,7 +43,7 @@ export function FullScreenItemSkeletonPanel() {
   );
 }
 
-/** Full-screen item component for swipe viewer. Renders stories and jobs (not comments). */
+/** Swipe-viewer full-screen item (stories/jobs only). */
 interface FullScreenItemProps {
   itemId: number;
   initialItem?: StoryItem;

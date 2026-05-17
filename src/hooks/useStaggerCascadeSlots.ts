@@ -17,27 +17,12 @@ export interface CascadeSlot {
 }
 
 /**
- * Splits each card index into the appropriate cascade slot
- * (`stageIdx` for the initial PageStage cascade, `appendIdx` for
- * subsequent infinite-scroll appends).
+ * Splits each card index into `stageIdx` (initial PageStage cascade)
+ * or `appendIdx` (per-batch infinite-scroll cascade).
  *
- * `batchStart` snapshots `count` at the start of each append fetch
- * (`loading` false → true) so `appendIdx = index - batchStart` resets
- * to 0ms per batch. Without this reset the second batch would start
- * at the 600ms cap and every later batch would pile on top of it,
- * reading as "spinner clears, then a noticeable pause, then cards land".
- *
- * `resetKey` collapses internal state on context change (feed type,
- * domain, username switch) so the new feed gets its own cold-load
- * cascade rather than inheriting the previous one's boundary. MUST
- * be a primitive or referentially stable value — passing a fresh
- * object/array literal each render (e.g. `{type, sort}`) would
- * trigger reset every render and prevent the cascade from ever
- * advancing.
- *
- * `StoryCard` snapshots the slot at mount, so a later `getSlot` call
- * returning a different value (because `batchStart` advanced for the
- * next fetch) is intentionally a no-op for already-mounted cards.
+ * `batchStart` resets to 0 per batch so appended cards don't inherit
+ * the prior batch's cap. `resetKey` collapses state on context change
+ * (MUST be a primitive). `StoryCard` snapshots its slot at mount.
  */
 export function useStaggerCascadeSlots(
   loading: boolean,

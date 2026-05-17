@@ -1,7 +1,6 @@
 import { ALGOLIA_API, FIREBASE_API } from '../config/api';
 import type { Item, StoryItem, Comment, AlgoliaHit, AlgoliaComment, AlgoliaSearchResponse, FirebaseItem, PrefetchResult, AlgoliaItemResponse, AlgoliaItemChild } from '../types';
 
-/** Thrown when an item does not exist (Firebase returns null). */
 export class NotFoundError extends Error {
   constructor(message: string) {
     super(message);
@@ -9,7 +8,6 @@ export class NotFoundError extends Error {
   }
 }
 
-// Cache for best story IDs to avoid refetching on every pagination
 let bestStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -159,7 +157,6 @@ export async function fetchFrontPageForDay(daysAgo = 1): Promise<StoryItem[]> {
   return sorted.map(normalizeAlgoliaHit);
 }
 
-// Matches HN's /best page; returns a paginated batch of stories.
 export async function fetchBestStories(offset = 0, limit = 30) {
   const now = Date.now();
   
@@ -255,12 +252,10 @@ async function fetchTaggedStories(tag: string, windowIndex = 0) {
   };
 }
 
-/** Fetch Show HN stories */
 export function fetchShowStories(windowIndex = 0) {
   return fetchTaggedStories('show_hn', windowIndex);
 }
 
-/** Fetch Ask HN stories */
 export function fetchAskStories(windowIndex = 0) {
   return fetchTaggedStories('ask_hn', windowIndex);
 }
@@ -372,7 +367,6 @@ function buildCommentTree(comments: AlgoliaComment[], itemId: number, kidsOrder 
   return rootComments;
 }
 
-// `maxOrderingDepth` caps how deep we fetch ordering (Infinity = all levels).
 async function buildOrderedCommentTree(
   comments: AlgoliaComment[],
   itemId: number,
@@ -481,7 +475,6 @@ async function fetchKidsOrdering(commentIds: number[], signal?: AbortSignal): Pr
 
 /**
  * Background prefetch — silent failures, returns null on any error.
- * `maxOrderingDepth` caps HN ordering fetch (0=top-level, 1=replies, …).
  */
 export async function prefetchItemComments(id: number | string, signal?: AbortSignal, maxOrderingDepth = Infinity): Promise<PrefetchResult | null> {
   try {
@@ -506,7 +499,6 @@ export async function prefetchItemComments(id: number | string, signal?: AbortSi
       comments: commentTree,
     };
   } catch {
-    // Silent failure for prefetch
     return null;
   }
 }
@@ -564,11 +556,8 @@ export function formatAbsoluteTime(timestamp: number): string {
   });
 }
 
-// Format timestamp as a long-month date-only string (e.g. "October 9, 2006").
-// Used by UserProfile for the account creation date — minute precision is
-// meaningful on a per-story tooltip but not on a profile creation date, and
-// the long-month name matches the agreed visible style.
-// Same Infinity/NaN guard as formatAbsoluteTime — see comment there.
+// Long-month date-only (e.g. "October 9, 2006") for profile creation dates
+// where minute precision isn't meaningful.
 export function formatAbsoluteDate(timestamp: number): string {
   if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) return '';
   return new Date(timestamp).toLocaleString(undefined, {
@@ -576,18 +565,14 @@ export function formatAbsoluteDate(timestamp: number): string {
   });
 }
 
-// Safe ISO string for <time> dateTime attribute — returns '' for invalid timestamps
-// (null/undefined/zero/NaN/±Infinity); `Date#toISOString` throws RangeError on
-// non-finite millisecond inputs, so the isFinite gate is required here.
+// Safe ISO string for <time> dateTime — isFinite gate required because
+// Date#toISOString throws RangeError on non-finite inputs.
 export function safeISOString(timestamp: number): string {
   if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) return '';
   return new Date(timestamp).toISOString();
 }
 
-// Format relative time. Same Infinity/NaN guard as formatAbsoluteTime —
-// `!timestamp` rejects 0/null/undefined; `isNaN` catches arithmetic-NaN
-// inputs; `!isFinite` catches ±Infinity (which would slip through both
-// of the others and produce nonsense like "Infinity years ago").
+// Relative time (e.g. "3 hours ago").
 export function formatTimeAgo(timestamp: number): string {
   if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) {
     return '';
@@ -615,17 +600,9 @@ export function formatTimeAgo(timestamp: number): string {
   return 'just now';
 }
 
-// Author truthiness helper. HN's degraded payloads use the literal string
-// `'unknown'` as a placeholder for missing/anonymous authors (verified in
-// e2e/fixtures/api-mocks.ts and observed in real Algolia responses for
-// orphaned items), and empty strings slip through `?? ''` fallbacks
-// elsewhere in the pipeline. Both should suppress the link to a
-// `/user/<garbage>` route — and the byline brightness that signals a
-// real authorship handle. StoryCard already inlines this check
-// (`author && author !== 'unknown'`); this helper centralizes the rule
-// so CommentArticle, Comment, and any future surface stay consistent.
-// Returns a type predicate so callers can use it as an `if`-narrow before
-// passing the author into a router `to=` template.
+// HN uses literal 'unknown' for missing/anonymous authors (degraded Algolia
+// payloads), and empty strings slip through ?? '' fallbacks. Both suppress
+// the link and OP badge. Type predicate for narrowing in router templates.
 export function isKnownAuthor(
   author: string | null | undefined,
 ): author is string {

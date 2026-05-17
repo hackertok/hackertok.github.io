@@ -15,11 +15,7 @@ interface StoryCardProps {
   story: StoryItem;
   index?: number;
   listType?: string;
-  /**
-   * When set, internal links write `{ fromDomain }` into
-   * location.state so Header's "from" indicator stays active and
-   * ItemDetail's back link routes to the domain page.
-   */
+  /** Domain for location.state (keeps Header indicator active). */
   fromDomain?: string;
   /**
    * Wins over `fromDomain` and `from` because user submissions are
@@ -27,18 +23,9 @@ interface StoryCardProps {
    */
   fromUser?: string;
   onBeforeNavigate?: () => void;
-  /**
-   * 0-indexed slot in the StoryList entry cascade. CSS scope
-   * (`.page-stage.play-real`) gates the animation to the initial
-   * cascade window; appended cards past `'done'` mount at opacity 1.
-   */
+  /** Cascade slot for initial page-load animation. */
   stageIdx?: number;
-  /**
-   * 0-indexed slot WITHIN an infinite-scroll append batch. Picks up
-   * the unscoped `.append-fade` rule so the cascade fires on every
-   * post-cold-load mount (`.stagger-fade`'s `.page-stage.play-real`
-   * scope no longer matches in `'done'`).
-   */
+  /** Cascade slot within an infinite-scroll append batch. */
   appendIdx?: number;
 }
 
@@ -109,8 +96,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
     }
   };
 
-  // `index` is the prefetch priority hint (lower = sooner). Re-fires
-  // if the card re-enters viewport after cache eviction.
+  // Priority hint for prefetch (lower = sooner).
   useEffect(() => {
     if (enterInView) {
       isPrefetchingRef.current = true;
@@ -142,13 +128,8 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
     };
   }, [stopPrefetch]);
 
-  // Snapshot the slot at mount (lazy `useState` init) so the parent's
-  // `useStaggerCascadeSlots` advancing its `batchStart` on a NEXT
-  // fetch can't (a) cancel a mid-flight `.append-fade` animation or
-  // (b) mutate `--stagger-delay` on a settled card. `stageIdx` wins
-  // over `appendIdx` when both are passed — the initial cascade is
-  // owned by PageStage's play-real window, while append fires
-  // unconditionally on mount; passing both would double-animate.
+  // Snapshot slot at mount so advancing batchStart can't mutate
+  // settled cards. stageIdx wins over appendIdx.
   const [animationSlot] = useState<
     | { kind: 'stage'; idx: number }
     | { kind: 'append'; idx: number }
@@ -202,10 +183,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
           )}
         </h2>
 
-        {/* Meta row order: points → domain → time → user → comments.
-            Points/domain/time form a quick-scan header (score, source,
-            recency); user follows for attribution; comments lands last
-            as the explicit "click to read the discussion" action. */}
+        {/* Meta order: points → domain → time → user → comments. */}
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground">
           <span className={metaItemClass}>
             <ChevronUp aria-hidden className="size-3.5" />

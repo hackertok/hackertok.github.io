@@ -12,29 +12,13 @@ interface SwipeDomainStoryViewerProps {
 }
 
 /**
- * Domain-backed swipe viewer. Thin wrapper over {@link SwipeStoryViewerCore}
- * that sources data from `useDomainInfiniteStories(domain)`.
- *
- * Used on mobile for `/from/:domain` and for `/item/:id` arrivals whose
- * `location.state` carries `fromDomain`.
- *
- * Does not call `usePrefetchSections` — the cross-section warm-up is only
- * meaningful for the main feed tabs (top/best/show/ask), not for domain
- * filtering which has its own data source.
- *
- * Canonicalizes the raw `domain` prop once (matching the hook's internal
- * canonicalization) so `state.fromDomain` and the user-visible
- * titles all agree on a single form regardless of how the URL was typed.
- * Without this, `/from/WWW.Foo.com/` would write `state.fromDomain` in its
- * non-canonical form, and the back link from a swiped-to item would point
- * at a non-canonical URL (functional because the hook canonicalizes
- * internally, but cosmetically divergent).
+ * Domain-backed swipe viewer. Canonicalizes the domain prop;
+ * skips cross-section prefetch (only meaningful for main feeds).
  */
 export function SwipeDomainStoryViewer({ domain, initialItemId }: SwipeDomainStoryViewerProps) {
   const canonical = canonicalizeDomain(domain);
   const { stories, loading, error, hasMore, loadMore } = useDomainInfiniteStories(canonical);
 
-  // Stable identity so SwipeStoryViewerCore's URL-sync effect does not re-run on every parent re-render.
   const backState = useMemo(() => ({ fromDomain: canonical }), [canonical]);
 
   return (

@@ -5,11 +5,7 @@ import { isKnownAuthor } from '../api/hn';
 import { metaPillClass } from '../lib/classes';
 
 /**
- * Wraps an author Link / handle with the OP badge so the badge is a
- * SIBLING of the link (keeps the link's accessible name as just the
- * handle — `getByRole('link', { name: '<author>' })` still resolves)
- * and shares the `gap-1.5` spacing across compact (Comment) and focal
- * (AuthorByline) bylines.
+ * OP badge wrapper — badge as sibling keeps link's accessible name clean.
  */
 export function OpWrap({ children }: { children: ReactNode }) {
   return (
@@ -24,42 +20,15 @@ export function OpWrap({ children }: { children: ReactNode }) {
 
 interface AuthorBylineProps {
   author: string | null | undefined;
-  /**
-   * What to render when `author` is empty/null. (The literal
-   * `'unknown'` always renders as the "unknown" placeholder span so
-   * the meta-row rhythm doesn't shift.)
-   *
-   *   - `'show-unknown'` (default): "unknown" placeholder. Used by
-   *     StoryCard and CommentArticle so the byline always contributes
-   *     a glyph to the gap-driven meta-row layout.
-   *   - `'hide'`: render `null`. Used by ItemArticle where the detail
-   *     page has room to silently drop the slot.
-   */
+  /** `'show-unknown'` (default) or `'hide'` when author is empty. */
   emptyFallback?: 'show-unknown' | 'hide';
-  /**
-   * When true, decorate the byline with an `OP` badge. Caller MUST
-   * guard with `isKnownAuthor(storyAuthor)` so empty / 'unknown'
-   * story authors don't OP-decorate every fallback name.
-   */
+  /** OP badge. Caller guards with isKnownAuthor. */
   isOp?: boolean;
-  /**
-   * Click handler attached to the inner `<Link>` only — the
-   * non-link "unknown" placeholder branch ignores it because there's
-   * nothing to navigate from. StoryCard wires this to its
-   * `saveScrollPosition` so the source list's scroll position is
-   * snapshotted before the user lands on `/user/<author>`.
-   */
+  /** Click handler for inner Link (e.g. scroll snapshot). */
   onClick?: () => void;
 }
 
-/**
- * Author byline for the meta row — a `User`-icon + handle pill that
- * navigates to `/user/<author>` when the handle is real, and falls
- * back to a non-link span otherwise. Centralises the `isKnownAuthor`
- * guard so StoryCard / ItemArticle / CommentArticle stay in lockstep,
- * including the `font-medium` weight delta that satisfies axe's
- * `link-in-text-block` colour-only rule.
- */
+/** Author byline pill with link (real handle) or plain span (unknown). */
 export function AuthorByline({
   author,
   emptyFallback = 'show-unknown',

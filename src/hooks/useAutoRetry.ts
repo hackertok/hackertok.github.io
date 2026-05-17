@@ -61,11 +61,7 @@ export function useAutoRetry({
     retryInFlightRef.current = false;
   }, [clearTimer]);
 
-  // Shared retry executor — fires retryFn and tracks the in-flight state.
-  // For Promise-returning retryFn: resets attempts via .then() after
-  // the async operation settles. For void-returning retryFn: clears
-  // retryInFlightRef immediately so the layout effect can reset
-  // attempts when the error clears.
+  // Fires retryFn and tracks in-flight state.
   const executeRetry = useCallback(() => {
     setAttempts(a => a + 1);
     retryInFlightRef.current = true;

@@ -569,8 +569,7 @@ export function SwipeStoryViewerCore({
         );
       })}
       
-      {/* Loading indicator at the end — only when online (offline: scroll stops at last loaded story,
-           auto-retry extends feed in background once connectivity returns) */}
+      {/* Loading indicator — only when online */}
       {isOnline && ((loading && mergedStories.length > 0) || (isRetrying && mergedStories.length > 0 && !loading)) && (
         <div className="swipe-snap-panel" data-testid="swipe-panel-loading">
           <FullScreenItemSkeletonPanel />
@@ -597,11 +596,7 @@ interface SwipeStoryViewerProps {
   initialItemId?: string;
 }
 
-/**
- * Feed-backed swipe viewer. Thin wrapper over {@link SwipeStoryViewerCore}
- * that sources data from `useInfiniteStories(type)` and triggers the
- * cross-section prefetch warm-up.
- */
+/** Feed-backed swipe viewer wrapping SwipeStoryViewerCore. */
 export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps) {
   const { stories, loading, error, hasMore, loadMore, isFromCache, isFromSession } = useInfiniteStories(type);
 
@@ -617,7 +612,6 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
     }
   }, [isFromCache, loading, loadMore, isFromSession, error]);
 
-  // Stable identity so SwipeStoryViewerCore's URL-sync effect does not re-run on every parent re-render.
   const backState = useMemo(() => ({ from: type }), [type]);
 
   return (

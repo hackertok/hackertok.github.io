@@ -39,19 +39,14 @@ const SITE_REGEX = /^[a-z0-9.-]+(?:\/[a-z0-9._-]+)?$/i;
 // matches in parseSelf — keep them in sync via this single source.
 const USERNAME_REGEX = /^[a-zA-Z0-9_-]{2,15}$/;
 
-// Single source of truth for the supported HN feeds and their friendly labels.
-// Feeds are nullary destinations (no value), so their labels are the route
-// path itself rather than the operator-style `kind:value` shape used for
-// item/from/user links. This keeps every label honest about what it points to.
+// Supported feed routes → display labels.
 const FEED_LABELS = new Map<string, string>([
   ['/show', '/show'],
   ['/ask', '/ask'],
   ['/best', '/best'],
 ]);
 
-// Hardcoded canonical self-host. The current `window.location.hostname` is
-// also treated as self at runtime so dev (`localhost`) and any preview
-// deployments work without additional configuration.
+// Canonical self-host; `window.location.hostname` also treated as self at runtime.
 const SELF_HOSTS = new Set<string>(['hackertok.github.io']);
 
 const HN_HOST = 'news.ycombinator.com';

@@ -1,8 +1,6 @@
 import type { StoryItem, FeedType } from '../types';
 
-/**
- * LocalStorage cache for feed lists (stories) with stale-while-revalidate.
- */
+/** Feed list cache (localStorage, stale-while-revalidate). */
 
 export const FEED_CACHE_KEY_PREFIX = 'feed:';
 const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes
@@ -38,9 +36,7 @@ export function setCachedFeed(type: FeedType, stories: StoryItem[]): void {
     const key = `${FEED_CACHE_KEY_PREFIX}${type}`;
     const data = { stories, timestamp: Date.now() };
     localStorage.setItem(key, JSON.stringify(data));
-  } catch {
-    // localStorage might be full or unavailable
-  }
+  } catch { /* best-effort */ }
 }
 
 export function clearFeedCache(type?: FeedType): void {
@@ -52,9 +48,7 @@ export function clearFeedCache(type?: FeedType): void {
         .filter(key => key.startsWith(FEED_CACHE_KEY_PREFIX))
         .forEach(key => localStorage.removeItem(key));
     }
-  } catch {
-    // Silently fail
-  }
+  } catch { /* best-effort */ }
 }
 
 export function isCacheFresh(type: FeedType): boolean {

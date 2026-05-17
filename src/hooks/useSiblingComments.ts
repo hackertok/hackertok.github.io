@@ -66,7 +66,6 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
     await load(controller.signal);
   }, [load]);
 
-  // Initial load + re-fetch when commentId changes.
   useEffect(() => {
     const controller = new AbortController();
     controllerRef.current = controller;

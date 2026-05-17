@@ -20,13 +20,7 @@ interface CommentDetailProps {
   };
 }
 
-/**
- * Skeleton for the comment-detail page. Mirrors the real
- * `CommentArticle` shape (article wrapper, 4-pill meta row, 2 body
- * bars, replies tree) so the swap is invisible. Outer chrome stays
- * with `CommentDetail` so this skeleton doesn't double-pad when fed
- * into PageStage's overlay slot.
- */
+/** Skeleton matching CommentArticle's shape. Chrome stays with the parent. */
 export function CommentDetailSkeleton() {
   return (
     <div className="animate-pulse">
@@ -82,9 +76,7 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
     );
   }
 
-  // Pre-emptive retry skeleton — fires while useAutoRetry is between
-  // attempts (loading flips back to true, error stays set) so the
-  // user doesn't see the error UI flash off before the retry kicks in.
+  // Retry-in-progress skeleton (avoids error UI flash between attempts).
   if (error && isRetrying) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">

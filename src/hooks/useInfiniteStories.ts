@@ -1,3 +1,10 @@
+/**
+ * Infinite-scroll data source for the main feed pages.
+ *
+ * Three-tier restore: sessionStorage → localStorage cache → network.
+ * Stale responses discarded via a monotonic version counter.
+ * Deduplication across pages via a `seenIds` set.
+ */
 import { useState, useCallback, useRef } from 'react';
 import { fetchTopStories, fetchFrontPageForDay, fetchBestStories, fetchShowStories, fetchAskStories } from '../api/hn';
 import { getCachedFeed, setCachedFeed } from '../utils/feedCache';
@@ -53,7 +60,6 @@ function getInitialState(type: FeedType): InitialState {
 }
 
 export function useInfiniteStories(type: FeedType = 'top') {
-  // Lazy initialization: sync read from localStorage on first render (called once)
   const [initialState] = useState(() => getInitialState(type));
   const [stories, setStories] = useState(initialState.stories);
   const [isFromCache, setIsFromCache] = useState(initialState.isFromCache);
@@ -73,9 +79,7 @@ export function useInfiniteStories(type: FeedType = 'top') {
   const seenIdsRef = useRef<Set<number>>(
     new Set(initialState.sessionState?.seenIds)
   );
-  // Version counter to cancel stale responses
   const versionRef = useRef(0);
-  // Track if we have cached data that needs revalidation (start true if we loaded from cache)
   const hasStaleCacheRef = useRef(initialState.isFromCache);
 
   const loadMore = useCallback(async () => {
@@ -118,7 +122,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
           
           positionRef.current = 1; // Next load will be yesterday
         } else {
-          // Subsequent loads: day-based pagination using Algolia.
           let attempts = 0;
           const maxAttempts = 5; // Try up to 5 days if current day has no stories
 
@@ -188,7 +191,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
           }
         }
       } else if (type === 'show' || type === 'ask') {
-        // Show HN / Ask HN: day-based pagination, top 20 per 24-hour window, via Algolia.
         const fetchFn = type === 'show' ? fetchShowStories : fetchAskStories;
         const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
         const result = await fetchFn(positionRef.current);

@@ -4,12 +4,10 @@ import type { Theme } from '../types';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
-    // Check localStorage first
     const stored = localStorage.getItem('theme');
     if (stored === 'dark' || stored === 'light') {
       return stored;
     }
-    // Fall back to system preference
     if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
       return 'dark';
     }
@@ -17,7 +15,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    // Update document class and localStorage
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
     root.classList.add(theme);

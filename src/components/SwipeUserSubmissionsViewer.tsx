@@ -18,23 +18,13 @@ interface SwipeUserSubmissionsViewerProps {
   initialItemId?: string;
 }
 
-/**
- * User-submissions swipe viewer for mobile. Thin wrapper over
- * {@link SwipeStoryViewerCore} that sources data from
- * `useUserInfiniteStories(username)`.
- *
- * Used on mobile for `/submitted/:id` and for `/item/:id` arrivals whose
- * `location.state` carries `fromUser`.
- *
- */
+/** User-submissions swipe viewer for mobile. */
 export function SwipeUserSubmissionsViewer({
   username,
   initialItemId,
 }: SwipeUserSubmissionsViewerProps) {
   const { stories, loading, error, hasMore, loadMore } = useUserInfiniteStories(username);
 
-  // Stable identity so SwipeStoryViewerCore's URL-sync effect doesn't re-run
-  // on every parent re-render.
   const backState = useMemo(() => ({ fromUser: username }), [username]);
 
   return (

@@ -1,10 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import { ScrollContainerContext } from './scrollContainerDef';
 
-/**
- * Provider for scroll container context
- * Used to communicate scroll position from SwipeItemViewer to Header
- */
+/** Scroll container context provider. */
 export function ScrollContainerProvider({ children }: { children: ReactNode }) {
   const [isSwipeMode, setIsSwipeMode] = useState(false);
 
