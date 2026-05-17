@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { ALGOLIA_API } from '../config/api';
 import { normalizeAlgoliaHit } from '../api/hn';
 import type { StoryItem, AlgoliaSearchResponse } from '../types';
@@ -97,11 +97,11 @@ export function useDomainInfiniteStories(rawDomain: string) {
     setHasMore(newCached?.hasMore ?? true);
   }
 
-  // Reset refs when `domain` changes. Declared before the fetch effect so it
-  // runs first in the effect queue, ensuring refs are up-to-date before any
-  // fetch fires. Refs are side effects and must not be mutated during render
-  // (component purity, StrictMode double-invocation, React Compiler).
-  useEffect(() => {
+  // Reset refs when `domain` changes. useLayoutEffect runs synchronously
+  // after commit, before any microtask (Promise.then) can fire — this
+  // ensures versionRef is bumped before a stale in-flight fetch can check
+  // it. useEffect would leave a gap where resolved fetches slip through.
+  useLayoutEffect(() => {
     const cached = domain ? domainCache.get(domain) : undefined;
     nextPageRef.current = cached?.page ?? 0;
     seenIdsRef.current = new Set(cached?.seenIds ?? []);
