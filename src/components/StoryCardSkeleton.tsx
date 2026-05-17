@@ -3,14 +3,8 @@ interface StoryCardSkeletonProps {
   metaWidths?: number[];
 }
 
-// Bar heights are kept SHORTER than the real card's rendered heights
-// so PageStage's grid stack sizes the cell to `max(skeleton, real)`
-// and there's no visible contraction when the overlay unmounts:
-//   - Title bars `h-5` (20px) ≤ real title line box (24/26px).
-//   - Second title bar is `md:hidden` — desktop titles almost always
-//     fit on one line, and a 2-bar skeleton would contract from ~46px
-//     to ~26px when real content arrives.
-//   - Meta-row `min-h-5` (20px) matches real `text-sm` row height.
+// Heights ≤ real card to prevent PageStage contraction.
+// Second title bar md:hidden (desktop titles fit one line).
 export function StoryCardSkeleton({
   titleWidths = [0.8, 0.4],
   metaWidths = [0.08, 0.16, 0.1, 0.14, 0.12],
@@ -18,7 +12,7 @@ export function StoryCardSkeleton({
   return (
     <article className="py-3 first:pt-0">
       <div className="space-y-1.5">
-        {/* Title skeleton — varying widths for natural look. */}
+        {/* Title skeleton */}
         <div className="space-y-1">
           <div
             className="h-5 bg-skeleton rounded"
@@ -32,7 +26,6 @@ export function StoryCardSkeleton({
           )}
         </div>
 
-        {/* Meta info — 5 pills (points / domain / time / user / comments). */}
         <div className="flex items-center gap-x-3.5 gap-y-2 min-h-5">
           <div className="h-3 bg-skeleton rounded" style={{ width: `${metaWidths[0] * 100}%` }} />
           <div className="h-3 bg-skeleton rounded" style={{ width: `${metaWidths[1] * 100}%` }} />
@@ -50,9 +43,7 @@ interface StoryCardSkeletonListProps {
 }
 
 export function StoryCardSkeletonList({ count = 10 }: StoryCardSkeletonListProps) {
-  // Each 5-tuple holds meta-row pill widths in production order
-  // (points / domain / time / user / comments). Points and time stay
-  // narrow; domain and user float more; comments stays moderate.
+  // Meta pill widths: points / domain / time / user / comments.
   const variations = [
     { titleWidths: [0.92, 0.35], metaWidths: [0.07, 0.18, 0.09, 0.13, 0.11] },
     { titleWidths: [0.78, 0.48], metaWidths: [0.08, 0.16, 0.08, 0.15, 0.10] },

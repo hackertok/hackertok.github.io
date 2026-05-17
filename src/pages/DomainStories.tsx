@@ -12,19 +12,14 @@ export function DomainStories() {
   // Wildcard param captures paths like `github.com/foo`.
   const params = useParams();
   const rawDomain = params['*'] ?? '';
-  // Canonicalize so the title, empty state, and the `fromDomain` prop
-  // propagated into `location.state` all agree with the hook's cache
-  // key — otherwise `/from/WWW.Foo.com` would write a non-canonical
-  // `state.fromDomain` and back-nav would land on a non-canonical URL.
+  // Canonicalize so title, empty state, and state.fromDomain all share one key.
   const domain = canonicalizeDomain(rawDomain);
 
   useDocumentTitle(domain ? `Submissions from ${domain}` : undefined);
 
   const result = useDomainInfiniteStories(domain);
 
-  // Scroll restore key includes the canonical domain so each domain's
-  // scroll position is independent (`/from/github.com` and
-  // `/from/foo.bar` don't fight over the same slot).
+  // Keyed by domain so each domain restores independently.
   const { saveScrollPosition } = useScrollRestore(
     domain ? `domain:${domain}` : undefined,
     result.stories.length > 0,

@@ -11,16 +11,11 @@ export function UserSubmissions() {
   const { id } = useParams<{ id: string }>();
   const username = id ?? '';
 
-  // HN's `/submitted?id=USER` is stories-only despite the misleading
-  // "submitted" label (which includes comments on Firebase). Title
-  // and empty state agree on this wording so the desktop list and
-  // the swipe viewer read identically.
   useDocumentTitle(username ? `Submissions by ${username}` : undefined);
 
   const result = useUserInfiniteStories(username);
 
-  // Scroll restore key includes the username so each user's submission
-  // page restores independently.
+  // Keyed by username so each user restores independently.
   const { saveScrollPosition } = useScrollRestore(
     username ? `user:${username}` : undefined,
     result.stories.length > 0,

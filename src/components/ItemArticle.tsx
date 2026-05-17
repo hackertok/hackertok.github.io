@@ -14,7 +14,7 @@ interface ItemArticleProps {
   className?: string;
 }
 
-/** Shared item header (title, meta, text) used by both ItemDetail and FullScreenItem. */
+/** Shared item header (title, meta, text). */
 export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-border' }: ItemArticleProps) {
   const viewed = useIsViewed(item.id);
   const hostname = getHostname(item.url);
@@ -45,11 +45,7 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
         )}
       </h1>
 
-      {/* Meta row order matches StoryCard. Comments stays a non-
-          clickable span here (we're already on the detail page).
-          `emptyFallback="hide"` preserves ItemArticle's historical
-          behavior of dropping the author slot entirely when no handle
-          is present. */}
+      {/* Meta row matches StoryCard order. Comments non-clickable (already on detail). */}
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground mb-2">
         <span className={metaItemClass}>
           <ChevronUp aria-hidden className="size-3.5" />

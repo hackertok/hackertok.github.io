@@ -11,18 +11,9 @@ import type { Comment as CommentType } from '../types';
 
 interface CommentProps {
   comment: CommentType;
-  /**
-   * Author handle of the surrounding story. Forwarded recursively to
-   * children so deeply-nested replies from the OP also light up; the
-   * OP badge fires when `storyAuthor === comment.author` (with an
-   * `isKnownAuthor` guard so empty/'unknown' authors don't decorate).
-   */
+  /** Story author for OP detection (forwarded recursively). */
   storyAuthor?: string;
-  /**
-   * 0-indexed slot position in the entry cascade. CSS scope
-   * (`.page-stage.play-real`) gates the actual animation to the
-   * initial cascade window only.
-   */
+  /** Cascade slot index for stagger animation. */
   stageIdx?: number;
 }
 
@@ -57,22 +48,11 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
 
   return (
     <div className={wrapperClass} style={wrapperStyle} id={`comment-${comment.id}`}>
-      {/* Compact `›` + author + time byline — the unified lucide meta
-          row is reserved for the focal comment in CommentArticle. Here
-          in the threaded list the tree-trunk graphical structure
-          already conveys parent location, so a denser row would only
-          add noise. */}
+      {/* Compact byline — lucide meta row is for the focal comment. */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-0.5 comment-byline">
         <span className="text-accent/80 text-base leading-none" aria-hidden="true">›</span>
-        {/* OP variant: `OpWrap` (shared with AuthorByline) places the
-            badge as a SIBLING of the Link so the handle's accessible
-            name stays clean, and the `gap-1.5` spacing is identical
-            across compact and focal bylines. */}
         {isOp ? (
           <OpWrap>
-            {/* `isOp` requires `comment.author === storyAuthor` AND
-                `isKnownAuthor(storyAuthor)`, so `comment.author` is
-                guaranteed known here — no unknown fallback needed. */}
             <Link
               to={`/user/${comment.author}`}
               className="font-semibold text-foreground hover:text-accent transition-colors"
@@ -120,11 +100,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
 
           {!repliesExpanded && (
             <div className="tree-branch tree-branch--last pt-2">
-              {/* Replies expander pill. Negative-margin -mx-2 -my-1
-                  cancels the padding for layout (so the tree-branch
-                  connector still meets the button at the same
-                  position) while letting the hover backdrop extend
-                  beyond the text bounds. */}
+              {/* Replies expander — negative margin compensates padding for tree alignment. */}
               <button
                 onClick={() => setRepliesExpanded(true)}
                 className="inline-flex items-center gap-1.5 px-2 py-1 -mx-2 -my-1 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"

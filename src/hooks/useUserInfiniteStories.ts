@@ -12,10 +12,7 @@ interface UserCacheEntry {
   seenIds: Set<number>;
 }
 
-// Module-level cache survives route remounts (e.g. /submitted/:id → /item/:id → back)
-// and bridges the desktop list view and mobile swipe view for the same user.
-// See `useDomainInfiniteStories` for the same pattern; bounded only by the
-// page lifetime.
+// Module-level in-memory cache (see useDomainInfiniteStories).
 const userStoriesCache = new Map<string, UserCacheEntry>();
 
 /**
@@ -25,37 +22,19 @@ export function __resetUserStoriesCacheForTests() {
   userStoriesCache.clear();
 }
 
-/**
- * @internal Testing helper exposing the module-level cache for assertions.
- */
+/** @internal Exposes cache for test assertions. */
 export function __getUserStoriesCacheForTests() {
   return userStoriesCache;
 }
 
-/**
- * Empty-state title shown when a user has no submitted stories.
- * "by" instead of "from" because the subject is a person, not a host.
- * Centralized so the desktop list (`UserSubmissions`) and mobile swipe viewer
- * (`SwipeUserSubmissionsViewer`) render identical copy.
- */
+/** Centralized empty-state title for user submission pages. */
 export function formatNoUserSubmissionsTitle(username: string): string {
   return `No submissions found by "${username}"`;
 }
 
 /**
- * Infinite-scroll data source for a user's submitted stories.
- *
- * Algolia's `author_X` tag is an exact, server-side match on the author
- * field — unlike `useDomainInfiniteStories`'s URL substring search, every
- * hit is guaranteed to belong to the user. Consequences:
- * - No local URL filter is needed (and we don't want one — every hit is real).
- * - No `MAX_EMPTY_PAGES_COLD_START` cap is needed: if a user has zero stories,
- *   page 0 returns 0 hits, `nbPages` is 0, and `hasMore` flips to false on
- *   the first round-trip. There's no "noisy substring" loop to bound.
- *
- * Otherwise mirrors `useDomainInfiniteStories`: dedup across pages, version
- * counter for stale-response invalidation, module-level cache, and the
- * `prevUsername` derived-state pattern for prop changes.
+ * Paginated user stories from Algolia (`author_X` tag, exact match).
+ * No local filter needed — every hit belongs to the user.
  */
 export function useUserInfiniteStories(username: string) {
   const initialCached = username ? userStoriesCache.get(username) : undefined;
@@ -70,9 +49,7 @@ export function useUserInfiniteStories(username: string) {
   const seenIdsRef = useRef<Set<number>>(new Set(initialCached?.seenIds ?? []));
   const versionRef = useRef(0);
   const inFlightRef = useRef(false);
-  // Mirrors committed `stories`. See `useDomainInfiniteStories` for the
-  // same rationale — keeps the cache write out of the setStories functional
-  // updater (which StrictMode double-invokes in dev).
+  // Mirrors committed stories (keeps cache write out of setStories updater).
   const storiesRef = useRef<StoryItem[]>(initialCached?.stories ?? []);
 
   // Prop-derived state: reset when `username` changes without waiting for
@@ -117,8 +94,7 @@ export function useUserInfiniteStories(username: string) {
 
       const data = (await response.json()) as AlgoliaSearchResponse;
 
-      // Second staleness check: see `useDomainInfiniteStories` for why this
-      // is needed even after the first one above.
+      // Second staleness check (see useDomainInfiniteStories).
       if (versionRef.current !== currentVersion) return;
 
       const userStories: StoryItem[] = data.hits.map(normalizeAlgoliaHit);
@@ -136,9 +112,7 @@ export function useUserInfiniteStories(username: string) {
       const newHasMore = data.page < data.nbPages - 1;
       setHasMore(newHasMore);
 
-      // Compute the next list outside any functional updater so setStories stays
-      // pure. `storiesRef` mirrors committed state and is safe to read here
-      // because inFlightRef guards against concurrent loadMore runs.
+      // Compute outside updater to keep setStories pure (StrictMode-safe).
       const updated = [...storiesRef.current, ...uniqueStories];
       storiesRef.current = updated;
       userStoriesCache.set(username, {

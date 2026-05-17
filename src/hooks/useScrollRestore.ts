@@ -3,54 +3,17 @@ import { useNavigationType, NavigationType } from 'react-router-dom';
 import { readScrollPosition, writeScrollPosition } from '../utils/scrollRestore';
 
 /**
- * Lightweight scroll-only session restore for list pages whose data
- * is already in memory on remount (e.g. domain / user submissions,
- * where the in-hook module cache supplies stories synchronously).
+ * Scroll-only session restore for list pages with in-memory data.
  *
- * Gated on the navigation type that brought the user here:
+ * POP nav → restore saved scrollY (or scroll to top if absent).
+ * PUSH/REPLACE → scroll to top, ignore saved entry (fresh navigation).
  *
- *   - POP (browser back/forward, page reload, initial load) →
- *     restore the saved scrollY. This is the back-nav use case the
- *     hook exists for.
- *   - PUSH / REPLACE (Link click, `navigate()`) → scroll to top and
- *     IGNORE any saved entry. A fresh navigation to the page should
- *     present a fresh view. Without this gate, clicking
- *     `<Link to="/submitted/X">` after having previously visited
- *     /submitted/X earlier in the tab session would land the user
- *     at the *previous* scroll position — surprising, since they
- *     deliberately navigated to the page.
+ * Restores once per `key` entry. Tracks the last-restored key (not a
+ * boolean) so param-changes-without-remount (e.g. `/from/foo` → `/from/bar`)
+ * re-arm correctly.
  *
- * Restores once per `key` *entry*. An entry begins on either:
- *   - mount, or
- *   - a `key` change without remount — `<Route path="/from/*">`
- *     keeps the same `<DomainStories>` instance when the user
- *     navigates `/from/foo` → `/from/bar`, so the hook tracks the
- *     last-restored key (not just a "have we restored" boolean) and
- *     re-restores when `key` shifts under it. Same shape applies to
- *     `<Route path="/submitted/:id">`.
- *
- * For each POP entry, once `ready` becomes true:
- *   - sessionStorage entry present → restore via
- *     `requestAnimationFrame(scrollTo)` (the rAF lets React commit
- *     the list before we scroll; without it, scrollTo could clamp
- *     to a still-collapsing document).
- *   - absent → scroll to top (fresh nav).
- *
- * `useLayoutEffect` runs before paint so the warm-cache path
- * doesn't flash the top of the page.
- *
- * Returns `saveScrollPosition` for the caller to wire into
- * navigation surfaces (StoryCard's `onBeforeNavigate`).
- * Snapshot-on-click captures `window.scrollY` at the moment of
- * navigation, before any navigation-induced layout shift. Saves
- * are unconditional — the gate is on RESTORE, not on SAVE: the
- * user might navigate away via PUSH and later POP back, and that
- * later POP needs the saved value.
- *
- * No-op when `key` is undefined — used by pages that haven't yet
- * resolved their context (e.g. `DomainStories` before the route
- * param canonicalises). The hook still mounts (rules of hooks) but
- * does no storage I/O and the effect bails on the missing key.
+ * Returns `saveScrollPosition` for snapshot-on-click before navigation.
+ * No-op when `key` is undefined (unresolved route param).
  */
 export function useScrollRestore(
   key: string | undefined,

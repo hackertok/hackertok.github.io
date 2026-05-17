@@ -1,9 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-/**
- * Track viewed items in localStorage. Simple append-only storage — item IDs
- * are small (~8 bytes each).
- */
+/** Track viewed items in localStorage. */
 
 export const VIEWED_KEY = 'viewed';
 export const VIEWED_TIMES_KEY = 'viewed:times';
@@ -42,7 +39,6 @@ function loadViewedSet(): Set<number> {
   return viewedSet;
 }
 
-/** True iff the item has been viewed (in any prior session). */
 export function isViewed(itemId: number | string): boolean {
   return loadViewedSet().has(Number(itemId));
 }
@@ -63,25 +59,19 @@ export function markViewed(itemId: number | string): void {
   
   try {
     localStorage.setItem(VIEWED_KEY, JSON.stringify([...set]));
-  } catch {
-    // localStorage full - silently fail
-  }
+  } catch { /* best-effort */ }
   notifyListeners();
 }
 
-/** Clear all viewed items (for testing/debugging). */
 export function clearViewed() {
   viewedSet = null;
   try {
     localStorage.removeItem(VIEWED_KEY);
-  } catch { /* localStorage unavailable - silently fail */ }
+  } catch { /* best-effort */ }
   notifyListeners();
 }
 
-/**
- * Reactive variant of {@link isViewed}. Re-renders subscribers whenever any
- * item's viewed state changes.
- */
+/** Reactive `isViewed` — re-renders on change. */
 export function useIsViewed(itemId: number | string): boolean {
   return useSyncExternalStore(subscribe, () => isViewed(itemId));
 }
@@ -105,15 +95,12 @@ function loadViewedTimes(): Record<string, number> {
 function saveViewedTimes(): void {
   try {
     localStorage.setItem(VIEWED_TIMES_KEY, JSON.stringify(viewedTimesCache));
-  } catch {
-    // localStorage full - silently fail
-  }
+  } catch { /* best-effort */ }
 }
 
-/** IDs of items viewed within the last `hours` hours. */
 export function getRecentlyViewedIds(hours = 24): Set<number> {
   const times = loadViewedTimes();
-  const cutoff = Date.now() - (hours * 60 * 60 * 1000);
+  const cutoff = Date.now() - (hours * 60 * 60 * 1000); // hours → ms
   const recentIds = new Set<number>();
   
   for (const [id, timestamp] of Object.entries(times)) {
@@ -125,10 +112,7 @@ export function getRecentlyViewedIds(hours = 24): Set<number> {
   return recentIds;
 }
 
-/**
- * Mark with timestamp + persist to permanent store (for styling) + add to
- * session-viewed (so it won't be filtered out for the rest of the session).
- */
+/** Mark viewed with timestamp; persists to permanent + session stores. */
 export function markViewedWithTime(itemId: number | string): void {
   const id = Number(itemId);
   
@@ -140,10 +124,9 @@ export function markViewedWithTime(itemId: number | string): void {
   saveViewedTimes();
 }
 
-/** Drop entries older than `hours`. Call on app startup to keep storage bounded. */
 export function pruneExpiredViewed(hours = 24): void {
   const times = loadViewedTimes();
-  const cutoff = Date.now() - (hours * 60 * 60 * 1000);
+  const cutoff = Date.now() - (hours * 60 * 60 * 1000); // hours → ms
   let pruned = false;
   
   for (const [id, timestamp] of Object.entries(times)) {
@@ -158,12 +141,11 @@ export function pruneExpiredViewed(hours = 24): void {
   }
 }
 
-/** Clear all time-based viewed items (for testing). */
 export function clearViewedTimes() {
   viewedTimesCache = {};
   try {
     localStorage.removeItem(VIEWED_TIMES_KEY);
-  } catch { /* localStorage unavailable - silently fail */ }
+  } catch { /* best-effort */ }
 }
 
 // ============================================================================
@@ -186,9 +168,7 @@ function loadSessionViewed(): Set<number> {
 function saveSessionViewed(): void {
   try {
     sessionStorage.setItem(VIEWED_SESSION_KEY, JSON.stringify([...sessionViewedCache!]));
-  } catch {
-    // sessionStorage full - silently fail
-  }
+  } catch { /* best-effort */ }
 }
 
 export function getSessionViewedIds(): Set<number> {
@@ -205,10 +185,9 @@ export function addToSessionViewed(itemId: number | string): void {
   saveSessionViewed();
 }
 
-/** Clear all session-viewed items (for testing). */
 export function clearSessionViewed() {
   sessionViewedCache = new Set();
   try {
     sessionStorage.removeItem(VIEWED_SESSION_KEY);
-  } catch { /* sessionStorage unavailable - silently fail */ }
+  } catch { /* best-effort */ }
 }

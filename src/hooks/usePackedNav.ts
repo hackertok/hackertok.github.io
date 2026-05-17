@@ -1,13 +1,7 @@
 import { useLayoutEffect, useMemo, useState, type RefObject } from 'react';
 
-/**
- * Minimum shape consumed by `usePackedNav` — only `width` is read by the
- * packer. Callers attach whatever else they need (key, label, icon, render
- * spec) on the same object, and the hook returns that same object back in
- * `visible` / `hidden` slices so no per-key lookup is needed downstream.
- */
+/** Item with an estimated rendered width (px). */
 export interface PackableItem {
-  /** Estimated rendered width in CSS px. Should include internal padding. */
   width: number;
 }
 
@@ -21,58 +15,19 @@ export interface PackedNav<T extends PackableItem> {
 }
 
 export interface UsePackedNavOptions {
-  /**
-   * Width budget (in CSS px) consumed by the overflow trigger AND its
-   * leading separator/gap. Subtracted from the container width before
-   * packing so the trigger is guaranteed to fit alongside the visible
-   * items when overflow is needed.
-   */
+  /** Width budget for the overflow trigger + its gap (px). */
   overflowWidth: number;
-  /** Px gap between adjacent items (matches the parent flex `gap-*`). */
+  /** Px gap between items (matches the parent flex `gap-*`). */
   gap: number;
 }
 
 const UNMEASURED = Number.POSITIVE_INFINITY;
 
 /**
- * Greedy nav-overflow packing. Progressively hides trailing items into
- * the overflow menu when the container shrinks below the items' total
- * width. No item is force-included — if the budget is too small for
- * even the first item, every item lands in the overflow menu. Returns
- * the packed slices as the original item objects (not just keys) —
- * generic over `T extends PackableItem` so callers can attach render
- * data alongside `width` and read it straight off the result without
- * a separate lookup.
+ * Greedy left-to-right nav packing. Hides trailing items into overflow
+ * when the container shrinks. Generic over `T extends PackableItem`.
  *
- * Items are packed strictly left-to-right; the consumer controls
- * priority by ordering the input array. The Header puts the active
- * contextual pill (Comments / User / From) at index 0 when one exists,
- * falling back to the canonical first feed tab — but neither position
- * guarantees visibility on extremely narrow viewports. The consumer is
- * expected to mirror the active treatment into the overflow menu item
- * via `aria-current` + active styling (as Header does).
- *
- * On first render and in environments without DOM layout (jsdom, SSR), the
- * container width is treated as Infinity so every item is visible and the
- * overflow trigger stays hidden — this keeps tests assertion-friendly
- * without needing a ResizeObserver mock that fires entries, and avoids a
- * "everything hidden, then settles" flicker on production mount (the real
- * width is captured synchronously inside `useLayoutEffect` before paint).
- *
- * @example
- *   const navRef = useRef<HTMLElement>(null);
- *   const items = [
- *     { key: 'comments', width: 96, label: 'Comments' },
- *     { key: 'best', width: 56, label: 'Best' },
- *     { key: 'show', width: 60, label: 'Show' },
- *     { key: 'ask', width: 50, label: 'Ask' },
- *   ];
- *   const { visible, hidden, showOverflow } = usePackedNav(navRef, items, {
- *     overflowWidth: 105, // separator slot (~21) + 'more' pill (~84)
- *     gap: 4,
- *   });
- *   // visible / hidden are arrays of the same `{ key, width, label }`
- *   // objects — no key-based lookup needed in the renderer.
+ * On first render / jsdom, container width = Infinity (all items visible).
  */
 export function usePackedNav<T extends PackableItem>(
   containerRef: RefObject<HTMLElement | null>,

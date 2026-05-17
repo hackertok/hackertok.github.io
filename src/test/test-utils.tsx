@@ -34,13 +34,7 @@ function AllProviders({ children, initialEntries = ['/'] }: { children: ReactNod
   );
 }
 
-/**
- * Custom render function that wraps components with necessary providers
- * @param {React.ReactElement} ui - Component to render
- * @param {Object} options - Render options
- * @param {string[]} options.initialEntries - Initial router entries
- * @param {Object} options.renderOptions - Additional render options
- */
+/** Custom render wrapping components with all providers. */
 function customRender(ui: ReactElement, { initialEntries = ['/'], ...renderOptions }: { initialEntries?: InitialEntry[] } & Omit<RenderOptions, 'wrapper'> = {}) {
   return render(ui, {
     wrapper: ({ children }: { children: ReactNode }) => (

@@ -1,7 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { ALGOLIA_API, FIREBASE_API } from '../config/api';
 
-// Sample item data
 export const mockItem = {
   id: 12345,
   title: 'Rust Is the Future of JavaScript Infrastructure',

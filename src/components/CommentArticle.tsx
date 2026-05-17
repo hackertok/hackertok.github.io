@@ -23,12 +23,7 @@ interface CommentArticleProps {
   itemTitle: string | null;
   loading: boolean;
   articleClassName?: string;
-  /**
-   * Author handle of the surrounding story. When it matches
-   * `comment.author`, the focal byline picks up an OP badge and
-   * forwards through the reply tree. Guarded by `isKnownAuthor` so
-   * unknown / empty story authors never OP-decorate.
-   */
+  /** Story author for OP detection. */
   storyAuthor?: string;
 }
 
@@ -50,11 +45,7 @@ export function CommentArticle({
   return (
     <>
       <article className={`${articleClassName} pb-4 border-b border-border`}>
-        {/* Single meta row [author, time, parent, thread-title]. Icons
-            are aria-hidden so accessible names stay exactly the visible
-            label — preserves `getByRole('link', { name: ... })`
-            assertions. Nested replies under this article render via
-            CommentTree and keep the compact `›` byline. */}
+        {/* Meta row: author, time, parent, thread-title. Icons aria-hidden. */}
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground mb-3">
           <AuthorByline author={comment.author} isOp={isOp} />
 
@@ -76,11 +67,7 @@ export function CommentArticle({
 
           {(itemId != null || loading) && (
             itemId != null && itemTitle ? (
-              // `min-w-0 max-w-full` lets the link shrink below its
-              // intrinsic content width when it wraps onto its own row
-              // (the meta row is `flex-wrap`), so the inner `truncate`
-              // can ellipsize instead of spilling. Icon gets `shrink-0`
-              // so it always stays visible.
+              // min-w-0 max-w-full enables truncation; shrink-0 keeps icon visible.
               <Link
                 to={`/item/${itemId}`}
                 state={{ isComment: false }}

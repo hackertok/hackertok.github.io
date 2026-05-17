@@ -48,11 +48,7 @@ async function fetchFirstPage(type: FeedType): Promise<StoryItem[]> {
   }
 }
 
-/**
- * Prefetches the first page of every OTHER section in the background after
- * the current section has loaded. Stores into the shared `feedCache` so the
- * next mount of `useInfiniteStories` for that section is instant.
- */
+/** Background prefetch for other feed sections. */
 export function usePrefetchSections(currentType: FeedType) {
   const hasPrefetchedRef = useRef(false);
   const currentTypeRef = useRef(currentType);
@@ -128,14 +124,11 @@ export function usePrefetchSections(currentType: FeedType) {
                   if (result && !cancelled && type !== currentTypeRef.current) {
                     setCachedItem(firstStory.id, result.item, result.comments, 1);
                   }
-                } catch {
-                  // Silently fail - comments prefetch is best-effort
-                }
+                } catch { /* best-effort */ }
               }
             }
           }
         } catch (err) {
-          // Silently fail - prefetch is best-effort
           console.debug(`Prefetch failed for ${type}:`, (err as Error).message);
         }
         

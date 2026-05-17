@@ -18,9 +18,7 @@ function getMediaQuery(): MediaQueryList | null {
   return mediaQuery;
 }
 
-// useSyncExternalStore expects subscribe to return an unsubscribe fn
-// — when matchMedia is unavailable (SSR / older jsdom), we have no
-// listener to detach, so this is the correct shape.
+// No-op unsubscribe for environments without matchMedia.
 const noopUnsubscribe = (): void => undefined;
 
 function subscribe(callback: () => void): () => void {
@@ -35,15 +33,11 @@ function getSnapshot(): boolean {
   return mq ? mq.matches : false;
 }
 
-// SSR fallback for useSyncExternalStore — assume desktop. The hook
-// re-runs on hydration with the real client snapshot, so this is only
-// the value rendered into the SSR HTML; matching the more common
-// (desktop) case minimizes hydration mismatch flicker for typical loads.
+// SSR fallback: assume desktop.
 function getServerSnapshot(): boolean {
   return false;
 }
 
-/** True when viewport width is below Tailwind's `md` breakpoint (768px). */
 export function useIsMobile(): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

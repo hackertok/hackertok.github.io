@@ -1,20 +1,12 @@
 import type { Item, Comment, FeedType, ListSessionState } from '../types';
 
-/**
- * LocalStorage cache for item details with comments.
- * Uses stale-while-revalidate pattern like feedCache.ts
- */
+/** Item cache (localStorage, stale-while-revalidate). */
 
 export const ITEM_CACHE_KEY_PREFIX = 'item:';
-const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes - consider data "fresh"
-const CACHE_STALE_AGE = 24 * 60 * 60 * 1000; // 24 hours - max age before discarding
-const MAX_CACHED_ITEMS = 60; // Limit to prevent localStorage bloat
+const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes
+const CACHE_STALE_AGE = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_CACHED_ITEMS = 60;
 
-/**
- * Get cached item with comments
- * @param {string|number} itemId
- * @returns {{ item: Object, comments: Array, timestamp: number, isFresh: boolean, orderedDepth: number } | null}
- */
 export function getCachedItem(itemId: number | string): { item: Item; comments: Comment[]; timestamp: number; isFresh: boolean; orderedDepth: number } | null {
   try {
     const key = `${ITEM_CACHE_KEY_PREFIX}${itemId}`;
@@ -27,7 +19,6 @@ export function getCachedItem(itemId: number | string): { item: Item; comments: 
     };
     const age = Date.now() - timestamp;
     
-    // Discard if too old
     if (age > CACHE_STALE_AGE) {
       localStorage.removeItem(key);
       return null;
@@ -45,13 +36,7 @@ export function getCachedItem(itemId: number | string): { item: Item; comments: 
   }
 }
 
-/**
- * Save item with comments to cache
- * @param {string|number} itemId
- * @param {Object} item
- * @param {Array} comments
- * @param {number} [orderedDepth=3] - How deep comments are properly ordered (1 = top-level only during prefetch)
- */
+/** `orderedDepth`: 1 = top-level only (prefetch), 3 = full ordering. */
 export function setCachedItem(itemId: number | string, item: Item, comments: Comment[], orderedDepth = 3): void {
   try {
     // Clean up old entries first
@@ -71,16 +56,10 @@ export function setCachedItem(itemId: number | string, item: Item, comments: Com
       pruneItemCache(5);
       const key = `${ITEM_CACHE_KEY_PREFIX}${itemId}`;
       localStorage.setItem(key, JSON.stringify({ item, comments, timestamp: Date.now(), orderedDepth }));
-    } catch {
-      // Still failed, silently give up
-    }
+    } catch { /* best-effort */ }
   }
 }
 
-/**
- * Remove oldest cached items to stay under limit
- * @param {number} [removeCount] - Force remove this many entries
- */
 function pruneItemCache(removeCount = 0): void {
   try {
     const itemKeys = [];
@@ -105,7 +84,6 @@ function pruneItemCache(removeCount = 0): void {
       localStorage.removeItem(key);
     }
     
-    // Sort by timestamp (oldest first)
     itemKeys.sort((a, b) => a.timestamp - b.timestamp);
     
     // Remove oldest entries if over limit or if forced
@@ -113,9 +91,7 @@ function pruneItemCache(removeCount = 0): void {
     for (let i = 0; i < toRemove && i < itemKeys.length; i++) {
       localStorage.removeItem(itemKeys[i].key);
     }
-  } catch {
-    // Silently fail
-  }
+  } catch { /* best-effort */ }
 }
 
 // ============================================================================
@@ -125,9 +101,6 @@ function pruneItemCache(removeCount = 0): void {
 
 export const FEED_SESSION_KEY_PREFIX = 'feed:session:';
 
-/**
- * Save list session state for instant back navigation
- */
 interface SessionState {
   scrollY: number;
   storyIds: number[];
@@ -148,14 +121,9 @@ export function saveListSessionState(feedType: FeedType, state: SessionState): v
       timestamp: Date.now(),
     };
     sessionStorage.setItem(key, JSON.stringify(data));
-  } catch {
-    // Silently fail - sessionStorage might be full
-  }
+  } catch { /* best-effort */ }
 }
 
-/**
- * Get saved list session state
- */
 export function getListSessionState(feedType: FeedType): ListSessionState | null {
   try {
     const key = `${FEED_SESSION_KEY_PREFIX}${feedType}`;
@@ -187,13 +155,8 @@ export function getListSessionState(feedType: FeedType): ListSessionState | null
   }
 }
 
-/**
- * Clear session state for a feed type
- */
 export function clearListSessionState(feedType: FeedType): void {
   try {
     sessionStorage.removeItem(`${FEED_SESSION_KEY_PREFIX}${feedType}`);
-  } catch {
-    // Silently fail
-  }
+  } catch { /* best-effort */ }
 }

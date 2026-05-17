@@ -3,12 +3,7 @@ import { FIREBASE_API } from '../config/api';
 import { NotFoundError } from '../api/hn';
 import type { UserProfile } from '../types';
 
-// Module-level cache survives route remounts so navigating
-// /user/:id → /submitted/:id → back doesn't re-hit Firebase. Profiles change
-// rarely enough that a session-lifetime in-memory map is acceptable; bound
-// only by the lifetime of the page (visiting many distinct users in one
-// session accumulates entries). Swap to an LRU if memory ever shows up in
-// profiling.
+// Module-level profile cache (session-lifetime, not persisted).
 const userProfileCache = new Map<string, UserProfile>();
 
 /**
@@ -18,10 +13,7 @@ export function __resetUserProfileCacheForTests() {
   userProfileCache.clear();
 }
 
-/**
- * @internal Testing helper exposing the module-level cache so tests can
- * assert on cache contents directly.
- */
+/** @internal Exposes cache for test assertions. */
 export function __getUserProfileCacheForTests() {
   return userProfileCache;
 }
@@ -36,15 +28,8 @@ interface UseUserProfileResult {
 }
 
 /**
- * Fetches a Hacker News user profile from Firebase. Mirrors the
- * `loading`/`error`/`isNotFound` semantics of {@link useItemWithComments} so
- * `UserProfile.tsx` can reuse the same `StateView` patterns. Lazy-initializes
- * from a module-level cache so route remounts are instant, and treats
- * Firebase's `null` response as a NotFoundError (HN convention).
- *
- * `username` is passed verbatim — Firebase is case-sensitive, so any
- * normalization must happen at the caller (today: the route `/user/:id`
- * whose param preserves case).
+ * Firebase user profile fetch with cache and not-found handling.
+ * Case-sensitive — caller must preserve case from the route param.
  */
 export function useUserProfile(username: string): UseUserProfileResult {
   const cached = username ? userProfileCache.get(username) : undefined;

@@ -1,21 +1,10 @@
 import type { LocationState, FeedType } from '../types';
 
-/**
- * Canonical visible feed tabs (excludes 'top', the implicit home feed
- * which has no /top route). Order is intentional — when no item is
- * active these render in `Best > Show > Ask` order. We never reorder
- * based on which one is active because that creates jarring visual
- * reflow when the user navigates between feed tabs.
- */
+/** Visible feed tabs (excludes 'top'). Order: Best > Show > Ask (never reordered). */
 export const FEED_TABS = ['best', 'show', 'ask'] as const;
 export type NavFeedType = (typeof FEED_TABS)[number];
 
-/**
- * Contextual pills — pseudo-tabs that only appear when the user is on
- * the corresponding route family (a comment thread / a user profile /
- * a domain page) and disappear otherwise. Mutually exclusive at the
- * UI level with priority `comments > user > from`.
- */
+/** Contextual pills: comments > user > from (priority order, mutually exclusive). */
 export type ContextualKey = 'comments' | 'user' | 'from';
 export type NavKey = NavFeedType | ContextualKey;
 
@@ -26,44 +15,18 @@ export interface NavItemSpec {
 }
 
 export interface HeaderState {
-  /**
-   * Which contextual pill (if any) wins for this route. Single source
-   * of truth for the priority cascade — Header should not re-implement
-   * `isCommentView ? : isUserActive ? : ...` ladders downstream.
-   */
+  /** Active contextual pill (null if none). */
   activeContextual: ContextualKey | null;
   /**
-   * Ordered nav-item list ready to be packed by `usePackedNav`. The
-   * active contextual pill (when present) is slotted at index 0 so the
-   * packer — which always keeps `items[0]` visible — preserves the
-   * user's current context as available space shrinks. The 3 feed tabs
-   * always follow in canonical Best > Show > Ask order; an active feed
-   * tab can land in the overflow menu at sub-~300px viewports (rare in
-   * practice) and the consumer is expected to mirror the active
-   * treatment into the menu item.
+   * Ordered nav items for usePackedNav. Active contextual at index 0;
+   * feed tabs in canonical order.
    */
   navItems: NavItemSpec[];
 }
 
 /**
- * Pure derivation of the Header's nav state from the current router
- * location. Lives outside the component so:
- *
- *   1. The `react-hooks/exhaustive-deps` ladder collapses to a single
- *      `[pathname, locationState]` dep — passing the state object by
- *      reference covers every field (`isComment`, `from`, `fromUser`,
- *      `fromDomain`) without having to enumerate them. Adding a new
- *      LocationState field stays automatic instead of silently leaving
- *      the memo stale.
- *   2. The four "is X active" predicates are testable in isolation
- *      without spinning up React + a memory router (`Header.test.tsx`
- *      can keep its render-based assertions; this lives next to a
- *      cheaper unit test for the derivation rules themselves).
- *
- * Priority cascade for contextual pills: `comments > user > from`. The
- * contextual pill always suppresses the corresponding feed-active
- * highlight (e.g. on `/item/X` with `state.from='best'` and
- * `state.isComment=true`, "comments" wins and Best stays unhighlighted).
+ * Pure derivation of Header nav state from router location.
+ * Testable outside React; deps collapse to `[pathname, locationState]`.
  */
 export function deriveHeaderState(
   pathname: string,
@@ -72,14 +35,9 @@ export function deriveHeaderState(
   const isCommentView = locationState?.isComment === true;
   const isOnItem = pathname.startsWith('/item/');
 
-  // "user" indicator: the user-submissions FEED, or item detail
-  // navigated from one (mobile swipe viewer rewrites /submitted/:id to
-  // /item/:id per-item with fromUser preserved; desktop StoryCard writes
-  // fromUser when its parent list is a user). DELIBERATELY excludes the
-  // profile detail page (`/user/:id`) — that's a one-shot "about this
-  // user" surface (karma, join date, link to submissions), not a feed,
-  // so it doesn't earn a section-level contextual pill. The pill lights
-  // up once the user actually enters the submissions feed.
+  // User-submissions feed, or item-detail navigated from one (mobile swipe
+  // rewrites /submitted/:id → /item/:id with fromUser preserved).
+  // Excludes /user/:id (profile page, not a feed — no contextual pill).
   const isUserActive =
     !isCommentView &&
     (pathname.startsWith('/submitted/') ||

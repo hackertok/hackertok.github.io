@@ -24,7 +24,6 @@ export interface InfiniteStoryListResult {
   loadMore: () => Promise<void>;
 }
 
-/** Pass-through props forwarded to every `StoryCard`. */
 export interface StoryCardExtras {
   listType?: FeedType;
   fromDomain?: string;
@@ -33,40 +32,21 @@ export interface StoryCardExtras {
 }
 
 interface InfiniteStoryListPageProps {
-  /** Hook output (`{ stories, loading, error, hasMore, loadMore }`). */
   result: InfiniteStoryListResult;
   /**
-   * Primitive identifying the current feed context (feed type /
-   * canonical domain / username). Forwarded to
-   * `useStaggerCascadeSlots` so navigating between contexts collapses
-   * cascade state and the new feed gets a fresh cold-load entrance.
+   * Stable primitive key for context changes. Resets cascade state
+   * so the new feed gets a fresh cold-load entrance.
    */
   resetKey: string;
-  /** Extra props passed through to each `StoryCard`. */
   storyCardExtras?: StoryCardExtras;
-  /**
-   * If supplied, an empty `StateView` with this title is rendered when
-   * `stories.length === 0` after the cold load resolves. Pass undefined
-   * to skip the empty state — used by the main feed where empty is
-   * effectively unreachable in normal operation.
-   */
+  /** Empty-state title. Omit to skip empty rendering. */
   emptyTitle?: string;
-  /** Title for the full-page error `StateView`. Defaults to `"Failed to load items"`. */
   failTitle?: string;
 }
 
 /**
- * Shared layout for the three infinite story-list pages (main feed,
- * domain submissions, user submissions). Owns:
- *   • cascade-slot accounting (`useStaggerCascadeSlots`)
- *   • intersection-observer load-more trigger
- *   • network / auto-retry plumbing
- *   • `PageStage` skeleton swap and the standard footer states
- *     (spinner / end-of-feed / in-list error / in-list retry)
- *
- * Page-level concerns (route params, document title, scroll
- * restoration, hook selection) stay in the consumer; this component
- * only renders the well-typed `result` shape.
+ * Shared infinite-scroll story list. Owns cascade slots,
+ * load-more trigger, auto-retry, and PageStage.
  */
 export function InfiniteStoryListPage({
   result,
@@ -156,7 +136,6 @@ export function InfiniteStoryListPage({
               ))}
             </div>
 
-            {/* Infinite scroll trigger */}
             {hasMore && (
               <div ref={ref} className="py-4">
                 {loading && <Spinner />}

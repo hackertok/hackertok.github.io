@@ -22,12 +22,7 @@ interface DomainCacheEntry {
   seenIds: Set<number>;
 }
 
-// Module-level cache survives route remounts (e.g. /from/:domain → /item/:id → back).
-// Unlike feed data, domain results are not persisted to localStorage — this in-memory
-// map exists only to bridge same-session remounts and to share state between the
-// desktop list view and the mobile swipe view for the same domain. Bounded only by
-// the lifetime of the page; visiting many distinct domains in one session accumulates
-// entries (each ~tens of stories). Swap to an LRU if memory ever shows up in profiling.
+// Module-level in-memory cache (survives remounts, not persisted).
 const domainCache = new Map<string, DomainCacheEntry>();
 
 /**
@@ -37,38 +32,14 @@ export function __resetDomainCacheForTests() {
   domainCache.clear();
 }
 
-/**
- * @internal Testing helper exposing the module-level cache so tests can spy on
- * its `set` method to detect impure updaters.
- */
+/** @internal Exposes cache for test assertions. */
 export function __getDomainCacheForTests() {
   return domainCache;
 }
 
 /**
- * Canonicalizes a domain string for use as a route param, cache key, or
- * `location.state.fromDomain`. Keeping this logic in one place (rather than
- * duplicating the regexes at each consumer) is what lets the hook and its
- * wrappers agree on "is this the same domain?" without coordination.
- *
- * Normalizations applied:
- * - Lowercase — URL.hostname is always lowercase per WHATWG, so comparisons
- *   on the hook's filter side already are; do the same to the prop so a
- *   route param like `/from/Github.com` doesn't filter every hit out.
- * - Strip trailing `/` and `.` — the wildcard route `/from/*` preserves a
- *   trailing `/` (e.g. `/from/github.com/`), and `URL.hostname` preserves a
- *   trailing DNS dot (`https://foo.com.` → hostname `foo.com.`). Collapse any
- *   mixed sequence of trailing slashes and dots (`foo.com./`, `foo.com/.`,
- *   `foo.com..`) in one pass so the result is idempotent.
- * - Strip leading `www.` — the filter side already does this to URL hostnames,
- *   so without mirroring it on the prop, `/from/www.example.com` would never
- *   match a hit from `example.com`. Repeated prefixes (`www.www.example.com`)
- *   are collapsed so the function is idempotent for pathological inputs too.
- *
- * Idempotency matters because consumers and the hook itself both call this:
- * a non-idempotent helper lets `state.fromDomain` drift from the hook's
- * internal cache key when the wrapper canonicalizes once and the hook
- * canonicalizes again.
+ * Canonicalizes a domain: lowercase, strip trailing `/` and `.`,
+ * strip leading `www.`. Idempotent so double-canonicalization is safe.
  */
 export function canonicalizeDomain(rawDomain: string): string {
   return rawDomain
@@ -77,35 +48,14 @@ export function canonicalizeDomain(rawDomain: string): string {
     .toLowerCase();
 }
 
-/**
- * Empty-state title shown when a domain has no submissions.
- * Centralized so the desktop list (`DomainStories`) and mobile swipe viewer
- * (`SwipeDomainStoryViewer`) render identical copy — E2E assertions match
- * both paths with a single regex.
- */
+/** Centralized empty-state title for domain pages. */
 export function formatNoSubmissionsTitle(domain: string): string {
   return `No submissions found from "${domain}"`;
 }
 
 /**
- * Infinite-scroll data source for Algolia `search_by_date` domain-filtered stories.
- *
- * Mirrors the shape of {@link useInfiniteStories} so `SwipeStoryViewerCore` and
- * `DomainStories` can share one data contract.
- *
- * - Lazy-initializes state from a module-level cache keyed by domain
- * - On cache miss, initializes `loading=true` to avoid a flash of empty UI
- *   between mount and the first fetch
- * - Dedupes results across pages via a `seenIds` set
- * - Invalidates stale responses via a monotonic `versionRef` when the domain
- *   changes or `reset()` is called. Does NOT abort in-flight fetches on
- *   effect cleanup — that would break React StrictMode's mount→cleanup→mount
- *   cycle (the first fetch would be aborted and the second mount would skip
- *   because `inFlightRef` is still true)
- *
- * The `inFlightRef` guard is the source of truth for "is a fetch currently
- * running". Using a ref (not `loading` state) lets the mount-time auto-load
- * proceed even though `loading` was initialized to `true` on a cache miss.
+ * Paginated domain stories from Algolia URL search.
+ * Dedupes, invalidates stale responses, and caches at module level.
  */
 export function useDomainInfiniteStories(rawDomain: string) {
   // Canonicalize at entry so cache key, Algolia query, and filter all key off
