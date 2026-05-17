@@ -151,7 +151,9 @@ describe('UserProfile', () => {
       renderProfile('leerob');
 
       await screen.findByRole('button', { name: /try again/i });
-      expect(document.title).toBe('Failed to load user | HackerTok');
+      await waitFor(() => {
+        expect(document.title).toBe('Failed to load user | HackerTok');
+      });
     });
   });
 
