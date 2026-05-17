@@ -8,20 +8,13 @@
 </div>
 
 <br/>
-<br/>
 
 <div align="center">
-  <h2>
-    An open-source, blazingly fast, progressive Hacker News client.
-  </h2>
+  <h1>
+    <a href="https://hackertok.github.io" target="_blank" rel="noopener">hackertok.github.io</a>
+  </h1>
+  <h3>An open-source, blazingly fast, progressive Hacker News client.</h3>
 </div>
-
-<p align="center">
-  <a href="https://github.com/hackertok/hackertok.github.io/actions/workflows/ci.yml">
-    <img alt="HackerTok continuous integration status on main." src="https://github.com/hackertok/hackertok.github.io/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
-  <a href="https://github.com/hackertok/hackertok.github.io/actions/workflows/deploy.yml">
-    <img alt="HackerTok deployment status to GitHub Pages." src="https://github.com/hackertok/hackertok.github.io/actions/workflows/deploy.yml/badge.svg" /></a>
-</p>
 
 <br/>
 
