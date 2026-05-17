@@ -58,7 +58,7 @@ describe('useTheme', () => {
       result.current.toggleTheme();
     });
     
-    const stored = localStorage.getItem('theme');
+    const stored = localStorage.getItem('setting:theme');
     expect(stored).toBe(result.current.theme);
   });
 });
