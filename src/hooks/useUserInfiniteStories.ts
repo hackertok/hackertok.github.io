@@ -62,12 +62,19 @@ export function useUserInfiniteStories(username: string) {
     setLoading(!newCached && !!username);
     setError(null);
     setHasMore(newCached?.hasMore ?? true);
-    nextPageRef.current = newCached?.page ?? 0;
-    seenIdsRef.current = new Set(newCached?.seenIds ?? []);
-    storiesRef.current = newStories;
+  }
+
+  // Reset refs when `username` changes. Declared before the fetch effect so
+  // it runs first in the effect queue. Refs are side effects and must not be
+  // mutated during render (component purity, StrictMode, React Compiler).
+  useEffect(() => {
+    const cached = username ? userStoriesCache.get(username) : undefined;
+    nextPageRef.current = cached?.page ?? 0;
+    seenIdsRef.current = new Set(cached?.seenIds ?? []);
+    storiesRef.current = cached?.stories ?? [];
     versionRef.current += 1;
     inFlightRef.current = false;
-  }
+  }, [username]);
 
   const loadMore = useCallback(async () => {
     if (!username || !hasMore || inFlightRef.current) return;

@@ -52,8 +52,13 @@ export function useUserProfile(username: string): UseUserProfileResult {
     setLoading(!newCached && !!username);
     setError(null);
     setIsNotFound(false);
-    versionRef.current += 1;
   }
+
+  // Bump version when username changes so in-flight fetches for the old user
+  // are discarded. Must be an effect — refs are side effects, not pure render.
+  useEffect(() => {
+    versionRef.current += 1;
+  }, [username]);
 
   const load = useCallback(async () => {
     if (!username) return;

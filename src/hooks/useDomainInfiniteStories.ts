@@ -95,13 +95,21 @@ export function useDomainInfiniteStories(rawDomain: string) {
     setLoading(!newCached && !!domain);
     setError(null);
     setHasMore(newCached?.hasMore ?? true);
-    nextPageRef.current = newCached?.page ?? 0;
-    seenIdsRef.current = new Set(newCached?.seenIds ?? []);
-    storiesRef.current = newStories;
+  }
+
+  // Reset refs when `domain` changes. Declared before the fetch effect so it
+  // runs first in the effect queue, ensuring refs are up-to-date before any
+  // fetch fires. Refs are side effects and must not be mutated during render
+  // (component purity, StrictMode double-invocation, React Compiler).
+  useEffect(() => {
+    const cached = domain ? domainCache.get(domain) : undefined;
+    nextPageRef.current = cached?.page ?? 0;
+    seenIdsRef.current = new Set(cached?.seenIds ?? []);
+    storiesRef.current = cached?.stories ?? [];
     versionRef.current += 1;
     inFlightRef.current = false;
     emptyPageStreakRef.current = 0;
-  }
+  }, [domain]);
 
   const loadMore = useCallback(async () => {
     if (!domain || !hasMore || inFlightRef.current) return;
