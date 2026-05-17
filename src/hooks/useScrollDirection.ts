@@ -9,6 +9,7 @@ export function useScrollDirection(): { scrollDirection: 'up' | 'down'; isAtTop:
   useEffect(() => {
     // Min scroll amount before flipping direction — prevents jitter near the threshold.
     const threshold = 10;
+    let rafId = 0;
 
     const updateScrollDir = () => {
       const scrollY = window.scrollY;
@@ -27,13 +28,16 @@ export function useScrollDirection(): { scrollDirection: 'up' | 'down'; isAtTop:
 
     const onScroll = () => {
       if (!ticking.current) {
-        window.requestAnimationFrame(updateScrollDir);
+        rafId = window.requestAnimationFrame(updateScrollDir);
         ticking.current = true;
       }
     };
 
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.cancelAnimationFrame(rafId);
+    };
   }, []);
 
   return { scrollDirection, isAtTop };

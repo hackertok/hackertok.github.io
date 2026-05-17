@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { ALGOLIA_API } from '../config/api';
 import { normalizeAlgoliaHit } from '../api/hn';
 import type { StoryItem, AlgoliaSearchResponse } from '../types';
@@ -95,13 +95,21 @@ export function useDomainInfiniteStories(rawDomain: string) {
     setLoading(!newCached && !!domain);
     setError(null);
     setHasMore(newCached?.hasMore ?? true);
-    nextPageRef.current = newCached?.page ?? 0;
-    seenIdsRef.current = new Set(newCached?.seenIds ?? []);
-    storiesRef.current = newStories;
+  }
+
+  // Reset refs when `domain` changes. useLayoutEffect runs synchronously
+  // after commit, before any microtask (Promise.then) can fire — this
+  // ensures versionRef is bumped before a stale in-flight fetch can check
+  // it. useEffect would leave a gap where resolved fetches slip through.
+  useLayoutEffect(() => {
+    const cached = domain ? domainCache.get(domain) : undefined;
+    nextPageRef.current = cached?.page ?? 0;
+    seenIdsRef.current = new Set(cached?.seenIds ?? []);
+    storiesRef.current = cached?.stories ?? [];
     versionRef.current += 1;
     inFlightRef.current = false;
     emptyPageStreakRef.current = 0;
-  }
+  }, [domain]);
 
   const loadMore = useCallback(async () => {
     if (!domain || !hasMore || inFlightRef.current) return;

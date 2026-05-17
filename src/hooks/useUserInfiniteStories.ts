@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { ALGOLIA_API } from '../config/api';
 import { normalizeAlgoliaHit } from '../api/hn';
 import type { StoryItem, AlgoliaSearchResponse } from '../types';
@@ -62,12 +62,19 @@ export function useUserInfiniteStories(username: string) {
     setLoading(!newCached && !!username);
     setError(null);
     setHasMore(newCached?.hasMore ?? true);
-    nextPageRef.current = newCached?.page ?? 0;
-    seenIdsRef.current = new Set(newCached?.seenIds ?? []);
-    storiesRef.current = newStories;
+  }
+
+  // Reset refs when `username` changes. useLayoutEffect runs synchronously
+  // after commit, before any microtask — ensures versionRef is bumped
+  // before a stale in-flight fetch can check it.
+  useLayoutEffect(() => {
+    const cached = username ? userStoriesCache.get(username) : undefined;
+    nextPageRef.current = cached?.page ?? 0;
+    seenIdsRef.current = new Set(cached?.seenIds ?? []);
+    storiesRef.current = cached?.stories ?? [];
     versionRef.current += 1;
     inFlightRef.current = false;
-  }
+  }, [username]);
 
   const loadMore = useCallback(async () => {
     if (!username || !hasMore || inFlightRef.current) return;

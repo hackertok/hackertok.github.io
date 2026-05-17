@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FIREBASE_API } from '../config/api';
 import { NotFoundError } from '../api/hn';
 import type { UserProfile } from '../types';
@@ -52,8 +52,14 @@ export function useUserProfile(username: string): UseUserProfileResult {
     setLoading(!newCached && !!username);
     setError(null);
     setIsNotFound(false);
-    versionRef.current += 1;
   }
+
+  // Bump version when username changes so in-flight fetches for the old user
+  // are discarded. useLayoutEffect (not useEffect) so the bump happens
+  // synchronously after commit, before any stale fetch microtask can fire.
+  useLayoutEffect(() => {
+    versionRef.current += 1;
+  }, [username]);
 
   const load = useCallback(async () => {
     if (!username) return;
