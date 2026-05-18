@@ -58,17 +58,13 @@ test.describe('Network Status Bar - Viewport Switch', () => {
       return panels.length >= 2;
     }, { timeout: 5000 });
 
-    // Swipe mode must clip overflow on every level — html/body/main all
-    // need their own overflow declaration; missing any one of these
-    // surfaces as horizontal scroll on iOS Safari.
+    // Swipe mode must clip overflow on html/body to prevent horizontal scroll.
     const overflowState = await page.evaluate(() => ({
       htmlOx: getComputedStyle(document.documentElement).overflowX,
       bodyOx: getComputedStyle(document.body).overflowX,
-      mainOx: getComputedStyle(document.querySelector('main')!).overflowX,
     }));
     expect(overflowState.htmlOx).toBe('clip');
     expect(overflowState.bodyOx).toBe('hidden');
-    expect(overflowState.mainOx).toBe('clip');
 
     // Active assertion: scrolling to 9999 must be clamped to 0.
     await page.evaluate(() => window.scrollTo(9999, 0));

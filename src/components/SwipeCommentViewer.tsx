@@ -103,10 +103,31 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     }
   }, [scrollInitialized, currentIndex, siblingIds, navigate, location.pathname]);
 
+  // Save/restore scrollY for bfcache
+  useEffect(() => {
+    const handlePageHide = () => {
+      try {
+        sessionStorage.setItem('__swipe_comment_scrollY', String(window.scrollY));
+      } catch { /* quota exceeded — non-critical */ }
+    };
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        const savedY = Number(sessionStorage.getItem('__swipe_comment_scrollY')) || 0;
+        window.scrollTo(0, savedY);
+      }
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, []);
+
   if (loading && siblingIds.length <= 1) {
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel" data-testid="swipe-panel">
+        <div className="swipe-snap-panel active" data-testid="swipe-panel">
           <FullScreenCommentSkeletonPanel />
         </div>
       </div>
@@ -124,7 +145,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
   if (error && siblingIds.length <= 1 && isRetrying) {
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel" data-testid="swipe-panel">
+        <div className="swipe-snap-panel active" data-testid="swipe-panel">
           <FullScreenCommentSkeletonPanel />
         </div>
       </div>

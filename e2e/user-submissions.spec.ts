@@ -229,10 +229,16 @@ test.describe('User Submissions - Mobile Swipe', () => {
     );
     expect(stateAfterBack?.fromUser).toBe('pg');
 
-    // Tolerate brief Firefox scroll-snap drift after goBack, mirroring the
+    // Tolerate brief state transitions after goBack, mirroring the
     // pattern in mobile-swipe.spec.ts.
     await expect.poll(() => container.evaluate(
-      (el) => Math.round(el.scrollLeft / el.getBoundingClientRect().width)
+      (el) => {
+        const panels = el.children;
+        for (let i = 0; i < panels.length; i++) {
+          if (panels[i].classList.contains('active')) return i;
+        }
+        return -1;
+      }
     ), { timeout: 5_000 }).toBe(1);
   });
 

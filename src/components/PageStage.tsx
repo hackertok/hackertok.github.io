@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { STAGGER_CAP_MS } from '../lib/staggerDelay';
 
 // Done-timer math, kept here so the constants live next to their only
@@ -61,12 +61,33 @@ export function PageStage({
     initialReady ? 'done' : 'skeleton',
   );
 
+  // Was the skeleton ever visible to the user? True only when both
+  // `loading` and `triggerWhen` were true simultaneously — meaning the
+  // user was staring at the panel while data was still in flight.
+  // Offscreen panels that finish loading before the user swipes to
+  // them never set this, so we can skip the cascade animation for them.
+  const sawSkeletonRef = useRef(loading && triggerWhen);
+
+  useEffect(() => {
+    if (loading && triggerWhen && stage === 'skeleton') {
+      sawSkeletonRef.current = true;
+    }
+  }, [loading, triggerWhen, stage]);
+
   // Double-rAF: one rAF gets to "after layout"; the second guarantees
   // "after the next paint", so the overlay is on screen before its
   // opacity transition starts. Without this the overlay never paints
   // when data resolves synchronously.
+  //
+  // Skip the cascade entirely when the panel was pre-loaded offscreen
+  // (user never saw a skeleton) — fast-swipe to a cached panel should
+  // show content instantly, not replay a stagger animation.
   useEffect(() => {
     if (stage === 'skeleton' && !loading && triggerWhen) {
+      if (!sawSkeletonRef.current) {
+        setStage('done');
+        return;
+      }
       let raf2 = 0;
       const raf1 = requestAnimationFrame(() => {
         raf2 = requestAnimationFrame(() => setStage('transitioning'));
@@ -94,7 +115,10 @@ export function PageStage({
   // Refresh / parent-link nav reuses this instance — without the reset
   // the second fetch would render stale children with `done` styling.
   useEffect(() => {
-    if (loading && stage !== 'skeleton') setStage('skeleton');
+    if (loading && stage !== 'skeleton') {
+      setStage('skeleton');
+      sawSkeletonRef.current = false;
+    }
   }, [loading, stage]);
 
   const stageClass =

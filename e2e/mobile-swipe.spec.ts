@@ -50,45 +50,6 @@ test.describe('Mobile Swipe Viewer', () => {
     await expect(page).toHaveTitle(/SQLite Does Not Do Full FSYNC.*HackerTok/);
   });
 
-  test('scroll-snap behavior works correctly', async ({ page }) => {
-    // Behavior test (not a CSS property assertion): drop scroll between snap
-    // points and verify CSS scroll-snap: mandatory pulls it to a boundary.
-    await page.goto('/#/');
-
-    const container = page.getByTestId('swipe-container');
-    await expect(container).toBeVisible();
-
-    await expect(page.getByTestId('swipe-panel').first()).toBeVisible();
-
-    // Wait for pagination panels (stories.length < 10 auto-load) so
-    // DOM mutations from appending stories don't interfere with snap.
-    await waitForSwipeReady(page, 6);
-
-    const panelWidth = await container.evaluate(el => el.getBoundingClientRect().width);
-
-    // Drop scroll position halfway between snap points; mandatory snap should pull it back.
-    await container.evaluate((el, width) => {
-      el.scrollLeft = width * 0.5;
-    }, panelWidth);
-
-    // Poll until the scroll position settles on a boundary; CSS snap is async.
-    await page.waitForFunction(() => {
-      const el = document.querySelector('[data-testid="swipe-container"]');
-      if (!el) return false;
-      const scrollLeft = el.scrollLeft;
-      const width = el.getBoundingClientRect().width;
-      return scrollLeft < 10 || Math.abs(scrollLeft - width) < 10;
-    }, { timeout: 5000 });
-
-    const finalScrollLeft = await container.evaluate(el => el.scrollLeft);
-
-    // 10px tolerance for sub-pixel rendering differences across browsers.
-    const snappedToStart = finalScrollLeft < 10;
-    const snappedToPanel = Math.abs(finalScrollLeft - panelWidth) < 10;
-
-    expect(snappedToStart || snappedToPanel).toBe(true);
-  });
-
   test('panels fill viewport width', async ({ page }) => {
     await page.goto('/#/');
 
@@ -120,17 +81,53 @@ test.describe('Mobile Swipe Viewer', () => {
 
     await expect(page.getByTestId('swipe-panel').first()).toBeVisible();
 
-    const panel = page.getByTestId('swipe-panel').first();
-
-    // SwipeItemViewer panels use overflow-y: auto so long content scrolls
-    // inside a panel rather than spilling. toPass retries until CSS lands —
-    // computed style briefly returns "" while stylesheets are still loading.
+    // In document-level scroll mode, the page itself scrolls (no overflow-y:auto on panel).
+    // Verify document is scrollable by checking the active panel has min-height > viewport.
     await expect(async () => {
-      const overflowY = await panel.evaluate((el) => {
-        return window.getComputedStyle(el).overflowY;
+      const isScrollable = await page.evaluate(() => {
+        return document.documentElement.scrollHeight > window.innerHeight;
       });
-      expect(['auto', 'scroll']).toContain(overflowY);
+      expect(isScrollable).toBe(true);
     }).toPass();
+  });
+
+  test('preserves scroll position when swiping away and back', async ({ page }) => {
+    await page.goto('/#/');
+
+    const container = page.getByTestId('swipe-container');
+    await waitForSwipeReady(page, 6);
+    await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
+
+    // Force the active panel to be taller than the viewport so the document is
+    // scrollable regardless of content length or device viewport height.
+    await page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="swipe-panel"].active');
+      if (panel) (panel as HTMLElement).style.minHeight = `${window.innerHeight + 400}px`;
+    });
+
+    // Scroll down within panel 0
+    await page.evaluate(() => window.scrollTo({ top: 200, behavior: 'instant' }));
+    await expect.poll(
+      () => page.evaluate(() => window.scrollY),
+    ).toBeGreaterThanOrEqual(150);
+
+    // Swipe forward to panel 1
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+    await smoothScrollAndAwaitSettled(container, panelWidth);
+    await waitForScrollAtIndex(page, 1);
+
+    // Panel 1 starts at top
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(50);
+
+    // Swipe back to panel 0
+    await smoothScrollAndAwaitSettled(container, 0);
+    await waitForScrollAtIndex(page, 0);
+
+    // Panel 0's scroll position should be restored
+    await expect.poll(
+      () => page.evaluate(() => window.scrollY),
+      { timeout: 5000 },
+    ).toBeGreaterThanOrEqual(150);
   });
 
   test('swipe back to previous item', async ({ page }) => {
@@ -272,9 +269,15 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default').first()).toBeVisible();
 
     // Verify scroll position is actually at index 1 (not just that element exists in DOM).
-    // Use expect.poll to tolerate brief Firefox scroll-snap drift after goBack.
+    // Use expect.poll to tolerate brief state transitions after goBack.
     await expect.poll(() => container.evaluate(
-      (el) => Math.round(el.scrollLeft / el.getBoundingClientRect().width)
+      (el) => {
+        const panels = el.children;
+        for (let i = 0; i < panels.length; i++) {
+          if (panels[i].classList.contains('active')) return i;
+        }
+        return -1;
+      }
     ), { timeout: 5000 }).toBe(1);
   });
 
@@ -310,9 +313,15 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText('Why We Moved from React to htmx').first()).toBeVisible();
 
     // Verify scroll position is actually at index 2 (not just that element exists in DOM).
-    // Use expect.poll to tolerate brief Firefox scroll-snap drift after goBack.
+    // Use expect.poll to tolerate brief state transitions after goBack.
     await expect.poll(() => container.evaluate(
-      (el) => Math.round(el.scrollLeft / el.getBoundingClientRect().width)
+      (el) => {
+        const panels = el.children;
+        for (let i = 0; i < panels.length; i++) {
+          if (panels[i].classList.contains('active')) return i;
+        }
+        return -1;
+      }
     ), { timeout: 5000 }).toBe(2);
   });
 
@@ -342,10 +351,10 @@ test.describe('Mobile Direct Item Access', () => {
     // Press browser back — should return to top items
     await page.goBack();
     await expect(page.getByText('The Art of Finishing Projects')).not.toBeVisible({ timeout: 5000 });
-    // Should show a top item (either the one we were on or the first one)
-    await expect(
-      page.getByText('Rust Is the Future of JavaScript Infrastructure').or(page.getByText('SQLite Does Not Do Full FSYNC by Default')).first()
-    ).toBeVisible({ timeout: 5000 });
+    // Should show a top item in the active panel. After back-nav, the swipe viewer
+    // restores to the previous index (1 = SQLite story).
+    await waitForScrollAtIndex(page, 1);
+    await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('loads more items when swiping near the end', async ({ page }) => {
@@ -369,10 +378,16 @@ test.describe('Mobile Direct Item Access', () => {
     // Swipe to the last item in the initial batch
     await smoothScrollAndAwaitSettled(container, panelWidth * 2);
 
-    // Use expect.poll to tolerate brief Firefox scroll-snap drift
+    // Use expect.poll to tolerate brief state transitions
     // from loading-panel toggles at the tail of the container.
     await expect.poll(() => container.evaluate(
-      (el) => Math.round(el.scrollLeft / el.getBoundingClientRect().width)
+      (el) => {
+        const panels = el.children;
+        for (let i = 0; i < panels.length; i++) {
+          if (panels[i].classList.contains('active')) return i;
+        }
+        return -1;
+      }
     ), { timeout: 10000 }).toBe(2);
 
     await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
@@ -396,14 +411,11 @@ test.describe('Mobile Direct Item Access', () => {
     // we scroll the final instance (not the transient one from /ask).
     await expect(page).toHaveURL(/\/item\/\d+/);
 
-    const container = page.getByTestId('swipe-container');
     await waitForSwipeReady(page, 2);
 
-    // Mock Ask HN items sorted by gravity: item2 (88887, no text) is first,
-    // item1 (88888, has story_text) is second. Swipe to the second panel.
-    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
-    await smoothScrollAndAwaitSettled(container, panelWidth);
-    await waitForScrollAtIndex(page, 1);
+    // Mock Ask HN items sorted by gravity: item1 (88888, has story_text) ranks
+    // first (higher score), item2 (88887, no text) is second. The body text
+    // should be visible at index 0 without swiping.
 
     // The body text should be visible — this comes from Algolia's story_text
     // field, NOT from a Firebase re-fetch (which is the point of the test).
