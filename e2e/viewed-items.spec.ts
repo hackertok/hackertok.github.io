@@ -13,10 +13,10 @@ test.describe('Viewed Items', () => {
   });
 
   test('viewed items persist across page reload', async ({ page }) => {
-    // 'viewed:times' is the time-based store: { itemId: timestamp }.
+    // 'viewed:times:detail' is the detail time-based store: { itemId: timestamp }.
     await page.addInitScript(() => {
       const viewed = { '12345': Date.now() };
-      localStorage.setItem('viewed:times', JSON.stringify(viewed));
+      localStorage.setItem('viewed:times:detail', JSON.stringify(viewed));
     });
 
     await page.goto('/#/');
@@ -24,7 +24,7 @@ test.describe('Viewed Items', () => {
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
     const viewedItems = await page.evaluate(() => {
-      const stored = localStorage.getItem('viewed:times');
+      const stored = localStorage.getItem('viewed:times:detail');
       return stored ? JSON.parse(stored) : null;
     });
 
@@ -38,7 +38,7 @@ test.describe('Viewed Items', () => {
     const page = await context.newPage();
     await setupApiMocks(page);
 
-    // 'viewed' is the permanent store (array of IDs); 'viewed:times' is time-based.
+    // 'viewed' is the permanent store (array of IDs) that drives visual dimming.
     await page.addInitScript(() => {
       localStorage.setItem('viewed', JSON.stringify([12345]));
     });
@@ -56,7 +56,7 @@ test.describe('Viewed Items', () => {
     await expect(unviewedCard).not.toHaveAttribute('data-viewed', 'true');
   });
 
-  test('old viewed items are cleaned up after 24 hours', async ({ browser, baseURL }) => {
+  test('old viewed items are cleaned up after 5 days (title)', async ({ browser, baseURL }) => {
     // Multiple page loads + storage manipulation push past default timeout.
     test.setTimeout(60000);
 
@@ -65,11 +65,11 @@ test.describe('Viewed Items', () => {
     const page = await context.newPage();
     await setupApiMocks(page);
 
-    const oldTimestamp = Date.now() - (25 * 60 * 60 * 1000); // 25h ago: past 24h window
+    const oldTimestamp = Date.now() - (121 * 60 * 60 * 1000); // 121h ago: past 120h (5-day) window
 
     await page.addInitScript((oldTime) => {
       const viewed = { '12345': oldTime };
-      localStorage.setItem('viewed:times', JSON.stringify(viewed));
+      localStorage.setItem('viewed:times:title', JSON.stringify(viewed));
     }, oldTimestamp);
 
     await page.goto('/#/');
@@ -78,7 +78,7 @@ test.describe('Viewed Items', () => {
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
     await expect.poll(async () => {
-      const stored = await page.evaluate(() => localStorage.getItem('viewed:times'));
+      const stored = await page.evaluate(() => localStorage.getItem('viewed:times:title'));
       const viewedTimes = stored ? JSON.parse(stored) : {};
       return viewedTimes['12345'];
     }, { timeout: 10000 }).toBeUndefined();
@@ -99,13 +99,12 @@ test.describe('Viewed Items - Mobile', () => {
     });
   });
 
-  test('swiping marks item as viewed only for text posts (no URL)', async ({ page }) => {
-    // Items with URLs are only marked viewed on external-link click.
-    // Text posts (Ask HN, anything without a URL) auto-mark on swipe.
-    // 88888 is an Ask HN item with no URL.
-    await page.goto('/#/item/88888');
+  test('swiping marks all items as viewed (detail)', async ({ page }) => {
+    // 12345 is a story WITH a URL — verifies the new behavior where ALL stories
+    // (not just text posts) are marked as detail-viewed on swipe.
+    await page.goto('/#/item/12345');
 
-    await expect(page.getByText('Ask HN: What are you working on?').first()).toBeVisible();
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 
     // 'viewed:session' is the session-only store (cleared per browser session).
     const sessionViewed = await page.evaluate(() => {
@@ -113,18 +112,27 @@ test.describe('Viewed Items - Mobile', () => {
       return stored ? JSON.parse(stored) : null;
     });
 
-    expect(sessionViewed).toContain(88888);
+    expect(sessionViewed).toContain(12345);
+
+    // Also verify it was written to the detail times map
+    const detailTimes = await page.evaluate(() => {
+      const stored = localStorage.getItem('viewed:times:detail');
+      return stored ? JSON.parse(stored) : null;
+    });
+
+    expect(detailTimes).toBeTruthy();
+    expect(detailTimes['12345']).toBeGreaterThan(0);
   });
 
   test('viewed items are filtered in mobile swipe mode', async ({ page }) => {
-    // Seed 'viewed:times' WITHOUT touching 'viewed:session' — the swipe
+    // Seed 'viewed:times:detail' WITHOUT touching 'viewed:session' — the swipe
     // filter should hide items that are time-viewed but not session-viewed.
     await page.addInitScript(() => {
       const viewed = {
         '12345': Date.now() - 1000,
         '12346': Date.now() - 1000,
       };
-      localStorage.setItem('viewed:times', JSON.stringify(viewed));
+      localStorage.setItem('viewed:times:detail', JSON.stringify(viewed));
     });
 
     await page.goto('/#/');

@@ -8,7 +8,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
 import { fetchItemOnly, NotFoundError } from '../api/hn';
-import { getRecentlyViewedIds, getSessionViewedIds, markViewedWithTime } from '../utils/viewedItems';
+import { getFilteredViewedIds, getSessionViewedIds, markViewedWithTime } from '../utils/viewedItems';
 import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
 import { StateView } from './StateView';
@@ -81,15 +81,15 @@ export function SwipeStoryViewerCore({
   const isOurNavigationRef = useRef(false);
   
   // Snapshots at mount for filtering logic:
-  // - recentlyViewedOnMount: stories viewed in last 24h (from localStorage)
+  // - recentlyViewedOnMount: stories that should be filtered (title=5d, detail=12h TTLs)
   // - sessionViewedOnMount: stories viewed THIS session (from sessionStorage)
   // Stories in sessionStorage are NOT filtered (can always go back to them)
   // Stories in localStorage but NOT sessionStorage are filtered
-  const [recentlyViewedOnMount] = useState(() => getRecentlyViewedIds(24));
+  const [recentlyViewedOnMount] = useState(() => getFilteredViewedIds());
   const [sessionViewedOnMount] = useState(() => getSessionViewedIds());
   
   // Merge injected story (if any) with feed stories, avoiding duplicates
-  // Also filter out stories viewed in the last 24 hours (unless viewed this session)
+  // Also filter out recently-viewed stories (unless viewed this session)
   // IMPORTANT: If anchorStoryId is set, that story is moved to index 0
   const mergedStories = useMemo(() => {
     // Find anchor story in feed (the story that should be first)
@@ -395,12 +395,11 @@ export function SwipeStoryViewerCore({
   
   usePrefetchItems(currentIndex, mergedStories, 6);
   
-  // Mark stories WITHOUT external URL as viewed on swipe (Ask HN, text posts)
-  // Stories WITH URLs are marked when user clicks the external link (in FullScreenItem)
+  // Mark all stories as viewed (detail) on swipe — each panel IS the story detail on mobile
   useEffect(() => {
     const currentStory = mergedStories[currentIndex];
-    if (currentStory && !currentStory.url) {
-      markViewedWithTime(currentStory.id);
+    if (currentStory) {
+      markViewedWithTime(currentStory.id, 'detail');
     }
   }, [currentIndex, mergedStories]);
   
