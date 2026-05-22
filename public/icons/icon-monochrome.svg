@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="mono-title">
+  <title id="mono-title">HackerTok</title>
+  <!-- Monochrome icon: system discards color, uses only alpha channel as mask -->
+  <rect x="14" y="16" width="8" height="32" rx="1" fill="#000"/>
+  <rect x="42" y="16" width="8" height="32" rx="1" fill="#000"/>
+  <rect x="24" y="28" width="16" height="8" rx="1" fill="#000"/>
+  <rect x="28" y="28" width="8" height="20" rx="1" fill="#000"/>
+</svg>

@@ -46,6 +46,13 @@ async function generateIcons() {
     // App icons from icon.svg
     {
       input: join(iconsDir, 'icon.svg'),
+      output: join(iconsDir, 'icon-48.png'),
+      width: 48,
+      height: 48,
+      description: 'icon-48.png (PWA icon small)'
+    },
+    {
+      input: join(iconsDir, 'icon.svg'),
       output: join(iconsDir, 'icon-192.png'),
       width: 192,
       height: 192,
@@ -66,6 +73,13 @@ async function generateIcons() {
       description: 'apple-touch-icon.png (iOS)'
     },
     // Maskable icon
+    {
+      input: join(iconsDir, 'icon-maskable.svg'),
+      output: join(iconsDir, 'icon-maskable-192.png'),
+      width: 192,
+      height: 192,
+      description: 'icon-maskable-192.png (Android adaptive)'
+    },
     {
       input: join(iconsDir, 'icon-maskable.svg'),
       output: join(iconsDir, 'icon-maskable-512.png'),

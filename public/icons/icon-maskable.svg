@@ -1,16 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="maskable-title">
   <title id="maskable-title">HackerTok</title>
-  <defs>
-    <mask id="ht-mask">
-      <rect width="64" height="64" fill="#ffffff"/>
-      <!-- Content scaled for maskable safe zone (12.5% padding per side) -->
-      <g transform="translate(8, 8) scale(0.75)">
-        <rect x="14" y="16" width="8" height="32" rx="1" fill="#000000"/>
-        <rect x="42" y="16" width="8" height="32" rx="1" fill="#000000"/>
-        <rect x="24" y="28" width="16" height="8" rx="1" fill="#000000"/>
-        <rect x="28" y="28" width="8" height="20" rx="1" fill="#000000"/>
-      </g>
-    </mask>
-  </defs>
-  <rect width="64" height="64" fill="#f36303" mask="url(#ht-mask)"/>
+  <!-- Solid orange background (no transparency — safe for any backdrop) -->
+  <rect width="64" height="64" fill="#f36303"/>
+  <!-- White "HT" letterforms within maskable safe zone (circle r=25.6px, ~6.4px min margin from edge) -->
+  <g transform="translate(8, 8) scale(0.75)">
+    <rect x="14" y="16" width="8" height="32" rx="1" fill="#ffffff"/>
+    <rect x="42" y="16" width="8" height="32" rx="1" fill="#ffffff"/>
+    <rect x="24" y="28" width="16" height="8" rx="1" fill="#ffffff"/>
+    <rect x="28" y="28" width="8" height="20" rx="1" fill="#ffffff"/>
+  </g>
 </svg>
