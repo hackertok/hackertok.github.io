@@ -3,7 +3,7 @@ import { screen, fireEvent } from '@testing-library/react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { render } from '../test/test-utils';
 import { StoryCard } from './StoryCard';
-import { clearViewed, markViewedWithTime } from '../utils/viewedItems';
+import { clearViewed, markViewedWithTime, clearViewedTimes, clearSessionViewed, VIEWED_DETAIL_TIMES_KEY, VIEWED_SESSION_KEY } from '../utils/viewedItems';
 import { createStoryItem } from '../test/factories';
 import type { StoryItem } from '../types';
 
@@ -42,6 +42,8 @@ describe('StoryCard', () => {
 
   beforeEach(() => {
     clearViewed();
+    clearViewedTimes();
+    clearSessionViewed();
   });
 
   describe('rendering', () => {
@@ -155,8 +157,8 @@ describe('StoryCard', () => {
       expect(titleLink).toHaveClass('text-foreground');
     });
 
-    it('applies viewed styles when story was previously viewed', () => {
-      markViewedWithTime(mockTextStory.id);
+    it('applies viewed styles when story was previously title-clicked', () => {
+      markViewedWithTime(mockTextStory.id, 'title');
       render(<StoryCard story={mockTextStory} />);
       
       const titleLink = screen.getByRole('link', { name: /Ask HN/i });
@@ -175,7 +177,7 @@ describe('StoryCard', () => {
       expect(newTitleLink).toHaveClass('text-viewed');
     });
 
-    it('marks text post as viewed when clicking comments link', () => {
+    it('does not visually mark text post when clicking comments link', () => {
       const { rerender } = render(<StoryCard story={mockTextStory} />);
 
       const commentsLink = screen.getByRole('link', { name: /15 comments/i });
@@ -183,7 +185,22 @@ describe('StoryCard', () => {
 
       rerender(<StoryCard story={mockTextStory} />);
       const titleLink = screen.getByRole('link', { name: /Ask HN/i });
-      expect(titleLink).toHaveClass('text-viewed');
+      expect(titleLink).toHaveClass('text-foreground');
+    });
+
+    it('writes to detail times map and session store when clicking comments on text post', () => {
+      render(<StoryCard story={mockTextStory} />);
+
+      const commentsLink = screen.getByRole('link', { name: /15 comments/i });
+      fireEvent.click(commentsLink);
+
+      // Should write to detail times map (for swipe-mode filtering)
+      const stored = JSON.parse(localStorage.getItem(VIEWED_DETAIL_TIMES_KEY)!) as Record<string, number>;
+      expect(stored[String(mockTextStory.id)]).toBeGreaterThan(0);
+
+      // Should add to session storage
+      const session = JSON.parse(sessionStorage.getItem(VIEWED_SESSION_KEY)!) as number[];
+      expect(session).toContain(mockTextStory.id);
     });
 
     it('does not mark regular story as viewed when clicking comments link', () => {

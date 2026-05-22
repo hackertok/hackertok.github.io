@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { screen, fireEvent } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { ItemArticle } from './ItemArticle';
+import { clearViewed, clearViewedTimes, clearSessionViewed, isViewed, VIEWED_TITLE_TIMES_KEY, VIEWED_SESSION_KEY } from '../utils/viewedItems';
 import type { JobItem, StoryItem } from '../types';
 
 function story(overrides: Partial<StoryItem> = {}): StoryItem {
@@ -19,6 +20,39 @@ function story(overrides: Partial<StoryItem> = {}): StoryItem {
 }
 
 describe('ItemArticle', () => {
+  beforeEach(() => {
+    clearViewed();
+    clearViewedTimes();
+    clearSessionViewed();
+  });
+
+  describe('external link click marks viewed', () => {
+    it('clicking the external title link writes to viewed:times:title and permanent store', () => {
+      render(<ItemArticle item={story()} />);
+
+      const externalLink = screen.getByRole('link', { name: 'A great story' });
+      fireEvent.click(externalLink);
+
+      // Should write to the title times map (not detail)
+      const stored = JSON.parse(localStorage.getItem(VIEWED_TITLE_TIMES_KEY)!) as Record<string, number>;
+      expect(stored['12345']).toBeGreaterThan(0);
+
+      // Title clicks also mark the permanent store for visual dimming
+      expect(isViewed(12345)).toBe(true);
+
+      // Should add to session storage
+      const session = JSON.parse(sessionStorage.getItem(VIEWED_SESSION_KEY)!) as number[];
+      expect(session).toContain(12345);
+    });
+
+    it('does not render external link for text posts (no URL)', () => {
+      render(<ItemArticle item={story({ url: undefined })} />);
+
+      // Text posts render as plain text, not as a clickable link
+      expect(screen.queryByRole('link', { name: 'A great story' })).not.toBeInTheDocument();
+    });
+  });
+
   describe('author byline link', () => {
     it('wraps the author byline in a link to /user/:author', () => {
       render(<ItemArticle item={story()} />);

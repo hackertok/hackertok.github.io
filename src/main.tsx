@@ -5,7 +5,7 @@ import App from './App'
 import { pruneExpiredViewed } from './utils/viewedItems'
 
 // Clean up expired viewed entries on app load (runs exactly once)
-pruneExpiredViewed(24);
+pruneExpiredViewed();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

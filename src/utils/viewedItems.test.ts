@@ -3,7 +3,7 @@ import {
   isViewed, 
   markViewed, 
   clearViewed,
-  getRecentlyViewedIds,
+  getFilteredViewedIds,
   markViewedWithTime,
   pruneExpiredViewed,
   clearViewedTimes,
@@ -11,6 +11,10 @@ import {
   addToSessionViewed,
   clearSessionViewed,
   VIEWED_KEY,
+  VIEWED_TITLE_TIMES_KEY,
+  VIEWED_DETAIL_TIMES_KEY,
+  TITLE_CLICK_TTL_HOURS,
+  DETAIL_VIEW_TTL_HOURS,
 } from './viewedItems';
 
 describe('viewedItems', () => {
@@ -114,139 +118,187 @@ describe('viewedItems - Time-based functions', () => {
     vi.restoreAllMocks();
   });
 
-  describe('getRecentlyViewedIds', () => {
+  describe('getFilteredViewedIds', () => {
     it('returns empty Set initially', () => {
-      const ids = getRecentlyViewedIds(24);
+      const ids = getFilteredViewedIds();
       expect(ids.size).toBe(0);
     });
 
-    it('returns IDs marked with markViewedWithTime', () => {
-      markViewedWithTime(12345);
-      markViewedWithTime(67890);
-      
-      const ids = getRecentlyViewedIds(24);
+    it('returns IDs from title map within 5-day TTL', () => {
+      markViewedWithTime(12345, 'title');
+      markViewedWithTime(67890, 'title');
+
+      const ids = getFilteredViewedIds();
       expect(ids.has(12345)).toBe(true);
       expect(ids.has(67890)).toBe(true);
       expect(ids.size).toBe(2);
     });
 
-    it('excludes IDs older than the time window', () => {
-      const twentyFiveHoursAgo = Date.now() - (25 * 60 * 60 * 1000);
-      vi.spyOn(Date, 'now').mockReturnValue(twentyFiveHoursAgo);
-      markViewedWithTime(11111);
+    it('returns IDs from detail map within 12-hour TTL', () => {
+      markViewedWithTime(11111, 'detail');
+      markViewedWithTime(22222, 'detail');
 
-      vi.spyOn(Date, 'now').mockReturnValue(Date.now() + (25 * 60 * 60 * 1000));
-      markViewedWithTime(22222);
+      const ids = getFilteredViewedIds();
+      expect(ids.has(11111)).toBe(true);
+      expect(ids.has(22222)).toBe(true);
+    });
 
+    it('excludes title IDs older than 5 days', () => {
+      const sixDaysAgo = Date.now() - (6 * 24 * 60 * 60 * 1000);
+      vi.spyOn(Date, 'now').mockReturnValueOnce(sixDaysAgo);
+      markViewedWithTime(11111, 'title');
       vi.restoreAllMocks();
 
-      const ids = getRecentlyViewedIds(24);
+      markViewedWithTime(22222, 'title');
+
+      const ids = getFilteredViewedIds();
       expect(ids.has(11111)).toBe(false);
       expect(ids.has(22222)).toBe(true);
     });
 
-    it('handles custom time window', () => {
-      const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-      vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
-      markViewedWithTime(12345);
+    it('excludes detail IDs older than 12 hours', () => {
+      const thirteenHoursAgo = Date.now() - (13 * 60 * 60 * 1000);
+      vi.spyOn(Date, 'now').mockReturnValueOnce(thirteenHoursAgo);
+      markViewedWithTime(11111, 'detail');
       vi.restoreAllMocks();
 
-      expect(getRecentlyViewedIds(24).has(12345)).toBe(true);
-      expect(getRecentlyViewedIds(3).has(12345)).toBe(true);
-      expect(getRecentlyViewedIds(1).has(12345)).toBe(false);
+      markViewedWithTime(22222, 'detail');
+
+      const ids = getFilteredViewedIds();
+      expect(ids.has(11111)).toBe(false);
+      expect(ids.has(22222)).toBe(true);
+    });
+
+    it('returns union of both maps', () => {
+      markViewedWithTime(11111, 'title');
+      markViewedWithTime(22222, 'detail');
+
+      const ids = getFilteredViewedIds();
+      expect(ids.has(11111)).toBe(true);
+      expect(ids.has(22222)).toBe(true);
+      expect(ids.size).toBe(2);
     });
   });
 
   describe('markViewedWithTime', () => {
-    it('marks item with timestamp', () => {
-      markViewedWithTime(12345);
-      
-      const ids = getRecentlyViewedIds(24);
-      expect(ids.has(12345)).toBe(true);
+    it('writes to title map when kind is title', () => {
+      markViewedWithTime(12345, 'title');
+
+      const stored = JSON.parse(localStorage.getItem(VIEWED_TITLE_TIMES_KEY)!) as Record<string, number>;
+      expect(stored['12345']).toBeGreaterThan(0);
+      expect(localStorage.getItem(VIEWED_DETAIL_TIMES_KEY)).toBeNull();
     });
 
-    it('also marks in permanent store for visual styling', () => {
-      expect(isViewed(12345)).toBe(false);
-      
+    it('writes to detail map when kind is detail', () => {
+      markViewedWithTime(12345, 'detail');
+
+      const stored = JSON.parse(localStorage.getItem(VIEWED_DETAIL_TIMES_KEY)!) as Record<string, number>;
+      expect(stored['12345']).toBeGreaterThan(0);
+      expect(localStorage.getItem(VIEWED_TITLE_TIMES_KEY)).toBeNull();
+    });
+
+    it('defaults to detail when no kind specified', () => {
       markViewedWithTime(12345);
-      
+
+      const stored = JSON.parse(localStorage.getItem(VIEWED_DETAIL_TIMES_KEY)!) as Record<string, number>;
+      expect(stored['12345']).toBeGreaterThan(0);
+      expect(localStorage.getItem(VIEWED_TITLE_TIMES_KEY)).toBeNull();
+    });
+
+    it('also marks in permanent store for visual styling (title only)', () => {
+      expect(isViewed(12345)).toBe(false);
+
+      markViewedWithTime(12345, 'title');
+
       expect(isViewed(12345)).toBe(true);
     });
 
+    it('does not mark permanent store for detail views', () => {
+      expect(isViewed(12345)).toBe(false);
+
+      markViewedWithTime(12345, 'detail');
+
+      expect(isViewed(12345)).toBe(false);
+    });
+
     it('handles string IDs', () => {
-      markViewedWithTime('12345');
-      
-      const ids = getRecentlyViewedIds(24);
+      markViewedWithTime('12345', 'title');
+
+      const ids = getFilteredViewedIds();
       expect(ids.has(12345)).toBe(true);
     });
 
     it('updates timestamp if marked again', () => {
-      const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-      vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
-      markViewedWithTime(12345);
+      const thirteenHoursAgo = Date.now() - (13 * 60 * 60 * 1000);
+      vi.spyOn(Date, 'now').mockReturnValueOnce(thirteenHoursAgo);
+      markViewedWithTime(12345, 'detail');
       vi.restoreAllMocks();
 
-      expect(getRecentlyViewedIds(1).has(12345)).toBe(false);
+      // Expired
+      expect(getFilteredViewedIds().has(12345)).toBe(false);
 
-      markViewedWithTime(12345);
+      // Re-mark — fresh timestamp
+      markViewedWithTime(12345, 'detail');
 
-      expect(getRecentlyViewedIds(1).has(12345)).toBe(true);
+      expect(getFilteredViewedIds().has(12345)).toBe(true);
     });
   });
 
   describe('pruneExpiredViewed', () => {
-    it('removes entries older than time window', () => {
-      const twentyFiveHoursAgo = Date.now() - (25 * 60 * 60 * 1000);
-      vi.spyOn(Date, 'now').mockReturnValueOnce(twentyFiveHoursAgo);
-      markViewedWithTime(11111);
+    it('removes title entries older than TITLE_CLICK_TTL_HOURS', () => {
+      const sixDaysAgo = Date.now() - (TITLE_CLICK_TTL_HOURS + 1) * 3_600_000;
+      vi.spyOn(Date, 'now').mockReturnValueOnce(sixDaysAgo);
+      markViewedWithTime(11111, 'title');
       vi.restoreAllMocks();
 
-      markViewedWithTime(22222);
+      markViewedWithTime(22222, 'title');
 
-      // Old entry already filtered by getRecentlyViewedIds time check, even before pruning.
-      expect(getRecentlyViewedIds(24).has(11111)).toBe(false);
-      expect(getRecentlyViewedIds(24).has(22222)).toBe(true);
+      pruneExpiredViewed();
 
-      pruneExpiredViewed(24);
-
-      expect(getRecentlyViewedIds(24).has(22222)).toBe(true);
+      const ids = getFilteredViewedIds();
+      expect(ids.has(11111)).toBe(false);
+      expect(ids.has(22222)).toBe(true);
     });
 
-    it('handles custom time window', () => {
-      const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-      vi.spyOn(Date, 'now').mockReturnValueOnce(twoHoursAgo);
-      markViewedWithTime(12345);
+    it('removes detail entries older than DETAIL_VIEW_TTL_HOURS', () => {
+      const thirteenHoursAgo = Date.now() - (DETAIL_VIEW_TTL_HOURS + 1) * 3_600_000;
+      vi.spyOn(Date, 'now').mockReturnValueOnce(thirteenHoursAgo);
+      markViewedWithTime(11111, 'detail');
       vi.restoreAllMocks();
 
-      pruneExpiredViewed(1);
+      markViewedWithTime(22222, 'detail');
 
-      // Need to clear the in-memory cache to observe the pruned result on disk.
-      clearViewedTimes();
-      expect(getRecentlyViewedIds(24).has(12345)).toBe(false);
+      pruneExpiredViewed();
+
+      const ids = getFilteredViewedIds();
+      expect(ids.has(11111)).toBe(false);
+      expect(ids.has(22222)).toBe(true);
     });
 
     it('does nothing when all entries are recent', () => {
-      markViewedWithTime(12345);
-      markViewedWithTime(67890);
-      
-      pruneExpiredViewed(24);
-      
-      const ids = getRecentlyViewedIds(24);
+      markViewedWithTime(12345, 'title');
+      markViewedWithTime(67890, 'detail');
+
+      pruneExpiredViewed();
+
+      const ids = getFilteredViewedIds();
       expect(ids.has(12345)).toBe(true);
       expect(ids.has(67890)).toBe(true);
     });
   });
 
   describe('clearViewedTimes', () => {
-    it('clears all time-based viewed items', () => {
-      markViewedWithTime(12345);
-      markViewedWithTime(67890);
-      
-      expect(getRecentlyViewedIds(24).size).toBe(2);
-      
+    it('clears both title and detail maps', () => {
+      markViewedWithTime(12345, 'title');
+      markViewedWithTime(67890, 'detail');
+
+      expect(getFilteredViewedIds().size).toBe(2);
+
       clearViewedTimes();
-      
-      expect(getRecentlyViewedIds(24).size).toBe(0);
+
+      expect(getFilteredViewedIds().size).toBe(0);
+      expect(localStorage.getItem(VIEWED_TITLE_TIMES_KEY)).toBeNull();
+      expect(localStorage.getItem(VIEWED_DETAIL_TIMES_KEY)).toBeNull();
     });
   });
 });

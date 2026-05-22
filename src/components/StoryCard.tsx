@@ -65,7 +65,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
   );
 
   const handleTitleClick = () => {
-    markViewedWithTime(story.id);
+    markViewedWithTime(story.id, 'title');
     cancelAllPrefetches();
     if (onBeforeNavigate) {
       onBeforeNavigate();
@@ -88,7 +88,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
   // the comments page IS the content for those.
   const handleCommentsClick = () => {
     if (!story.url) {
-      markViewedWithTime(story.id);
+      markViewedWithTime(story.id, 'detail');
     }
     cancelAllPrefetches();
     if (onBeforeNavigate) {

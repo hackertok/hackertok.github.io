@@ -3,13 +3,11 @@ import { useSyncExternalStore } from 'react';
 /** Track viewed items in localStorage. */
 
 export const VIEWED_KEY = 'viewed';
-export const VIEWED_TIMES_KEY = 'viewed:times';
 export const VIEWED_SESSION_KEY = 'viewed:session';
 const MAX_VIEWED_IDS = 50_000;
 
 // O(1) in-memory caches; rebuilt lazily from storage on first access.
 let viewedSet: Set<number> | null = null;
-let viewedTimesCache: Record<string, number> | null = null;
 let sessionViewedCache: Set<number> | null = null;
 
 const listeners = new Set<() => void>();
@@ -77,74 +75,125 @@ export function useIsViewed(itemId: number | string): boolean {
 }
 
 // ============================================================================
-// Time-based viewed tracking (for 24-hour filtering in swipe mode)
+// Time-based viewed tracking (differentiated TTLs for swipe-mode filtering)
 // ============================================================================
 
-function loadViewedTimes(): Record<string, number> {
-  if (viewedTimesCache !== null) return viewedTimesCache;
-  
+export const VIEWED_TITLE_TIMES_KEY = 'viewed:times:title';
+export const VIEWED_DETAIL_TIMES_KEY = 'viewed:times:detail';
+export const TITLE_CLICK_TTL_HOURS = 120; // 5 days
+export const DETAIL_VIEW_TTL_HOURS = 12;
+
+let titleTimesCache: Record<string, number> | null = null;
+let detailTimesCache: Record<string, number> | null = null;
+
+function loadTitleTimes(): Record<string, number> {
+  if (titleTimesCache !== null) return titleTimesCache;
   try {
-    const stored = localStorage.getItem(VIEWED_TIMES_KEY);
-    viewedTimesCache = stored ? JSON.parse(stored) as Record<string, number> : {};
+    const stored = localStorage.getItem(VIEWED_TITLE_TIMES_KEY);
+    titleTimesCache = stored ? JSON.parse(stored) as Record<string, number> : {};
   } catch {
-    viewedTimesCache = {};
+    titleTimesCache = {};
   }
-  return viewedTimesCache;
+  return titleTimesCache;
 }
 
-function saveViewedTimes(): void {
+function saveTitleTimes(): void {
   try {
-    localStorage.setItem(VIEWED_TIMES_KEY, JSON.stringify(viewedTimesCache));
+    localStorage.setItem(VIEWED_TITLE_TIMES_KEY, JSON.stringify(titleTimesCache));
   } catch { /* best-effort */ }
 }
 
-export function getRecentlyViewedIds(hours = 24): Set<number> {
-  const times = loadViewedTimes();
-  const cutoff = Date.now() - (hours * 60 * 60 * 1000); // hours → ms
-  const recentIds = new Set<number>();
-  
-  for (const [id, timestamp] of Object.entries(times)) {
-    if (timestamp >= cutoff) {
-      recentIds.add(Number(id));
+function loadDetailTimes(): Record<string, number> {
+  if (detailTimesCache !== null) return detailTimesCache;
+  try {
+    const stored = localStorage.getItem(VIEWED_DETAIL_TIMES_KEY);
+    detailTimesCache = stored ? JSON.parse(stored) as Record<string, number> : {};
+  } catch {
+    detailTimesCache = {};
+  }
+  return detailTimesCache;
+}
+
+function saveDetailTimes(): void {
+  try {
+    localStorage.setItem(VIEWED_DETAIL_TIMES_KEY, JSON.stringify(detailTimesCache));
+  } catch { /* best-effort */ }
+}
+
+/** Get IDs that should be filtered (hidden) in swipe mode, using per-kind TTLs. */
+export function getFilteredViewedIds(): Set<number> {
+  const now = Date.now();
+  const result = new Set<number>();
+
+  const titleTimes = loadTitleTimes();
+  const titleCutoff = now - TITLE_CLICK_TTL_HOURS * 3_600_000;
+  for (const [id, timestamp] of Object.entries(titleTimes)) {
+    if (timestamp >= titleCutoff) {
+      result.add(Number(id));
     }
   }
-  
-  return recentIds;
+
+  const detailTimes = loadDetailTimes();
+  const detailCutoff = now - DETAIL_VIEW_TTL_HOURS * 3_600_000;
+  for (const [id, timestamp] of Object.entries(detailTimes)) {
+    if (timestamp >= detailCutoff) {
+      result.add(Number(id));
+    }
+  }
+
+  return result;
 }
 
 /** Mark viewed with timestamp; persists to permanent + session stores. */
-export function markViewedWithTime(itemId: number | string): void {
+export function markViewedWithTime(itemId: number | string, kind: 'title' | 'detail' = 'detail'): void {
   const id = Number(itemId);
-  
-  markViewed(id);
+
+  if (kind === 'title') markViewed(id);
   addToSessionViewed(id);
-  
-  const times = loadViewedTimes();
-  times[id] = Date.now();
-  saveViewedTimes();
+
+  if (kind === 'title') {
+    const times = loadTitleTimes();
+    times[id] = Date.now();
+    saveTitleTimes();
+  } else {
+    const times = loadDetailTimes();
+    times[id] = Date.now();
+    saveDetailTimes();
+  }
 }
 
-export function pruneExpiredViewed(hours = 24): void {
-  const times = loadViewedTimes();
-  const cutoff = Date.now() - (hours * 60 * 60 * 1000); // hours → ms
+export function pruneExpiredViewed(): void {
+  const now = Date.now();
+
+  const titleTimes = loadTitleTimes();
+  const titleCutoff = now - TITLE_CLICK_TTL_HOURS * 3_600_000;
   let pruned = false;
-  
-  for (const [id, timestamp] of Object.entries(times)) {
-    if (timestamp < cutoff) {
-      delete times[id];
+  for (const [id, timestamp] of Object.entries(titleTimes)) {
+    if (timestamp < titleCutoff) {
+      delete titleTimes[id];
       pruned = true;
     }
   }
-  
-  if (pruned) {
-    saveViewedTimes();
+  if (pruned) saveTitleTimes();
+
+  const detailTimes = loadDetailTimes();
+  const detailCutoff = now - DETAIL_VIEW_TTL_HOURS * 3_600_000;
+  pruned = false;
+  for (const [id, timestamp] of Object.entries(detailTimes)) {
+    if (timestamp < detailCutoff) {
+      delete detailTimes[id];
+      pruned = true;
+    }
   }
+  if (pruned) saveDetailTimes();
 }
 
 export function clearViewedTimes() {
-  viewedTimesCache = {};
+  titleTimesCache = null;
+  detailTimesCache = null;
   try {
-    localStorage.removeItem(VIEWED_TIMES_KEY);
+    localStorage.removeItem(VIEWED_TITLE_TIMES_KEY);
+    localStorage.removeItem(VIEWED_DETAIL_TIMES_KEY);
   } catch { /* best-effort */ }
 }
 
