@@ -11,14 +11,16 @@ test.describe('Navigation', () => {
 
     await page.getByRole('link', { name: /show/i }).click();
 
-    // Mobile may rewrite to /#/item/... via the swipe viewer; both are valid.
-    await expect(page).toHaveURL(/\/#\/(show|item\/\d+)/);
+    // Wait for navigation to fully settle — the "show" link only receives
+    // bg-accent after the route resolves to /show (or /item/<id> with
+    // state.from="show"). Without this, on Mobile Safari the old URL
+    // /#/item/<top-story-id> can match a loose regex prematurely.
+    await expect(page.getByRole('link', { name: 'show', exact: true })).toHaveClass(/bg-accent/, { timeout: 10000 });
 
-    await expect(page.getByText('Show HN: Piko – Open-Source Ngrok Alternative in Go')).toBeVisible();
+    await expect(page.getByText('Show HN: Piko – Open-Source Ngrok Alternative in Go').first()).toBeVisible({ timeout: 10000 });
 
     await expect(page).toHaveTitle(/Show.*HackerTok|HackerTok/);
 
-    await expect(page.getByRole('link', { name: 'show', exact: true })).toHaveClass(/bg-accent/);
     await expect(page.getByRole('link', { name: 'best', exact: true })).not.toHaveClass(/bg-accent/);
     await expect(page.getByRole('link', { name: 'ask', exact: true })).not.toHaveClass(/bg-accent/);
   });
@@ -28,13 +30,13 @@ test.describe('Navigation', () => {
 
     await page.getByRole('link', { name: /ask/i }).click();
 
-    await expect(page).toHaveURL(/\/#\/(ask|item\/\d+)/);
+    // Wait for navigation to fully settle (same pattern as Show HN above).
+    await expect(page.getByRole('link', { name: 'ask', exact: true })).toHaveClass(/bg-accent/, { timeout: 10000 });
 
-    await expect(page.getByText('Ask HN: What are you working on?')).toBeVisible();
+    await expect(page.getByText('Ask HN: What are you working on?').first()).toBeVisible({ timeout: 10000 });
 
     await expect(page).toHaveTitle(/Ask.*HackerTok|HackerTok/);
 
-    await expect(page.getByRole('link', { name: 'ask', exact: true })).toHaveClass(/bg-accent/);
     await expect(page.getByRole('link', { name: 'show', exact: true })).not.toHaveClass(/bg-accent/);
     await expect(page.getByRole('link', { name: 'best', exact: true })).not.toHaveClass(/bg-accent/);
   });
@@ -70,7 +72,9 @@ test.describe('Navigation', () => {
     // /#/ on desktop, /#/item/<first-id> on mobile (auto swipe-viewer rewrite).
     await expect(page).toHaveURL(/\/#\/(item\/\d+)?$/);
 
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    // On mobile, wait for the swipe-viewer panel to become active before
+    // asserting visibility (Safari may need an extra frame after route change).
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('logo click returns to homepage', async ({ page }) => {

@@ -141,7 +141,7 @@ function MobileItemResolver({ id }: { id: string }) {
 
   return (
     <div className="swipe-snap-container" data-testid="swipe-container">
-      <div className="swipe-snap-panel" data-testid="swipe-panel">
+      <div className="swipe-snap-panel active" data-testid="swipe-panel">
         <FullScreenCommentSkeletonPanel />
       </div>
     </div>
@@ -151,12 +151,10 @@ function MobileItemResolver({ id }: { id: string }) {
 function MainContent({ children }: { children: React.ReactNode }) {
   const { isSwipeMode } = useScrollContainer();
   
-  // In swipe mode: position fixed removes content from document flow,
-  // preventing the swipe container's internal scroll width from expanding
-  // the viewport's scrollable area (which causes the horizontal overflow bug
-  // when transitioning from desktop to mobile while offline).
+  // In swipe mode: document scrolls naturally (no height constraint needed).
+  // Without h-dvh, ancestor chain grows with panel content.
   return (
-    <main className={`overflow-x-clip ${isSwipeMode ? 'fixed inset-0 top-[var(--header-height)]' : 'pt-14 md:pt-0'}`}>
+    <main className={isSwipeMode ? '' : 'pt-14 md:pt-0'}>
       {children}
     </main>
   );

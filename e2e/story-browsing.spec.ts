@@ -15,7 +15,9 @@ test.describe('Item Browsing', () => {
     await page.goto('/#/');
 
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
-    await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default')).toBeVisible();
+    // On mobile swipe mode, only the active panel is visible; the second story
+    // is in the DOM but in a display:none panel. Use toBeAttached to verify data loaded.
+    await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default')).toBeAttached();
 
     await expect(page.getByText(/284 points/i)).toBeVisible();
     await expect(page.getByText('leerob').first()).toBeVisible();
@@ -37,16 +39,20 @@ test.describe('Item Browsing - Loading State', () => {
       return;
     }
 
-    // Delay mocks so the skeleton is observable before content arrives.
-    await setupApiMocksWithDelay(page, 1500);
+    // Generous delay so the skeleton observation window stays wide even
+    // when the JS bundle takes a long time to load (Firefox can be slow
+    // to parse/execute ESM modules after `commit`).
+    await setupApiMocksWithDelay(page, 3000);
 
     // 'commit' returns immediately after navigation commit; do not wait for load.
     await page.goto('/#/', { waitUntil: 'commit' });
 
+    // Timeout must cover the full JS bootstrap (download + parse +
+    // React mount) which varies across browsers and CI load.
     const skeleton = page.locator('.animate-pulse').first();
-    await expect(skeleton).toBeVisible({ timeout: 2000 });
+    await expect(skeleton).toBeVisible({ timeout: 15000 });
 
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible({ timeout: 10000 });
 
     await expect(page.locator('.animate-pulse')).toHaveCount(0);
   });

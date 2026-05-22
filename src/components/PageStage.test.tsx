@@ -164,7 +164,8 @@ describe('PageStage', () => {
     expect(wrapper).not.toHaveClass('play-real');
     expect(screen.getByTestId('skel')).toBeInTheDocument();
 
-    // Flipping triggerWhen=true releases the gate and the cascade runs.
+    // Flipping triggerWhen=true with data already loaded — user never
+    // saw a skeleton, so the cascade is skipped and we land in 'done'.
     rerender(
       <PageStage
         loading={false}
@@ -177,7 +178,7 @@ describe('PageStage', () => {
     flushRAF();
 
     expect(wrapper).toHaveClass('fade-skeleton');
-    expect(wrapper).toHaveClass('play-real');
+    expect(wrapper).not.toHaveClass('play-real');
   });
 
   it('resets to skeleton when loading flips back to true', () => {

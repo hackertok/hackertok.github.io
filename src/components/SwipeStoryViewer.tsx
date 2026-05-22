@@ -270,9 +270,12 @@ export function SwipeStoryViewerCore({
   const savedIndexOnHideRef = useRef<number | null>(null);
   
   useEffect(() => {
-    // Save position when page is about to be hidden/cached
+    // Save position + scrollY when page is about to be hidden/cached
     const handlePageHide = () => {
       savedIndexOnHideRef.current = currentIndexRef.current;
+      try {
+        sessionStorage.setItem('__swipe_scrollY', String(window.scrollY));
+      } catch { /* quota exceeded — non-critical */ }
     };
     
     // Restore position when page is shown from bfcache (persisted=true)
@@ -282,6 +285,9 @@ export function SwipeStoryViewerCore({
         const targetIndex = savedIndexOnHideRef.current;
         savedIndexOnHideRef.current = null;
         scrollToIndex(targetIndex);
+        // Restore scrollY after panel activation
+        const savedY = Number(sessionStorage.getItem('__swipe_scrollY')) || 0;
+        window.scrollTo(0, savedY);
       }
     };
     
@@ -289,10 +295,15 @@ export function SwipeStoryViewerCore({
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         savedIndexOnHideRef.current = currentIndexRef.current;
+        try {
+          sessionStorage.setItem('__swipe_scrollY', String(window.scrollY));
+        } catch { /* quota exceeded — non-critical */ }
       } else if (document.visibilityState === 'visible' && savedIndexOnHideRef.current !== null) {
         const targetIndex = savedIndexOnHideRef.current;
         savedIndexOnHideRef.current = null;
         scrollToIndex(targetIndex);
+        const savedY = Number(sessionStorage.getItem('__swipe_scrollY')) || 0;
+        window.scrollTo(0, savedY);
       }
     };
     
@@ -470,7 +481,7 @@ export function SwipeStoryViewerCore({
     if (!anchorInFeed && !anchorIsInjected) {
       return (
         <div className="swipe-snap-container" data-testid="swipe-container">
-          <div className="swipe-snap-panel" data-testid="swipe-panel">
+          <div className="swipe-snap-panel active" data-testid="swipe-panel">
             <FullScreenItemSkeletonPanel />
           </div>
         </div>
@@ -482,7 +493,7 @@ export function SwipeStoryViewerCore({
   if (mergedStories.length === 0 && (loading || injectedLoading)) {
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel" data-testid="swipe-panel">
+        <div className="swipe-snap-panel active" data-testid="swipe-panel">
           <FullScreenItemSkeletonPanel />
         </div>
       </div>
@@ -500,7 +511,7 @@ export function SwipeStoryViewerCore({
   if (error && mergedStories.length === 0 && isRetrying) {
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel" data-testid="swipe-panel">
+        <div className="swipe-snap-panel active" data-testid="swipe-panel">
           <FullScreenItemSkeletonPanel />
         </div>
       </div>

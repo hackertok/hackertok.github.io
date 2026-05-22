@@ -123,7 +123,7 @@ export const mockAskHNItem1 = {
   url: null,
   author: 'whoishiring',
   points: 245,
-  created_at_i: now() - 7200,
+  created_at_i: now() - 3600,
   num_comments: 312,
   _tags: ['story', 'ask_hn'],
   story_text: 'I\u2019m curious what side projects everyone is working on this month. Share your progress, challenges, and what technologies you\u2019re using!',
@@ -135,7 +135,7 @@ export const mockAskHNItem2 = {
   url: null,
   author: 'rustlearner',
   points: 178,
-  created_at_i: now() - 3600,
+  created_at_i: now() - 7200,
   num_comments: 95,
   _tags: ['story', 'ask_hn'],
 };

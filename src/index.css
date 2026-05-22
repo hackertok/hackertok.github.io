@@ -275,41 +275,50 @@ button {
   background: var(--background);
 }
 
-/* CSS Scroll Snap based swipe viewer (industry standard for carousels)
-   Reference: https://web.dev/articles/css-scroll-snap */
+/* Swipe viewer — document-level scroll.
+   Only the active panel is in normal flow (the document scrolls its content).
+   Inactive panels are display:none. On swipe, scroll position is saved/restored
+   and the active class is toggled. */
 .swipe-snap-container {
-  display: flex;
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* mandatory: always snap to a panel after scroll ends */
-  scroll-snap-type: x mandatory;
-  /* Legacy iOS momentum scrolling (deprecated but improves UX on older devices) */
-  -webkit-overflow-scrolling: touch;
-  /* Prevent browser back/forward gestures */
-  overscroll-behavior-x: contain;
-  /* Hide scrollbar */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  position: relative;
   width: 100%;
-  height: calc(100dvh - var(--header-height) - var(--network-bar-height));
-}
-
-.swipe-snap-container::-webkit-scrollbar {
-  display: none;
 }
 
 .swipe-snap-panel {
-  flex: 0 0 100%;
-  width: 100%;
-  height: 100%;
-  scroll-snap-align: start;
-  /* scroll-snap-stop: always prevents "passing over" panels on fast swipe,
-     ensuring one-story-at-a-time navigation */
-  scroll-snap-stop: always;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* Enable smooth vertical scrolling within each panel */
-  -webkit-overflow-scrolling: touch;
+  display: none;
+  /* Push content below the fixed header */
+  padding-top: calc(var(--header-height) + var(--network-bar-height));
+}
+
+.swipe-snap-panel.active {
+  display: block;
+  position: relative;
+  min-height: 100dvh;
+  touch-action: pan-y;
+}
+
+/* Carousel: adjacent panel positioned off-screen, slides in with active */
+.swipe-snap-panel.peeking,
+.swipe-snap-panel.incoming {
+  display: block;
+  position: fixed;
+  top: calc(var(--header-height) + var(--network-bar-height));
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding-top: 0;
+  overflow: hidden;
+  z-index: 1;
+  background: var(--background);
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Carousel: active panel being dragged */
+.swipe-snap-panel.dragging {
+  z-index: 1;
+  background: var(--background);
+  will-change: transform;
 }
 
 .full-screen-item {
@@ -317,25 +326,54 @@ button {
   min-height: 100%;
 }
 
-/* Prevent pull-to-refresh on iOS in swipe mode.
-   Uses @supports (-webkit-touch-callout: none) as iOS-only detection heuristic.
-   Note: Safari's overscroll-behavior support is partial - may not fully prevent
-   pull-to-refresh gesture in all iOS versions (known platform limitation). */
-@supports (-webkit-touch-callout: none) {
-  body.swipe-mode {
-    overscroll-behavior-y: contain;
+/* In swipe mode, the document scrolls naturally (enabling URL bar hiding).
+   overflow-x prevents horizontal scroll from drag resistance transform.
+   Native scrollbar is hidden — replaced by custom indicator below the header. */
+html.swipe-mode {
+  overflow-x: clip;
+  scrollbar-width: none;
+}
+html.swipe-mode::-webkit-scrollbar {
+  display: none;
+}
+body.swipe-mode {
+  overflow-x: hidden;
+}
+
+/* Custom scroll indicator — thin track on right side, starts below header */
+body.swipe-mode::after {
+  content: '';
+  position: fixed;
+  top: calc(var(--header-height) + var(--network-bar-height));
+  right: 2px;
+  width: 4px;
+  height: calc((100vh - var(--header-height) - var(--network-bar-height)) * 0.2);
+  min-height: 40px;
+  border-radius: 2px;
+  background: color-mix(in srgb, currentColor 20%, transparent);
+  opacity: 0;
+  z-index: 9999;
+  pointer-events: none;
+  transform: translateY(0);
+  transition: opacity 0.3s ease;
+}
+
+@supports (animation-timeline: scroll()) {
+  body.swipe-mode::after {
+    animation: scroll-thumb linear both;
+    animation-timeline: scroll();
   }
 }
 
-/* Prevent body scrolling in swipe mode - panels handle their own scrolling.
-   Without this, both body and panel scrollbars appear.
-   html.swipe-mode clips the viewport directly to prevent scrollWidth
-   from reporting the full flex container width (multiple 100%-wide panels). */
-html.swipe-mode {
-  overflow: clip;
+/* Show indicator while scrolling */
+body.swipe-mode:has(:active)::after,
+body.swipe-mode.is-scrolling::after {
+  opacity: 1;
 }
-body.swipe-mode {
-  overflow: hidden;
+
+@keyframes scroll-thumb {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc((100vh - var(--header-height) - var(--network-bar-height)) * 0.8)); }
 }
 
 /* Full-page centered state (error / not-found / empty) */
