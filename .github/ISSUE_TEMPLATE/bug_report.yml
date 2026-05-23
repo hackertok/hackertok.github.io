@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a reproducible problem in the app, tests, or developer workflow.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please include a clear reproduction so the issue can be triaged quickly.
+
+        Security vulnerabilities should not be reported here. Use the private reporting flow in SECURITY.md instead.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checks
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: This is not a security vulnerability or private disclosure.
+          required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug and the actual behavior.
+      placeholder: Opening a story from the mobile swipe view causes...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Be precise enough that someone else can follow the same path.
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. Scroll or swipe ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The comment thread should remain visible after...
+    validations:
+      required: true
+  - type: input
+    id: route
+    attributes:
+      label: Affected page, route, or feed
+      description: "Examples: ask, best, item detail, user profile"
+      placeholder: best feed
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include browser, OS, device, and whether this happened in the installed PWA if relevant.
+      placeholder: macOS 15, Safari 18, desktop
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots, logs, or recordings
+      description: Paste any helpful screenshots, console errors, or failing test output.
+      render: shell
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add any extra detail that may help reproduce or narrow down the problem.
