@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a product, UX, accessibility, or developer-experience improvement.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the problem first, then the proposed change. Concrete use cases are much easier to evaluate than abstract ideas.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checks
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: This request is scoped to this project and not a security report.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What user or contributor pain point does this solve?
+      placeholder: It is currently difficult to...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the behavior, UI, or workflow you want.
+      placeholder: Add a setting that lets users...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: List workarounds or other ideas you considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Mockups, examples, links, or screenshots are helpful.
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution intent
+      options:
+        - label: I would be willing to open a pull request for this.
+          required: false
