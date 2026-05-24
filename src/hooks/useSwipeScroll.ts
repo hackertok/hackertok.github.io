@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useScrollContainer } from './useScrollContainer';
 
+const noop = () => undefined;
+
 interface UseSwipeScrollOptions {
   itemCount: number;
   initialIndex?: number;
@@ -28,6 +30,8 @@ export function useSwipeScroll({
   const itemCountRef = useRef(itemCount);
   const isScrollingProgrammaticallyRef = useRef(false);
   const isDraggingRef = useRef(false);
+  const updateScrollIndicatorRef = useRef<() => void>(noop);
+  const syncObservedPanelRef = useRef<() => void>(noop);
 
   // Scroll position map: saves scrollY per panel index
   const scrollMapRef = useRef<Map<number, number>>(new Map());
@@ -44,10 +48,63 @@ export function useSwipeScroll({
     enableSwipeMode();
     const previousScrollRestoration = history.scrollRestoration;
     history.scrollRestoration = 'manual';
+    const visualViewport = window.visualViewport;
+    const hasNativeScrollTimeline = typeof CSS !== 'undefined' &&
+      typeof CSS.supports === 'function' &&
+      CSS.supports('animation-timeline: scroll()');
+
+    const updateScrollIndicator = () => {
+      if (hasNativeScrollTimeline) return;
+
+      const viewportHeight = visualViewport?.height ?? window.innerHeight;
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - viewportHeight);
+      const progress = maxScroll > 0
+        ? Math.min(1, Math.max(0, window.scrollY / maxScroll))
+        : 0;
+
+      document.body.style.setProperty('--swipe-scroll-progress', `${progress}`);
+    };
+
+    updateScrollIndicatorRef.current = updateScrollIndicator;
+    updateScrollIndicator();
+
+    let observedPanel: HTMLElement | null = null;
+    let panelResizeObserver: ResizeObserver | null = null;
+
+    const syncObservedPanel = () => {
+      if (hasNativeScrollTimeline || !panelResizeObserver) return;
+
+      const nextPanel = Array.from(containerRef.current?.children ?? []).find((panel) =>
+        (panel as HTMLElement).classList.contains('active'),
+      ) as HTMLElement | undefined;
+
+      if (observedPanel === nextPanel) return;
+
+      if (observedPanel) {
+        panelResizeObserver.unobserve(observedPanel);
+      }
+
+      observedPanel = nextPanel ?? null;
+
+      if (observedPanel) {
+        panelResizeObserver.observe(observedPanel);
+        updateScrollIndicator();
+      }
+    };
+
+    if (!hasNativeScrollTimeline && typeof ResizeObserver === 'function') {
+      panelResizeObserver = new ResizeObserver(() => {
+        updateScrollIndicator();
+      });
+    }
+
+    syncObservedPanelRef.current = syncObservedPanel;
+    syncObservedPanel();
 
     // Scroll indicator visibility: show during scroll, fade after idle
     let scrollTimer: ReturnType<typeof setTimeout> | null = null;
     const showIndicator = () => {
+      updateScrollIndicator();
       // Don't show indicator during programmatic scrolls (panel switch) or active gestures
       if (isScrollingProgrammaticallyRef.current || isDraggingRef.current) return;
       document.body.classList.add('is-scrolling');
@@ -56,14 +113,28 @@ export function useSwipeScroll({
         document.body.classList.remove('is-scrolling');
       }, 800);
     };
+    const handleResize = () => {
+      updateScrollIndicator();
+    };
     window.addEventListener('scroll', showIndicator, { passive: true });
+    window.addEventListener('resize', handleResize);
+    visualViewport?.addEventListener('resize', handleResize);
 
     return () => {
       disableSwipeMode();
       history.scrollRestoration = previousScrollRestoration;
       window.removeEventListener('scroll', showIndicator);
+      window.removeEventListener('resize', handleResize);
+      visualViewport?.removeEventListener('resize', handleResize);
       if (scrollTimer) clearTimeout(scrollTimer);
       document.body.classList.remove('is-scrolling');
+      document.body.style.removeProperty('--swipe-scroll-progress');
+      updateScrollIndicatorRef.current = noop;
+      syncObservedPanelRef.current = noop;
+      if (observedPanel && panelResizeObserver) {
+        panelResizeObserver.unobserve(observedPanel);
+      }
+      panelResizeObserver?.disconnect();
     };
   }, [enableSwipeMode, disableSwipeMode]);
 
@@ -77,7 +148,20 @@ export function useSwipeScroll({
       (panel as HTMLElement).classList.remove('active');
     }
     (container.children[index] as HTMLElement).classList.add('active');
+    syncObservedPanelRef.current();
   }, []);
+
+  const activatePanelAndRestoreScroll = useCallback((index: number) => {
+    const container = containerRef.current;
+    if (!container?.children[index]) return;
+
+    activatePanel(index);
+    // Force reflow so scrollTo sees the new document height (Firefox/WebKit)
+    void document.documentElement.scrollHeight;
+    const savedY = scrollMapRef.current.get(index) ?? 0;
+    window.scrollTo(0, savedY);
+    updateScrollIndicatorRef.current();
+  }, [activatePanel]);
 
   // Sync active panel after render (handles new panels, index changes)
   useLayoutEffect(() => {
@@ -87,7 +171,6 @@ export function useSwipeScroll({
   });
 
   const scrollToIndex = useCallback((index: number) => {
-    const container = containerRef.current;
     // Save current scroll position for outgoing panel
     scrollMapRef.current.set(currentIndexRef.current, window.scrollY);
 
@@ -96,21 +179,12 @@ export function useSwipeScroll({
     setCurrentIndex(index);
 
     // Activate new panel and restore its scroll position
-    if (container?.children[index]) {
-      for (const panel of Array.from(container.children)) {
-        (panel as HTMLElement).classList.remove('active');
-      }
-      (container.children[index] as HTMLElement).classList.add('active');
-      // Force reflow so scrollTo sees the new document height (Firefox/WebKit)
-      void document.documentElement.scrollHeight;
-      const savedY = scrollMapRef.current.get(index) ?? 0;
-      window.scrollTo(0, savedY);
-    }
+    activatePanelAndRestoreScroll(index);
 
     setTimeout(() => {
       isScrollingProgrammaticallyRef.current = false;
     }, 50);
-  }, []);
+  }, [activatePanelAndRestoreScroll]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -126,11 +200,17 @@ export function useSwipeScroll({
     let runningAnimations: Animation[] = [];
     let pendingTimeouts: ReturnType<typeof setTimeout>[] = [];
     let gestureId = 0;
+    let dragFrameId = 0;
+    let pendingDragDelta = 0;
 
     const cleanSlate = () => {
       // Cancel any in-progress animations
       runningAnimations.forEach(a => a.cancel());
       runningAnimations = [];
+      if (dragFrameId !== 0) {
+        cancelAnimationFrame(dragFrameId);
+        dragFrameId = 0;
+      }
       // Kill stale safety timeouts from previous gestures
       pendingTimeouts.forEach(id => clearTimeout(id));
       pendingTimeouts = [];
@@ -161,6 +241,91 @@ export function useSwipeScroll({
     let peekRevealed = false;
     let cachedPanelWidth = 0;
 
+    const applyDragFrame = () => {
+      dragFrameId = 0;
+
+      if (!touchActive || !isSwiping) return;
+
+      const activePanel = container.children[currentIndexRef.current] as HTMLElement | undefined;
+      const clampedDelta = pendingDragDelta;
+
+      if (hasTarget) {
+        // Carousel mode: both panels slide together
+        const targetPanel = container.children[targetIndex] as HTMLElement | undefined;
+        const panelWidth = cachedPanelWidth;
+
+        if (lockedDir === 'left') {
+          // Forward: both panels slide left together (carousel)
+          if (!peekRevealed && activePanel && targetPanel) {
+            peekRevealed = true;
+            targetPanel.classList.add('peeking');
+            activePanel.classList.add('dragging');
+            const savedY = scrollMapRef.current.get(targetIndex) ?? 0;
+            targetPanel.scrollTop = savedY;
+          }
+
+          if (activePanel) {
+            activePanel.style.transform = `translateX(${clampedDelta}px)`;
+          }
+          if (targetPanel) {
+            targetPanel.style.transform = `translateX(${panelWidth + clampedDelta}px)`;
+          }
+        } else {
+          // Back: both panels slide right together (carousel)
+          if (!peekRevealed && activePanel && targetPanel) {
+            peekRevealed = true;
+            targetPanel.classList.add('incoming');
+            activePanel.classList.add('dragging');
+            const savedY = scrollMapRef.current.get(targetIndex) ?? 0;
+            targetPanel.scrollTop = savedY;
+          }
+
+          if (activePanel) {
+            activePanel.style.transform = `translateX(${clampedDelta}px)`;
+          }
+          if (targetPanel) {
+            targetPanel.style.transform = `translateX(${-panelWidth + clampedDelta}px)`;
+          }
+        }
+      } else {
+        // Boundary rubber-band: resistance + cap, no peek
+        const dragPx = Math.sign(clampedDelta) * Math.min(Math.abs(clampedDelta) * 0.3, 60);
+        if (activePanel) {
+          activePanel.style.transform = `translateX(${dragPx}px)`;
+        }
+      }
+    };
+
+    const flushDragFrame = () => {
+      if (dragFrameId === 0) return;
+
+      cancelAnimationFrame(dragFrameId);
+      applyDragFrame();
+    };
+
+    const resetGestureState = () => {
+      lastClampedDelta = 0;
+      directionLocked = false;
+      isSwiping = false;
+      touchActive = false;
+      lockedDir = null;
+      targetIndex = -1;
+      hasTarget = false;
+      peekRevealed = false;
+      cachedPanelWidth = 0;
+      pendingDragDelta = 0;
+      isDraggingRef.current = false;
+    };
+
+    const abortInterruptedSwipe = () => {
+      if (!touchActive || !isSwiping) return;
+
+      cleanSlate();
+      activatePanel(currentIndexRef.current);
+      updateScrollIndicatorRef.current();
+      resetGestureState();
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
       if (isScrollingProgrammaticallyRef.current) {
         touchActive = false;
@@ -173,9 +338,8 @@ export function useSwipeScroll({
       // Only restore panel/scroll if an animation was actually interrupted
       // (finishCommit was killed before it could swap .active and scrollTo)
       if (hadActiveAnimations) {
-        activatePanel(currentIndexRef.current);
-        const restoredY = scrollMapRef.current.get(currentIndexRef.current) ?? 0;
-        window.scrollTo(0, restoredY);
+        activatePanelAndRestoreScroll(currentIndexRef.current);
+        setCurrentIndex(prev => (prev === currentIndexRef.current ? prev : currentIndexRef.current));
       }
 
       const touch = e.touches[0];
@@ -191,6 +355,7 @@ export function useSwipeScroll({
       targetIndex = -1;
       hasTarget = false;
       peekRevealed = false;
+      pendingDragDelta = 0;
       isDraggingRef.current = true;
     };
 
@@ -234,52 +399,9 @@ export function useSwipeScroll({
           : Math.max(0, deltaX);
         lastClampedDelta = clampedDelta;
 
-        const activePanel = container.children[currentIndexRef.current] as HTMLElement | undefined;
-
-        if (hasTarget) {
-          // Carousel mode: both panels slide together
-          const targetPanel = container.children[targetIndex] as HTMLElement | undefined;
-          const panelWidth = cachedPanelWidth;
-
-          if (lockedDir === 'left') {
-            // Forward: both panels slide left together (carousel)
-            if (!peekRevealed && activePanel && targetPanel) {
-              peekRevealed = true;
-              targetPanel.classList.add('peeking');
-              activePanel.classList.add('dragging');
-              const savedY = scrollMapRef.current.get(targetIndex) ?? 0;
-              targetPanel.scrollTop = savedY;
-            }
-
-            if (activePanel) {
-              activePanel.style.transform = `translateX(${clampedDelta}px)`;
-            }
-            if (targetPanel) {
-              targetPanel.style.transform = `translateX(${panelWidth + clampedDelta}px)`;
-            }
-          } else {
-            // Back: both panels slide right together (carousel)
-            if (!peekRevealed && activePanel && targetPanel) {
-              peekRevealed = true;
-              targetPanel.classList.add('incoming');
-              activePanel.classList.add('dragging');
-              const savedY = scrollMapRef.current.get(targetIndex) ?? 0;
-              targetPanel.scrollTop = savedY;
-            }
-
-            if (activePanel) {
-              activePanel.style.transform = `translateX(${clampedDelta}px)`;
-            }
-            if (targetPanel) {
-              targetPanel.style.transform = `translateX(${-panelWidth + clampedDelta}px)`;
-            }
-          }
-        } else {
-          // Boundary rubber-band: resistance + cap, no peek
-          const dragPx = Math.sign(clampedDelta) * Math.min(Math.abs(clampedDelta) * 0.3, 60);
-          if (activePanel) {
-            activePanel.style.transform = `translateX(${dragPx}px)`;
-          }
+        pendingDragDelta = clampedDelta;
+        if (dragFrameId === 0) {
+          dragFrameId = requestAnimationFrame(applyDragFrame);
         }
       }
     };
@@ -289,6 +411,8 @@ export function useSwipeScroll({
         isDraggingRef.current = false;
         return;
       }
+
+      flushDragFrame();
       touchActive = false;
 
       const oldIndex = currentIndexRef.current;
@@ -311,24 +435,17 @@ export function useSwipeScroll({
         if (reducedMotion) {
           // Instant swap — no animation
           cleanSlate();
-          if (activePanel) activePanel.classList.remove('active');
-          if (targetPanel) targetPanel.classList.add('active');
-          // Force reflow so scrollTo sees the new document height (Firefox/WebKit)
-          void document.documentElement.scrollHeight;
-          const savedY = scrollMapRef.current.get(targetIndex) ?? 0;
-          window.scrollTo(0, savedY);
+          activatePanelAndRestoreScroll(targetIndex);
           isDraggingRef.current = false;
           // Schedule React state update AFTER cleanSlate (which clears pendingTimeouts).
           // Without this, setCurrentIndex is never called and currentIndex stays stale —
           // breaking URL updates and causing the useLayoutEffect to revert the swap.
-          setTimeout(() => setCurrentIndex(targetIndex), 0);
+          const deferredCommitTimeout = setTimeout(() => {
+            pendingTimeouts = pendingTimeouts.filter((timeoutId) => timeoutId !== deferredCommitTimeout);
+            setCurrentIndex(targetIndex);
+          }, 0);
+          pendingTimeouts.push(deferredCommitTimeout);
         } else {
-          // Defer React state update to next macro-task so the browser can paint
-          // the first animation frame without being blocked by React reconciliation.
-          // currentIndexRef (updated above) is the source of truth for the gesture system.
-          // isDraggingRef stays true during animation, guarding the useLayoutEffect.
-          pendingTimeouts.push(setTimeout(() => setCurrentIndex(targetIndex), 0));
-
           // Velocity-matched duration: animation continues at finger speed.
           // Slight 1.2× boost gives a "pop" feel on release (iOS-like).
           // Floor velocity ensures slow drags still snap crisply.
@@ -417,15 +534,12 @@ export function useSwipeScroll({
               // then scroll — order matters because scrollTo is clamped by document height
               if (targetPanel) {
                 targetPanel.classList.remove('peeking', 'incoming');
-                targetPanel.classList.add('active');
                 targetPanel.style.transform = '';
                 targetPanel.style.opacity = '';
                 targetPanel.scrollTop = 0;
               }
-              // Force reflow so scrollTo sees the new document height (Firefox/WebKit)
-              void document.documentElement.scrollHeight;
-              const savedY = scrollMapRef.current.get(targetIndex) ?? 0;
-              window.scrollTo(0, savedY);
+              activatePanelAndRestoreScroll(targetIndex);
+              setCurrentIndex(targetIndex);
               isDraggingRef.current = false;
             });
           };
@@ -525,10 +639,17 @@ export function useSwipeScroll({
       isSwiping = false;
     };
 
+    const handleInterruptedScroll = () => {
+      abortInterruptedSwipe();
+    };
+
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
     container.addEventListener('touchmove', handleTouchMove, { passive: true });
-    container.addEventListener('touchend', handleTouchEnd, { passive: true });
-    container.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    // Mobile browsers can retarget the terminal touch event to the viewport
+    // when a fast swipe blends into page scrolling, so finish on window.
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    window.addEventListener('scroll', handleInterruptedScroll, { passive: true });
 
     // Signal that the gesture system is fully ready (listeners attached).
     // Used by e2e tests to avoid dispatching touch events before handlers exist.
@@ -537,15 +658,19 @@ export function useSwipeScroll({
     return () => {
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
-      container.removeEventListener('touchend', handleTouchEnd);
-      container.removeEventListener('touchcancel', handleTouchEnd);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchEnd);
+      window.removeEventListener('scroll', handleInterruptedScroll);
       // Cancel any in-flight animations and stale timeouts on cleanup
       runningAnimations.forEach(a => a.cancel());
+      if (dragFrameId !== 0) {
+        cancelAnimationFrame(dragFrameId);
+      }
       pendingTimeouts.forEach(id => clearTimeout(id));
       gestureId++;
       delete container.dataset.swipeEnabled;
     };
-  }, [enabled, activatePanel]);
+  }, [enabled, activatePanel, activatePanelAndRestoreScroll]);
 
   return {
     containerRef,

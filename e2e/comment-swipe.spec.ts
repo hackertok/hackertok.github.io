@@ -1,6 +1,34 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
-import { waitForSwipeReady, smoothScrollAndAwaitSettled, waitForScrollAtIndex } from './fixtures/swipe-helpers';
+import {
+  expectActiveSwipePanelText,
+  waitForSwipeReady,
+  smoothScrollAndAwaitSettled,
+  waitForScrollAtIndex,
+} from './fixtures/swipe-helpers';
+
+async function getSwipeScrollbarTranslateY(page: Parameters<typeof test>[0]['page']) {
+  return page.evaluate(() => {
+    const transform = getComputedStyle(document.body, '::after').transform;
+
+    if (!transform || transform === 'none') {
+      return 0;
+    }
+
+    const match = transform.match(/^matrix(3d)?\((.+)\)$/);
+    if (!match) {
+      return 0;
+    }
+
+    const values = match[2]
+      .split(',')
+      .map((value) => Number.parseFloat(value.trim()));
+
+    return match[1] === '3d'
+      ? (values[13] ?? 0)
+      : (values[5] ?? 0);
+  });
+}
 
 test.describe('Mobile Comment Swipe Viewer', () => {
   test.use({
@@ -23,7 +51,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     // that fallback path.
     await page.goto('/#/item/1001');
 
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
 
     await expect(page).toHaveURL(/\/item\/1001/, { timeout: 5000 });
   });
@@ -34,9 +62,9 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     const swipeContainer = page.getByTestId('swipe-container');
     await expect(swipeContainer).toBeVisible();
 
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
 
-    await expect(page.getByText(/wasm-bindgen/i).first()).toBeVisible();
+    await expectActiveSwipePanelText(page, /wasm-bindgen/i);
   });
 
   test('loads sibling comments as swipeable panels', async ({ page }) => {
@@ -61,7 +89,45 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
 
-    await expect(page.getByText('jgrahamc').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'jgrahamc', { minPanels: 4, timeout: 10000 });
+  });
+
+  test('custom swipe scrollbar moves when document scrolls in comment viewer', async ({ page }) => {
+    await page.goto('/#/item/1002');
+
+    await waitForSwipeReady(page, 4);
+    await waitForScrollAtIndex(page, 1);
+    await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
+
+    await page.evaluate(() => {
+      const activePanel = document.querySelector('[data-testid="swipe-panel"].active');
+      if (activePanel) {
+        (activePanel as HTMLElement).style.minHeight = `${window.innerHeight + 1200}px`;
+      }
+    });
+
+    await expect(async () => {
+      const isScrollable = await page.evaluate(() => {
+        return document.documentElement.scrollHeight > window.innerHeight;
+      });
+      expect(isScrollable).toBe(true);
+    }).toPass();
+
+    const initialTranslateY = await getSwipeScrollbarTranslateY(page);
+
+    await page.evaluate(() => {
+      window.scrollTo(0, 300);
+    });
+
+    await expect.poll(
+      () => page.evaluate(() => window.scrollY),
+      { timeout: 5000 },
+    ).toBeGreaterThanOrEqual(250);
+
+    await expect.poll(
+      () => getSwipeScrollbarTranslateY(page),
+      { timeout: 5000 },
+    ).toBeGreaterThan(initialTranslateY + 5);
   });
 
   test('can swipe through multiple siblings and back', async ({ page }) => {
@@ -92,18 +158,18 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('shows parent and story links in comment', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
 
     const parentLink = page.getByRole('link', { name: 'parent' }).first();
     await expect(parentLink).toBeVisible();
 
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
   });
 
   test('header shows "comments" indicator on mobile comment view', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
 
     await expect(page.getByText('comments').first()).toBeVisible();
   });
@@ -133,7 +199,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('in-panel links have correct hrefs and comments indicator clears when leaving comment view', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
     await expect(page.getByText('comments').first()).toBeVisible();
 
     const firstPanel = page.locator('[data-item-id="1001"]');
@@ -248,7 +314,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('sets document title to "Comment by {author}" for the current comment', async ({ page }) => {
     await page.goto('/#/item/1001');
 
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
 
     await expect(page).toHaveTitle(/Comment by patio11/);
   });
@@ -283,7 +349,7 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     await smoothScrollAndAwaitSettled(container, panelWidth);
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
-    await expect(page.getByText('jgrahamc').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'jgrahamc', { minPanels: 4, timeout: 10000 });
 
     const panel1002 = page.locator('[data-item-id="1002"]');
     await panel1002.getByRole('link', { name: 'parent' }).click();
@@ -297,14 +363,14 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     // link must carry isComment: true and land in SwipeCommentViewer for 1001.
     await page.goto('/#/item/2001');
 
-    await expect(page.getByText('tptacek').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'tptacek', { timeout: 10000 });
 
     await page.getByRole('link', { name: 'parent' }).click();
     await expect(page).toHaveURL(/\/item\/1001/, { timeout: 10000 });
 
     // 1001's siblings are [1001, 1002, 1003, 1004] → confirms we're in the
     // comment viewer with the correct sibling set.
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'patio11', { minPanels: 4, timeout: 10000 });
     await expect(page).toHaveTitle(/Comment by patio11/);
 
     await waitForSwipeReady(page, 4);

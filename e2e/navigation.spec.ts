@@ -1,5 +1,25 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
+import { getActiveSwipePanel, waitForScrollAtIndex, waitForSwipeReady } from './fixtures/swipe-helpers';
+
+const TOP_STORY_TITLE = 'Rust Is the Future of JavaScript Infrastructure';
+
+async function expectTopStoryVisible(page: Page) {
+  const isMobileViewport = (page.viewportSize()?.width ?? 1280) < 768;
+
+  if (isMobileViewport) {
+    await waitForSwipeReady(page, 1);
+    await waitForScrollAtIndex(page, 0);
+    await expect(
+      getActiveSwipePanel(page).getByRole('link', { name: TOP_STORY_TITLE }),
+    ).toBeVisible({ timeout: 10_000 });
+    return;
+  }
+
+  await expect(
+    page.getByRole('link', { name: TOP_STORY_TITLE }).first(),
+  ).toBeVisible({ timeout: 10_000 });
+}
 
 test.describe('Navigation', () => {
   test.beforeEach(async ({ page }) => {
@@ -74,7 +94,7 @@ test.describe('Navigation', () => {
 
     // On mobile, wait for the swipe-viewer panel to become active before
     // asserting visibility (Safari may need an extra frame after route change).
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible({ timeout: 10000 });
+    await expectTopStoryVisible(page);
   });
 
   test('logo click returns to homepage', async ({ page }) => {
@@ -91,7 +111,7 @@ test.describe('Navigation', () => {
 
   test('browser back button works', async ({ page }) => {
     await page.goto('/#/');
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectTopStoryVisible(page);
 
     const bestLink = page.getByRole('link', { name: /best/i });
     await bestLink.scrollIntoViewIfNeeded();
@@ -102,6 +122,7 @@ test.describe('Navigation', () => {
     await page.goBack();
 
     await expect(page).toHaveURL(/\/#\/(item\/\d+)?$/);
+    await expectTopStoryVisible(page);
   });
 
   test('direct URL navigation works', async ({ page }) => {
@@ -135,7 +156,7 @@ test.describe('Navigation - Viewport Resize Transition', () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/#/');
 
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectTopStoryVisible(page);
     await expect(page.getByTestId('swipe-container')).not.toBeVisible();
 
     await page.setViewportSize({ width: 375, height: 667 });
@@ -152,13 +173,13 @@ test.describe('Navigation - Viewport Resize Transition', () => {
     await page.setViewportSize({ width: 1280, height: 720 });
 
     await expect(page.getByTestId('swipe-container')).not.toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectTopStoryVisible(page);
   });
 
   test('no layout overflow during desktop-to-mobile transition', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.goto('/#/');
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectTopStoryVisible(page);
 
     await page.setViewportSize({ width: 375, height: 667 });
     await expect(page.getByTestId('swipe-container')).toBeVisible({ timeout: 5000 });

@@ -7,20 +7,72 @@ import { ScrollContainerProvider } from '../context/ScrollContainerContext';
 // ---- jsdom polyfills ----
 
 let mockScrollY = 0;
+let mockScrollHeight = 0;
+let mockInnerHeight = 667;
+let mockVisualViewportHeight: number | null = null;
 Object.defineProperty(window, 'scrollY', { get: () => mockScrollY, configurable: true });
 Object.defineProperty(window, 'innerWidth', { value: 375, writable: true, configurable: true });
+Object.defineProperty(window, 'innerHeight', { get: () => mockInnerHeight, configurable: true });
+Object.defineProperty(document.documentElement, 'scrollHeight', { get: () => mockScrollHeight, configurable: true });
+
+const originalCSSDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'CSS');
+const originalResizeObserverDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver');
+const originalVisualViewportDescriptor = Object.getOwnPropertyDescriptor(window, 'visualViewport');
+
+interface MockAnimation {
+  onfinish: (() => void) | null;
+  cancel: ReturnType<typeof vi.fn>;
+  finished: Promise<void>;
+  playState: 'running';
+}
+
+const createdAnimations: MockAnimation[] = [];
+let resizeObserverCallback: ResizeObserverCallback | null = null;
+let observedResizeTarget: Element | null = null;
+const mockVisualViewport = new EventTarget() as EventTarget & {
+  height: number | null;
+};
+
+Object.defineProperty(mockVisualViewport, 'height', {
+  get: () => mockVisualViewportHeight,
+  configurable: true,
+});
 
 window.scrollTo = vi.fn((...args: unknown[]) => {
   if (typeof args[0] === 'number') mockScrollY = args[1] as number;
 });
 
 // Web Animations API stub (jsdom doesn't implement it)
-Element.prototype.animate = vi.fn(() => ({
-  onfinish: null,
-  cancel: vi.fn(),
-  finished: Promise.resolve(),
-  playState: 'running',
-})) as unknown as typeof Element.prototype.animate;
+Element.prototype.animate = vi.fn(() => {
+  const animation: MockAnimation = {
+    onfinish: null,
+    cancel: vi.fn(),
+    finished: Promise.resolve(),
+    playState: 'running',
+  };
+  createdAnimations.push(animation);
+  return animation;
+}) as unknown as typeof Element.prototype.animate;
+
+class ResizeObserverMock {
+  observe = vi.fn((target: Element) => {
+    observedResizeTarget = target;
+  });
+
+  unobserve = vi.fn((target: Element) => {
+    if (observedResizeTarget === target) {
+      observedResizeTarget = null;
+    }
+  });
+
+  disconnect = vi.fn(() => {
+    observedResizeTarget = null;
+  });
+
+  constructor(callback: ResizeObserverCallback) {
+    resizeObserverCallback = callback;
+  }
+}
 
 // matchMedia stub
 let reducedMotionValue = false;
@@ -40,7 +92,7 @@ Object.defineProperty(window, 'matchMedia', {
 
 // ---- Touch event helpers ----
 
-function dispatchTouch(el: Element, type: string, clientX: number, clientY: number) {
+function dispatchTouch(el: EventTarget, type: string, clientX: number, clientY: number) {
   const touch = {
     identifier: 1, target: el, clientX, clientY,
     pageX: clientX, pageY: clientY, screenX: clientX, screenY: clientY,
@@ -106,15 +158,51 @@ describe('useSwipeScroll', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockScrollY = 0;
+    mockScrollHeight = 0;
+    mockInnerHeight = 667;
+    mockVisualViewportHeight = null;
     reducedMotionValue = false;
+    createdAnimations.length = 0;
+    resizeObserverCallback = null;
+    observedResizeTarget = null;
     vi.mocked(window.scrollTo).mockClear();
     vi.mocked(Element.prototype.animate).mockClear();
     document.documentElement.className = '';
     document.body.className = '';
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: mockVisualViewport,
+    });
+    Object.defineProperty(globalThis, 'CSS', {
+      configurable: true,
+      value: {
+        supports: vi.fn((query: string) => !query.includes('animation-timeline')),
+      },
+    });
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      configurable: true,
+      writable: true,
+      value: ResizeObserverMock,
+    });
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    if (originalCSSDescriptor) {
+      Object.defineProperty(globalThis, 'CSS', originalCSSDescriptor);
+    } else {
+      delete (globalThis as { CSS?: unknown }).CSS;
+    }
+    if (originalResizeObserverDescriptor) {
+      Object.defineProperty(globalThis, 'ResizeObserver', originalResizeObserverDescriptor);
+    } else {
+      delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    }
+    if (originalVisualViewportDescriptor) {
+      Object.defineProperty(window, 'visualViewport', originalVisualViewportDescriptor);
+    } else {
+      Reflect.deleteProperty(window, 'visualViewport');
+    }
   });
 
   // -- Initialization --
@@ -134,6 +222,92 @@ describe('useSwipeScroll', () => {
 
       expect(getContainer().dataset.swipeEnabled).toBe('true');
       expect(history.scrollRestoration).toBe('manual');
+    });
+
+    it('updates the JS scroll indicator when scroll timelines are unavailable', () => {
+      mockInnerHeight = 400;
+      mockScrollHeight = 1000;
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      expect(document.body.style.getPropertyValue('--swipe-scroll-progress')).toBe('0');
+
+      mockScrollY = 300;
+      act(() => {
+        window.dispatchEvent(new Event('scroll'));
+      });
+
+      expect(Number(document.body.style.getPropertyValue('--swipe-scroll-progress'))).toBeCloseTo(0.5);
+    });
+
+    it('uses the visual viewport height for fallback progress and updates on visual viewport resize', () => {
+      mockInnerHeight = 400;
+      mockVisualViewportHeight = 500;
+      mockScrollHeight = 1500;
+      mockScrollY = 250;
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      expect(Number(document.body.style.getPropertyValue('--swipe-scroll-progress'))).toBeCloseTo(0.25);
+
+      mockVisualViewportHeight = 250;
+      act(() => {
+        window.visualViewport?.dispatchEvent(new Event('resize'));
+      });
+
+      expect(Number(document.body.style.getPropertyValue('--swipe-scroll-progress'))).toBeCloseTo(0.2);
+    });
+
+    it('updates the JS scroll indicator when the active panel height changes', () => {
+      mockInnerHeight = 400;
+      mockScrollHeight = 1000;
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      expect(observedResizeTarget).toBe(getPanel(0));
+
+      mockScrollY = 300;
+      act(() => {
+        window.dispatchEvent(new Event('scroll'));
+      });
+
+      expect(Number(document.body.style.getPropertyValue('--swipe-scroll-progress'))).toBeCloseTo(0.5);
+
+      mockScrollHeight = 1600;
+      act(() => {
+        resizeObserverCallback?.(
+          [{ target: getPanel(0) } as unknown as ResizeObserverEntry],
+          {} as ResizeObserver,
+        );
+      });
+
+      expect(Number(document.body.style.getPropertyValue('--swipe-scroll-progress'))).toBeCloseTo(0.25);
+    });
+
+    it('rebinds the ResizeObserver when the active panel changes', () => {
+      mockInnerHeight = 400;
+      mockScrollHeight = 1000;
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      expect(observedResizeTarget).toBe(getPanel(0));
+
+      act(() => {
+        hookResult.scrollToIndex(1);
+      });
+
+      expect(observedResizeTarget).toBe(getPanel(1));
+      expect(document.body.style.getPropertyValue('--swipe-scroll-progress')).toBe('0');
+
+      act(() => {
+        window.scrollTo(0, 300);
+      });
+
+      mockScrollHeight = 1600;
+      act(() => {
+        resizeObserverCallback?.(
+          [{ target: getPanel(1) } as unknown as ResizeObserverEntry],
+          {} as ResizeObserver,
+        );
+      });
+
+      expect(Number(document.body.style.getPropertyValue('--swipe-scroll-progress'))).toBeCloseTo(0.25);
     });
   });
 
@@ -210,6 +384,38 @@ describe('useSwipeScroll', () => {
 
       act(() => { vi.runAllTimers(); });
       await act(async () => { /* flush */ });
+      expect(hookResult.currentIndex).toBe(1);
+    });
+
+    it('updates currentIndex when the settle animation fires onfinish', async () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      swipeGesture(getContainer(), 'left', 150);
+
+      expect(hookResult.currentIndex).toBe(0);
+      expect(createdAnimations[0]).toBeDefined();
+
+      act(() => {
+        createdAnimations[0].onfinish?.();
+        vi.advanceTimersByTime(16);
+      });
+      await act(async () => { /* flush */ });
+
+      expect(hookResult.currentIndex).toBe(1);
+    });
+
+    it('waits for the settle timeout when onfinish does not fire', async () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      swipeGesture(getContainer(), 'left', 150);
+
+      expect(hookResult.currentIndex).toBe(0);
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+      await act(async () => { /* flush */ });
+
       expect(hookResult.currentIndex).toBe(1);
     });
 
@@ -313,6 +519,59 @@ describe('useSwipeScroll', () => {
       await act(async () => { /* flush */ });
       expect(hookResult.currentIndex).toBe(1);
     });
+
+    it('completes a revealed swipe when touchend is delivered to window', async () => {
+      reducedMotionValue = true;
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      const container = getContainer();
+      dispatchTouch(container, 'touchstart', CENTER_X, CENTER_Y);
+      dispatchTouch(container, 'touchmove', CENTER_X - 150, CENTER_Y);
+
+      act(() => {
+        vi.advanceTimersByTime(16);
+      });
+
+      expect(getPanel(0).classList.contains('dragging')).toBe(true);
+      expect(getPanel(1).classList.contains('peeking')).toBe(true);
+
+      dispatchTouch(window, 'touchend', CENTER_X - 150, CENTER_Y);
+
+      act(() => { vi.runAllTimers(); });
+      await act(async () => { /* flush */ });
+
+      expect(getPanel(0).classList.contains('dragging')).toBe(false);
+      expect(getPanel(1).classList.contains('peeking')).toBe(false);
+      expect(hasActive(1)).toBe(true);
+      expect(hookResult.currentIndex).toBe(1);
+    });
+
+    it('cancels a revealed swipe if document scroll takes over before touchend', () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      const container = getContainer();
+      dispatchTouch(container, 'touchstart', CENTER_X, CENTER_Y);
+      dispatchTouch(container, 'touchmove', CENTER_X - 150, CENTER_Y);
+
+      act(() => {
+        vi.advanceTimersByTime(16);
+      });
+
+      expect(getPanel(0).classList.contains('dragging')).toBe(true);
+      expect(getPanel(1).classList.contains('peeking')).toBe(true);
+
+      mockScrollY = 120;
+      act(() => {
+        window.dispatchEvent(new Event('scroll'));
+      });
+
+      expect(getPanel(0).classList.contains('dragging')).toBe(false);
+      expect(getPanel(1).classList.contains('peeking')).toBe(false);
+      expect(getPanel(0).style.transform).toBe('');
+      expect(getPanel(1).style.transform).toBe('');
+      expect(hasActive(0)).toBe(true);
+      expect(hookResult.currentIndex).toBe(0);
+    });
   });
 
   // -- Cleanup --
@@ -327,6 +586,20 @@ describe('useSwipeScroll', () => {
       unmount();
 
       expect(container.dataset.swipeEnabled).toBeUndefined();
+    });
+
+    it('clears the reduced-motion deferred commit on unmount', () => {
+      reducedMotionValue = true;
+      const { unmount } = render(createElement(TestHarness), { wrapper: Wrapper });
+
+      swipeGesture(getContainer(), 'left', 150);
+
+      expect(hasActive(1)).toBe(true);
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      unmount();
+
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 });

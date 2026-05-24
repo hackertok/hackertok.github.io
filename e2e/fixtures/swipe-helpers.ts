@@ -1,6 +1,11 @@
 import type { Page, Locator } from '@playwright/test';
 import { expect } from '@playwright/test';
 
+interface ActiveSwipeTextOptions {
+  minPanels?: number;
+  timeout?: number;
+}
+
 /**
  * Wait for swipe container to be ready with multiple panels.
  * Verifies container visibility, minimum panel count, rendered dimensions,
@@ -27,6 +32,42 @@ export async function waitForSwipeReady(page: Page, minPanels = 2) {
     const el = document.querySelector('[data-testid="swipe-container"]');
     return el && (el as HTMLElement).dataset.swipeEnabled === 'true';
   }, { timeout: 5000 });
+
+  // Some Mobile Safari route transitions attach listeners one frame before the
+  // viewer finishes applying its `.active` marker. Tests that scope to the
+  // active panel should not proceed until exactly one panel owns that state.
+  await page.waitForFunction(() => {
+    const containerEl = document.querySelector('[data-testid="swipe-container"]');
+    if (!containerEl) return false;
+
+    const activePanels = containerEl.querySelectorAll('[data-testid="swipe-panel"].active');
+    if (activePanels.length !== 1) return false;
+
+    const activePanel = activePanels[0] as HTMLElement;
+    return activePanel.getBoundingClientRect().width > 0;
+  }, { timeout: 5000 });
+}
+
+/** Returns the currently active swipe panel. */
+export function getActiveSwipePanel(page: Page) {
+  return page.locator('[data-testid="swipe-panel"].active');
+}
+
+/**
+ * Assert that visible content is inside the active swipe panel, not just
+ * somewhere in the mounted panel stack.
+ */
+export async function expectActiveSwipePanelText(
+  page: Page,
+  text: string | RegExp,
+  { minPanels = 1, timeout = 5000 }: ActiveSwipeTextOptions = {},
+) {
+  await waitForSwipeReady(page, minPanels);
+
+  const activePanel = getActiveSwipePanel(page);
+
+  await expect(activePanel).toBeVisible({ timeout });
+  await expect(activePanel.getByText(text)).toBeVisible({ timeout });
 }
 
 /**

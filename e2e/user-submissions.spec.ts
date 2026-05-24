@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks, stubEmptyUserSubmissions } from './fixtures/api-mocks';
 import { ALGOLIA_API } from './fixtures/mock-data';
-import { waitForSwipeReady, smoothScrollAndAwaitSettled, waitForScrollAtIndex } from './fixtures/swipe-helpers';
+import {
+  expectActiveSwipePanelText,
+  waitForSwipeReady,
+  smoothScrollAndAwaitSettled,
+  waitForScrollAtIndex,
+} from './fixtures/swipe-helpers';
 
 test.describe('User Submissions - Desktop', () => {
   // Desktop viewport — `MobileUserSubmissionsWrapper` falls through to the
@@ -150,7 +155,7 @@ test.describe('User Submissions - Mobile Swipe', () => {
 
     await waitForSwipeReady(page, 2);
 
-    await expect(page.getByText('Beating the Averages').first()).toBeVisible({ timeout: 10_000 });
+    await expectActiveSwipePanelText(page, 'Beating the Averages', { minPanels: 2, timeout: 10_000 });
   });
 
   test('updates URL to /item/:id and carries fromUser state on swipe', async ({ page }) => {

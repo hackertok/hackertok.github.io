@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks, stubEmptyDomainSearch } from './fixtures/api-mocks';
 import { ALGOLIA_API } from './fixtures/mock-data';
-import { waitForSwipeReady, smoothScrollAndAwaitSettled, waitForScrollAtIndex } from './fixtures/swipe-helpers';
+import {
+  expectActiveSwipePanelText,
+  waitForSwipeReady,
+  smoothScrollAndAwaitSettled,
+  waitForScrollAtIndex,
+} from './fixtures/swipe-helpers';
 
 test.describe('Domain Filter', () => {
   test.beforeEach(async ({ page }) => {
@@ -270,7 +275,10 @@ test.describe('Domain Filter - Mobile Swipe', () => {
     // mockDomainItem + 4 clones = 5 panels total; we just need ≥2 for snap.
     await waitForSwipeReady(page, 2);
 
-    await expect(page.getByText('Google Announces Gemini 3.0 with Extended Context').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'Google Announces Gemini 3.0 with Extended Context', {
+      minPanels: 2,
+      timeout: 10000,
+    });
   });
 
   test('updates URL to /item/:id and carries fromDomain state on swipe', async ({ page }) => {
@@ -406,9 +414,10 @@ test.describe('Domain Filter - Mobile Swipe', () => {
 
     // Story renders inside the swipe viewer after recovery. `.first()`
     // because the title may also render in the document title bar.
-    await expect(
-      page.getByText('Google Announces Gemini 3.0 with Extended Context').first(),
-    ).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'Google Announces Gemini 3.0 with Extended Context', {
+      minPanels: 1,
+      timeout: 10000,
+    });
   });
 });
 

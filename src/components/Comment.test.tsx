@@ -1,9 +1,25 @@
-import { describe, it, expect } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { act, screen, fireEvent } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { render } from '../test/test-utils';
 import { Comment, CommentTree } from './Comment';
 import type { Comment as CommentType } from '../types';
 import { createComment } from '../test/factories';
+
+let reducedMotionValue = false;
+
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn((query: string) => ({
+    matches: query.includes('reduced-motion') ? reducedMotionValue : false,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    onchange: null,
+    dispatchEvent: vi.fn(),
+  })),
+});
 
 describe('Comment', () => {
   const mockComment = createComment({
@@ -26,6 +42,10 @@ describe('Comment', () => {
         createdAt: Date.now() - 3600000,
       }),
     ],
+  });
+
+  afterEach(() => {
+    reducedMotionValue = false;
   });
 
   describe('rendering', () => {
@@ -210,6 +230,55 @@ describe('Comment', () => {
       fireEvent.click(screen.getByRole('button', { name: /collapse replies/i }));
       expect(screen.queryByText('Child comment')).not.toBeInTheDocument();
       expect(screen.getByText(/1 reply/i)).toBeInTheDocument();
+    });
+
+    it('drops reply-fade after the initial expand so it cannot replay on re-show', () => {
+      vi.useFakeTimers();
+      try {
+        render(<Comment comment={mockCommentWithChildren} />);
+
+        fireEvent.click(screen.getByText(/1 reply/i));
+
+        const childBranch = screen.getByText('childuser').closest('.tree-branch');
+        expect(childBranch).toHaveClass('reply-fade');
+
+        act(() => {
+          vi.advanceTimersByTime(180);
+        });
+
+        expect(screen.getByText('childuser').closest('.tree-branch')).not.toHaveClass('reply-fade');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('reapplies reply-fade when replies are collapsed and expanded again', () => {
+      vi.useFakeTimers();
+      try {
+        render(<Comment comment={mockCommentWithChildren} />);
+
+        fireEvent.click(screen.getByText(/1 reply/i));
+        act(() => {
+          vi.advanceTimersByTime(180);
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: /collapse replies/i }));
+        fireEvent.click(screen.getByText(/1 reply/i));
+
+        expect(screen.getByText('childuser').closest('.tree-branch')).toHaveClass('reply-fade');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('skips reply-fade entirely when reduced motion is preferred', () => {
+      reducedMotionValue = true;
+
+      render(<Comment comment={mockCommentWithChildren} />);
+
+      fireEvent.click(screen.getByText(/1 reply/i));
+
+      expect(screen.getByText('childuser').closest('.tree-branch')).not.toHaveClass('reply-fade');
     });
 
     it('gates replies behind expand button at all depths', () => {

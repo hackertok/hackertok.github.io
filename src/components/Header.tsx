@@ -222,7 +222,7 @@ export function Header() {
   return (
     <header
       className={`
-        bg-card/95 backdrop-blur-sm
+        ${isSwipeMode ? 'bg-card/98' : 'bg-card/95 backdrop-blur-sm'}
         border-b border-border
         md:relative md:transform-none
         fixed top-0 left-0 right-0 z-50

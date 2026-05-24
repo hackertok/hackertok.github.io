@@ -293,7 +293,7 @@ button {
 .swipe-snap-panel.active {
   display: block;
   position: relative;
-  min-height: 100dvh;
+  min-height: var(--swipe-viewport-height, 100vh);
   touch-action: pan-y;
 }
 
@@ -338,6 +338,14 @@ html.swipe-mode::-webkit-scrollbar {
 }
 body.swipe-mode {
   overflow-x: hidden;
+  --swipe-viewport-height: 100vh;
+  --swipe-scroll-progress: 0;
+}
+
+@supports (height: 100dvh) {
+  body.swipe-mode {
+    --swipe-viewport-height: 100dvh;
+  }
 }
 
 /* Custom scroll indicator — thin track on right side, starts below header */
@@ -347,14 +355,14 @@ body.swipe-mode::after {
   top: calc(var(--header-height) + var(--network-bar-height));
   right: 2px;
   width: 4px;
-  height: calc((100vh - var(--header-height) - var(--network-bar-height)) * 0.2);
+  height: calc((var(--swipe-viewport-height, 100vh) - var(--header-height) - var(--network-bar-height)) * 0.2);
   min-height: 40px;
   border-radius: 2px;
   background: color-mix(in srgb, currentColor 20%, transparent);
   opacity: 0;
   z-index: 9999;
   pointer-events: none;
-  transform: translateY(0);
+  transform: translateY(calc(var(--swipe-scroll-progress, 0) * ((var(--swipe-viewport-height, 100vh) - var(--header-height) - var(--network-bar-height)) * 0.8)));
   transition: opacity 0.3s ease;
 }
 
@@ -373,7 +381,7 @@ body.swipe-mode.is-scrolling::after {
 
 @keyframes scroll-thumb {
   from { transform: translateY(0); }
-  to { transform: translateY(calc((100vh - var(--header-height) - var(--network-bar-height)) * 0.8)); }
+  to { transform: translateY(calc((var(--swipe-viewport-height, 100vh) - var(--header-height) - var(--network-bar-height)) * 0.8)); }
 }
 
 /* Full-page centered state (error / not-found / empty) */

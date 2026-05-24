@@ -1,6 +1,35 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
-import { waitForSwipeReady, smoothScrollAndAwaitSettled, waitForScrollAtIndex } from './fixtures/swipe-helpers';
+import {
+  expectActiveSwipePanelText,
+  getActiveSwipePanel,
+  waitForSwipeReady,
+  smoothScrollAndAwaitSettled,
+  waitForScrollAtIndex,
+} from './fixtures/swipe-helpers';
+
+async function getSwipeScrollbarTranslateY(page: Parameters<typeof test>[0]['page']) {
+  return page.evaluate(() => {
+    const transform = getComputedStyle(document.body, '::after').transform;
+
+    if (!transform || transform === 'none') {
+      return 0;
+    }
+
+    const match = transform.match(/^matrix(3d)?\((.+)\)$/);
+    if (!match) {
+      return 0;
+    }
+
+    const values = match[2]
+      .split(',')
+      .map((value) => Number.parseFloat(value.trim()));
+
+    return match[1] === '3d'
+      ? (values[13] ?? 0)
+      : (values[5] ?? 0);
+  });
+}
 
 test.describe('Mobile Swipe Viewer', () => {
   test.use({
@@ -22,13 +51,13 @@ test.describe('Mobile Swipe Viewer', () => {
     const swipeContainer = page.getByTestId('swipe-container');
     await expect(swipeContainer).toBeVisible();
 
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
   });
 
   test('can swipe to next item', async ({ page }) => {
     await page.goto('/#/');
 
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
 
     await expect(page).toHaveTitle(/Rust Is the Future.*HackerTok/);
 
@@ -91,6 +120,230 @@ test.describe('Mobile Swipe Viewer', () => {
     }).toPass();
   });
 
+  test('custom swipe scrollbar moves when document scrolls', async ({ page }) => {
+    await page.goto('/#/');
+
+    await waitForSwipeReady(page, 6);
+    await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
+
+    // Guarantee a tall active panel so the document can scroll on every browser.
+    await page.evaluate(() => {
+      const activePanel = document.querySelector('[data-testid="swipe-panel"].active');
+      if (activePanel) {
+        (activePanel as HTMLElement).style.minHeight = `${window.innerHeight + 1200}px`;
+      }
+    });
+
+    await expect(async () => {
+      const isScrollable = await page.evaluate(() => {
+        return document.documentElement.scrollHeight > window.innerHeight;
+      });
+      expect(isScrollable).toBe(true);
+    }).toPass();
+
+    const initialTranslateY = await getSwipeScrollbarTranslateY(page);
+
+    await page.evaluate(() => {
+      window.scrollTo(0, 300);
+    });
+
+    await expect.poll(
+      () => page.evaluate(() => window.scrollY),
+      { timeout: 5000 },
+    ).toBeGreaterThanOrEqual(250);
+
+    await expect.poll(
+      () => getSwipeScrollbarTranslateY(page),
+      { timeout: 5000 },
+    ).toBeGreaterThan(initialTranslateY + 5);
+
+    const scrolledTranslateY = await getSwipeScrollbarTranslateY(page);
+
+    await page.evaluate(() => {
+      window.scrollTo(0, 0);
+    });
+
+    await expect.poll(
+      () => page.evaluate(() => window.scrollY),
+      { timeout: 5000 },
+    ).toBe(0);
+
+    await expect.poll(
+      () => getSwipeScrollbarTranslateY(page),
+      { timeout: 5000 },
+    ).toBeLessThan(scrolledTranslateY - 5);
+  });
+
+  test('custom swipe scrollbar updates when active panel height grows without scrolling', async ({ page }) => {
+    await page.goto('/#/');
+
+    await waitForSwipeReady(page, 6);
+    await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
+
+    await page.evaluate(() => {
+      const activePanel = document.querySelector('[data-testid="swipe-panel"].active');
+      if (activePanel) {
+        (activePanel as HTMLElement).style.minHeight = `${window.innerHeight + 1200}px`;
+      }
+    });
+
+    await expect(async () => {
+      const isScrollable = await page.evaluate(() => {
+        return document.documentElement.scrollHeight > window.innerHeight;
+      });
+      expect(isScrollable).toBe(true);
+    }).toPass();
+
+    await page.evaluate(() => {
+      window.scrollTo(0, 300);
+    });
+
+    await expect.poll(
+      () => page.evaluate(() => window.scrollY),
+      { timeout: 5000 },
+    ).toBeGreaterThanOrEqual(250);
+
+    await expect.poll(
+      () => getSwipeScrollbarTranslateY(page),
+      { timeout: 5000 },
+    ).toBeGreaterThan(5);
+
+    const beforeHeightGrowth = {
+      scrollHeight: await page.evaluate(() => document.documentElement.scrollHeight),
+      translateY: await getSwipeScrollbarTranslateY(page),
+    };
+
+    await page.evaluate(() => {
+      const activePanel = document.querySelector('[data-testid="swipe-panel"].active');
+      if (activePanel) {
+        (activePanel as HTMLElement).style.minHeight = `${window.innerHeight + 2400}px`;
+      }
+    });
+
+    await expect.poll(
+      () => page.evaluate(() => document.documentElement.scrollHeight),
+      { timeout: 5000 },
+    ).toBeGreaterThan(beforeHeightGrowth.scrollHeight + 500);
+
+    await expect.poll(
+      () => getSwipeScrollbarTranslateY(page),
+      { timeout: 5000 },
+    ).toBeLessThan(beforeHeightGrowth.translateY - 5);
+  });
+
+  test('custom swipe scrollbar updates after swiping to a new active panel', async ({ page }) => {
+    await page.goto('/#/');
+
+    await waitForSwipeReady(page, 6);
+    await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
+
+    const container = page.getByTestId('swipe-container');
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+
+    await smoothScrollAndAwaitSettled(container, panelWidth);
+    await waitForScrollAtIndex(page, 1);
+    await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
+
+    await page.evaluate(() => {
+      const activePanel = document.querySelector('[data-testid="swipe-panel"].active');
+      if (activePanel) {
+        (activePanel as HTMLElement).style.minHeight = `${window.innerHeight + 1200}px`;
+      }
+    });
+
+    await expect(async () => {
+      const isScrollable = await page.evaluate(() => {
+        return document.documentElement.scrollHeight > window.innerHeight;
+      });
+      expect(isScrollable).toBe(true);
+    }).toPass();
+
+    await page.evaluate(() => {
+      window.scrollTo(0, 300);
+    });
+
+    await expect.poll(
+      () => page.evaluate(() => window.scrollY),
+      { timeout: 5000 },
+    ).toBeGreaterThanOrEqual(250);
+
+    await expect.poll(
+      () => getSwipeScrollbarTranslateY(page),
+      { timeout: 5000 },
+    ).toBeGreaterThan(5);
+
+    const beforeHeightGrowth = {
+      scrollHeight: await page.evaluate(() => document.documentElement.scrollHeight),
+      translateY: await getSwipeScrollbarTranslateY(page),
+    };
+
+    await page.evaluate(() => {
+      const activePanel = document.querySelector('[data-testid="swipe-panel"].active');
+      if (activePanel) {
+        (activePanel as HTMLElement).style.minHeight = `${window.innerHeight + 2400}px`;
+      }
+    });
+
+    await expect.poll(
+      () => page.evaluate(() => document.documentElement.scrollHeight),
+      { timeout: 5000 },
+    ).toBeGreaterThan(beforeHeightGrowth.scrollHeight + 500);
+
+    await expect.poll(
+      () => getSwipeScrollbarTranslateY(page),
+      { timeout: 5000 },
+    ).toBeLessThan(beforeHeightGrowth.translateY - 5);
+  });
+
+  test('does not replay expanded reply fade after swiping away and back', async ({ page }) => {
+    await page.goto('/#/');
+
+    await waitForSwipeReady(page, 6);
+    await expect(page).toHaveURL(/\/item\//, { timeout: 5000 });
+
+    const activePanel = getActiveSwipePanel(page);
+    await activePanel.getByRole('button', { name: /1 reply|\d+ replies/i }).first().click();
+
+    await expect(activePanel.locator('.reply-fade > *').first()).toBeVisible({ timeout: 5000 });
+
+    const getReplyState = () => activePanel.evaluate((panel) => {
+      const replyBranch = panel.querySelector('.tree-trunk > .tree-branch');
+      if (!(replyBranch instanceof HTMLElement)) {
+        return null;
+      }
+
+      const inner = replyBranch.firstElementChild;
+      const style = inner ? getComputedStyle(inner) : null;
+      return {
+        hasReplyFade: replyBranch.classList.contains('reply-fade'),
+        animationName: style?.animationName ?? null,
+        opacity: style?.opacity ?? null,
+      };
+    });
+
+    await expect.poll(getReplyState, { timeout: 5000 }).toMatchObject({
+      hasReplyFade: false,
+      animationName: 'none',
+      opacity: '1',
+    });
+
+    const container = page.getByTestId('swipe-container');
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+
+    await smoothScrollAndAwaitSettled(container, panelWidth);
+    await waitForScrollAtIndex(page, 1);
+    await expect(page).toHaveURL(/\/item\//, { timeout: 5000 });
+
+    await smoothScrollAndAwaitSettled(container, 0);
+    await waitForScrollAtIndex(page, 0);
+
+    await expect.poll(getReplyState, { timeout: 5000 }).toMatchObject({
+      hasReplyFade: false,
+      animationName: 'none',
+      opacity: '1',
+    });
+  });
+
   test('preserves scroll position when swiping away and back', async ({ page }) => {
     await page.goto('/#/');
 
@@ -135,7 +388,7 @@ test.describe('Mobile Swipe Viewer', () => {
 
     const container = page.getByTestId('swipe-container');
     await expect(container).toBeVisible();
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
     // Initial / → /item/12345 redirect must settle before scripted swipes.
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
 
@@ -160,7 +413,7 @@ test.describe('Mobile Swipe Viewer', () => {
     // exits the swipe viewer rather than stepping through items.
     await page.goto('/#/');
 
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
     // Wait for / → /item/12345 to settle so React's scroll-init cycle
     // and the programmatic-scroll flag have cleared before we swipe.
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
@@ -198,7 +451,7 @@ test.describe('Mobile Direct Item Access', () => {
   test('can access item directly via URL on mobile', async ({ page }) => {
     await page.goto('/#/item/12345');
 
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
   });
 
   test('displays Ask HN body text in mobile swipe view', async ({ page }) => {
@@ -207,7 +460,7 @@ test.describe('Mobile Direct Item Access', () => {
     await page.goto('/#/item/88888');
 
     // Should display the Ask HN title
-    await expect(page.getByText('Ask HN: What are you working on?').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
 
     // Should display the item body text (sanitized HTML rendered in FullScreenItem)
     await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
@@ -220,7 +473,7 @@ test.describe('Mobile Direct Item Access', () => {
 
     // Start at a valid item (creates browser history entry)
     await page.goto('/#/item/12345');
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
 
     // Navigate to a non-existent item via client-side hash change
     await page.evaluate(() => window.location.hash = '#/item/99999999');
@@ -230,7 +483,7 @@ test.describe('Mobile Direct Item Access', () => {
 
     // Press browser back — valid item should render
     await page.goBack();
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
     await expect(page.getByText(/not found/i)).not.toBeVisible();
     await expect(page).toHaveTitle(/Rust Is the Future of JavaScript Infrastructure.*HackerTok/);
 
@@ -244,7 +497,7 @@ test.describe('Mobile Direct Item Access', () => {
     // then pressing back should restore the scroll position (not reset to index 0).
 
     await page.goto('/#/');
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
 
     const container = page.getByTestId('swipe-container');
     // Wait for pagination panels (stories.length < 10 auto-load) so
@@ -266,7 +519,7 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText(/not found/i)).not.toBeVisible();
     await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
     await waitForScrollAtIndex(page, 1);
-    await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'SQLite Does Not Do Full FSYNC by Default', { minPanels: 6 });
 
     // Verify scroll position is actually at index 1 (not just that element exists in DOM).
     // Use expect.poll to tolerate brief state transitions after goBack.
@@ -286,7 +539,7 @@ test.describe('Mobile Direct Item Access', () => {
     // non-existent item, then pressing back should restore scroll to index 2.
 
     await page.goto('/#/');
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
 
     const container = page.getByTestId('swipe-container');
     // Wait for pagination panels (stories.length < 10 auto-load) so
@@ -310,7 +563,7 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText(/not found/i)).not.toBeVisible();
     await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
     await waitForScrollAtIndex(page, 2);
-    await expect(page.getByText('Why We Moved from React to htmx').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Why We Moved from React to htmx', { minPanels: 6 });
 
     // Verify scroll position is actually at index 2 (not just that element exists in DOM).
     // Use expect.poll to tolerate brief state transitions after goBack.
@@ -328,7 +581,7 @@ test.describe('Mobile Direct Item Access', () => {
   test('back from best section shows top items, not best items', async ({ page }) => {
     // Start on home (top items)
     await page.goto('/#/');
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
 
     const container = page.getByTestId('swipe-container');
     // Wait for pagination panels (stories.length < 10 auto-load) so
@@ -346,15 +599,18 @@ test.describe('Mobile Direct Item Access', () => {
     await bestLink.click({ force: true });
 
     // Should show best items (distinct from top items)
+    await expect(page).toHaveURL(/\/item\/33001/, { timeout: 5000 });
     await expect(page.getByText('The Art of Finishing Projects').first()).toBeVisible({ timeout: 5000 });
 
     // Press browser back — should return to top items
     await page.goBack();
-    await expect(page.getByText('The Art of Finishing Projects')).not.toBeVisible({ timeout: 5000 });
+    await expect(page).toHaveURL(/\/item\/12346/, { timeout: 5000 });
     // Should show a top item in the active panel. After back-nav, the swipe viewer
     // restores to the previous index (1 = SQLite story).
     await waitForScrollAtIndex(page, 1);
-    await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default').first()).toBeVisible({ timeout: 5000 });
+    const activePanel = getActiveSwipePanel(page);
+    await expect(activePanel.getByText('SQLite Does Not Do Full FSYNC by Default')).toBeVisible({ timeout: 5000 });
+    await expect(activePanel.getByText('The Art of Finishing Projects')).toHaveCount(0);
   });
 
   test('loads more items when swiping near the end', async ({ page }) => {
@@ -363,7 +619,7 @@ test.describe('Mobile Direct Item Access', () => {
     // the initial batch, it should auto-load pagination items.
 
     await page.goto('/#/');
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
 
     const container = page.getByTestId('swipe-container');
 
@@ -426,7 +682,7 @@ test.describe('Mobile Direct Item Access', () => {
     await page.goto('/#/item/1001');
 
     // Comment author renders inside the swipe viewer — not the "not a story" guard.
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
 
     await expect(page).toHaveURL(/\/item\/1001/);
   });
