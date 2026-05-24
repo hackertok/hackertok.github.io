@@ -197,7 +197,6 @@ export async function setupApiMocks(page: Page) {
   await page.route(`${ALGOLIA_API}/search*`, async (route) => {
     const url = new URL(route.request().url());
     const tags = url.searchParams.get('tags') || '';
-    const query = url.searchParams.get('query') || '';
     const page = parseInt(url.searchParams.get('page') || '0', 10);
 
     let hits: object[] = [];
@@ -254,9 +253,6 @@ export async function setupApiMocks(page: Page) {
       // from the 'front_page' branch above so pagination is observable.
       hits = [mockPaginationItem1, mockPaginationItem2, mockPaginationItem3];
       nbHits = 3;
-    } else if (query.includes('example.com')) {
-      hits = [mockDomainItem];
-      nbHits = 1;
     }
 
     await route.fulfill({

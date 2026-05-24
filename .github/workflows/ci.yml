@@ -39,7 +39,8 @@ jobs:
             LGPL-2.1-or-later, LGPL-3.0-only, LGPL-3.0-or-later,
             AGPL-3.0-only, AGPL-3.0-or-later
 
-  validate:
+  test:
+    name: test
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
