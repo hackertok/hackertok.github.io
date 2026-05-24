@@ -55,7 +55,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
           <OpWrap>
             <Link
               to={`/user/${comment.author}`}
-              className="font-semibold text-foreground hover:text-accent transition-colors"
+              className="text-foreground hover:text-accent transition-colors"
             >
               {comment.author}
             </Link>
@@ -63,12 +63,12 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
         ) : isKnownAuthor(comment.author) ? (
           <Link
             to={`/user/${comment.author}`}
-            className="font-medium text-foreground hover:text-accent transition-colors"
+            className="text-foreground hover:text-accent transition-colors"
           >
             {comment.author}
           </Link>
         ) : (
-          <span className="font-medium text-foreground">
+          <span className="text-foreground">
             {comment.author || 'unknown'}
           </span>
         )}

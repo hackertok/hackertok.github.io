@@ -142,7 +142,7 @@ export function UserProfile() {
 
                 <Link
                   to={`/submitted/${profile.id}`}
-                  className={`${metaPillClass} capitalize font-medium`}
+                  className={`${metaPillClass} capitalize`}
                 >
                   <FileText aria-hidden className="size-3.5" />
                   submissions

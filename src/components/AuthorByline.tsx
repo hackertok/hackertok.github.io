@@ -41,7 +41,7 @@ export function AuthorByline({
         <Link
           to={`/user/${author}`}
           onClick={onClick}
-          className={`${metaPillClass} font-medium`}
+          className={metaPillClass}
         >
           <User aria-hidden className="size-3.5" />
           {author}
@@ -54,15 +54,15 @@ export function AuthorByline({
     // that class's `-mx-1.5 -my-0.5` negative margins would extend OUT
     // of the wrapper into adjacent meta-row items (Globe / Clock pills)
     // and cause overlap. The substitute `hover:text-accent` is axe-OK
-    // here because the OP variant also has the always-visible badge +
-    // bolder weight, so hover colour isn't the only "I'm clickable"
-    // affordance.
+    // here because the OP variant already carries an always-visible
+    // badge, so the hover colour is additive rather than the only
+    // distinctive treatment in that byline slot.
     return (
       <OpWrap>
         <Link
           to={`/user/${author}`}
           onClick={onClick}
-          className="inline-flex items-center gap-1.5 font-semibold text-foreground hover:text-accent transition-colors"
+          className="inline-flex items-center gap-1.5 text-foreground hover:text-accent transition-colors"
         >
           <User aria-hidden className="size-3.5" />
           {author}
@@ -78,7 +78,7 @@ export function AuthorByline({
   // leave `''` as a blank span and break `screen.getByText('unknown')`
   // assertions in StoryCard / Comment / CommentArticle tests.
   return (
-    <span className="inline-flex items-center gap-1.5 font-medium">
+    <span className="inline-flex items-center gap-1.5">
       <User aria-hidden className="size-3.5" />
       {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing */}
       {author || 'unknown'}
