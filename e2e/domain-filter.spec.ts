@@ -7,6 +7,10 @@ import {
   smoothScrollAndAwaitSettled,
   waitForScrollAtIndex,
 } from './fixtures/swipe-helpers';
+import {
+  expectLocatorCenteredBetweenChrome,
+  setOfflineAndWaitForBar,
+} from './fixtures/layout-helpers';
 
 test.describe('Domain Filter', () => {
   test.beforeEach(async ({ page }) => {
@@ -55,6 +59,28 @@ test.describe('Domain Filter - Edge Cases', () => {
     await page.goto('/#/from/blog.example.com');
 
     await expect(page).toHaveURL(/\/#\/from\/blog\.example\.com/);
+  });
+});
+
+test.describe('Domain Filter - Centered state layouts', () => {
+  test.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('keeps the empty domain state centered with the offline bar visible', async ({ page, context }) => {
+    await stubEmptyDomainSearch(page, 'unknown-domain.xyz');
+
+    await page.goto('/#/from/unknown-domain.xyz');
+
+    const stateRoot = page.getByRole('heading', {
+      name: 'No submissions found from "unknown-domain.xyz"',
+    }).locator('xpath=..');
+    await expect(stateRoot).toBeVisible();
+
+    await setOfflineAndWaitForBar(page, context);
+    await expectLocatorCenteredBetweenChrome(stateRoot);
   });
 });
 
@@ -167,11 +193,13 @@ test.describe('Domain Filter - Header "from" button', () => {
 });
 
 test.describe('Domain Filter - Empty domain', () => {
+  test.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
   });
 
-  test('shows error with link to home when domain is empty', async ({ page }) => {
+  test('shows error with link to home when domain is empty', async ({ page, context }) => {
     await page.goto('/#/from/');
 
     // Document title should fall back to default
@@ -179,6 +207,14 @@ test.describe('Domain Filter - Empty domain', () => {
 
     // Should show error message
     await expect(page.getByText('No domain specified')).toBeVisible();
+
+    await setOfflineAndWaitForBar(page, context);
+
+    // `DomainStories` uses the shared `page-state-center-padded` helper.
+    const stateRoot = page.getByRole('heading', {
+      name: 'No domain specified',
+    }).locator('xpath=..');
+    await expectLocatorCenteredBetweenChrome(stateRoot);
 
     // Should have a link back to home that works
     const homeLink = page.getByRole('link', { name: /Back to Home/i });

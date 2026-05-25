@@ -2,6 +2,10 @@ import { test, expect } from '@playwright/test';
 import { test as fixtureTest } from './fixtures/test';
 import { setupApiMocks } from './fixtures/api-mocks';
 import { smoothScrollAndAwaitSettled } from './fixtures/swipe-helpers';
+import {
+  expectLocatorCenteredBetweenChrome,
+  setOfflineAndWaitForBar,
+} from './fixtures/layout-helpers';
 
 test.describe('Network Status Bar - Viewport Switch', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
@@ -123,6 +127,79 @@ fixtureTest.describe('Network Status Bar - Offline Item Detail to Mobile', () =>
       vpWidth: window.innerWidth,
     }));
     expect(docWidth).toBeLessThanOrEqual(vpWidth);
+  });
+});
+
+test.describe('Network Status Bar - Centered state layouts', () => {
+  test.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('keeps the full-page not-found state centered with the offline bar visible', async ({ page, context }) => {
+    await page.goto('/#/missing-route');
+
+    const stateRoot = page.getByRole('heading', {
+      name: 'Lost in the feed',
+    }).locator('xpath=..');
+    await expect(stateRoot).toBeVisible();
+
+    await setOfflineAndWaitForBar(page, context);
+    await expectLocatorCenteredBetweenChrome(stateRoot);
+  });
+});
+
+test.describe('Network Status Bar - Mobile content spacing', () => {
+  test.use({ viewport: { width: 375, height: 667 }, hasTouch: true });
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('keeps the story title gap stable when the offline bar appears', async ({ page, context }) => {
+    await page.goto('/#/item/12345');
+
+    const title = page.getByRole('heading', { level: 1 }).first();
+    await expect(title).toBeVisible();
+    await page.waitForFunction(() => {
+      const heading = document.querySelector('h1');
+      const stage = heading?.closest('.page-stage');
+      return !!stage
+        && stage.classList.contains('fade-skeleton')
+        && !stage.classList.contains('play-real');
+    });
+
+    const beforeGap = await page.evaluate(() => {
+      const heading = document.querySelector('h1');
+      const header = document.querySelector('header');
+      if (!(heading instanceof HTMLElement) || !(header instanceof HTMLElement)) return null;
+      return heading.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
+    });
+
+    expect(beforeGap).not.toBeNull();
+
+    await setOfflineAndWaitForBar(page, context);
+
+    const afterMetrics = await page.evaluate(() => {
+      const heading = document.querySelector('h1');
+      const header = document.querySelector('header');
+      const panel = document.querySelector('[data-testid="swipe-panel"].active') ?? document.querySelector('[data-testid="swipe-panel"]');
+      if (!(heading instanceof HTMLElement) || !(header instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+        return null;
+      }
+
+      return {
+        gap: heading.getBoundingClientRect().top - header.getBoundingClientRect().bottom,
+        paddingTop: getComputedStyle(panel).paddingTop,
+        paddingBottom: getComputedStyle(panel).paddingBottom,
+      };
+    });
+
+    expect(afterMetrics).not.toBeNull();
+    expect(afterMetrics?.paddingTop).toBe('53px');
+    expect(afterMetrics?.paddingBottom).toBe('32px');
+    expect(Math.abs((afterMetrics?.gap ?? 0) - (beforeGap ?? 0))).toBeLessThanOrEqual(2);
   });
 });
 

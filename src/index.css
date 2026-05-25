@@ -284,10 +284,26 @@ button {
   width: 100%;
 }
 
+/* Full-screen fallback states in swipe mode sit under a fixed header, so they
+   need their own viewport box instead of relying on the container's auto height. */
+.swipe-state-center {
+  min-height: var(--swipe-viewport-height, 100vh);
+  padding-top: var(--header-height);
+  padding-bottom: var(--network-bar-height);
+  padding-inline: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
 .swipe-snap-panel {
   display: none;
-  /* Push content below the fixed header */
-  padding-top: calc(var(--header-height) + var(--network-bar-height));
+  /* Push content below the fixed header and reserve bottom room for the
+     fixed network bar without shifting the title downward. */
+  padding-top: var(--header-height);
+  padding-bottom: var(--network-bar-height);
 }
 
 .swipe-snap-panel.active {
@@ -302,10 +318,10 @@ button {
 .swipe-snap-panel.incoming {
   display: block;
   position: fixed;
-  top: calc(var(--header-height) + var(--network-bar-height));
+  top: var(--header-height);
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--network-bar-height);
   padding-top: 0;
   overflow: hidden;
   z-index: 1;
@@ -352,7 +368,7 @@ body.swipe-mode {
 body.swipe-mode::after {
   content: '';
   position: fixed;
-  top: calc(var(--header-height) + var(--network-bar-height));
+  top: var(--header-height);
   right: 2px;
   width: 4px;
   height: calc((var(--swipe-viewport-height, 100vh) - var(--header-height) - var(--network-bar-height)) * 0.2);
@@ -386,7 +402,7 @@ body.swipe-mode.is-scrolling::after {
 
 /* Full-page centered state (error / not-found / empty) */
 .page-state-center {
-  min-height: calc(100dvh - var(--header-height));
+  min-height: calc(100dvh - var(--header-height) - var(--network-bar-height));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -398,7 +414,7 @@ body.swipe-mode.is-scrolling::after {
   max-width: 72rem; /* 6xl */
   margin-inline: auto;
   padding-inline: 1rem;
-  min-height: calc(100dvh - var(--header-height));
+  min-height: calc(100dvh - var(--header-height) - var(--network-bar-height));
   display: flex;
   align-items: center;
   justify-content: center;

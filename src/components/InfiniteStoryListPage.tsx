@@ -86,13 +86,12 @@ export function InfiniteStoryListPage({
   // layout (no skeleton overlay), so they sit above the wrapper.
   if (error && stories.length === 0 && !isRetrying) {
     return (
-      <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
+      <div className="page-state-center-padded">
         <StateView
           variant="error"
           title={failTitle}
           description={error}
           action={{ label: 'Try Again', onClick: retryLoadMore }}
-          className="page-state-center"
         />
       </div>
     );
@@ -106,65 +105,66 @@ export function InfiniteStoryListPage({
     );
   }
 
+  if (emptyTitle && stories.length === 0 && !loading) {
+    return (
+      <div className="page-state-center-padded">
+        <StateView
+          variant="empty"
+          title={emptyTitle}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
       {/* `loading` is gated on `stories.length === 0` so a refresh /
-          context change with cached cards doesn't blank them out. The
-          empty-state StateView sits inside `children` so it inherits
-          the `'done'` opacity baseline (no spurious cascade). */}
+          context change with cached cards doesn't blank them out. */}
       <PageStage
         loading={stories.length === 0 && loading}
         skeleton={<StoryCardSkeletonList count={12} />}
       >
-        {emptyTitle && stories.length === 0 ? (
-          <StateView
-            variant="empty"
-            title={emptyTitle}
-            className="page-state-center"
-          />
-        ) : (
-          <>
-            <div className="space-y-0 divide-y divide-border">
-              {stories.map((story, index) => (
-                <StoryCard
-                  key={story.id}
-                  story={story}
-                  index={index}
-                  {...getSlot(index)}
-                  {...storyCardExtras}
-                />
-              ))}
+        <>
+          <div className="space-y-0 divide-y divide-border">
+            {stories.map((story, index) => (
+              <StoryCard
+                key={story.id}
+                story={story}
+                index={index}
+                {...getSlot(index)}
+                {...storyCardExtras}
+              />
+            ))}
+          </div>
+
+          {hasMore && (
+            <div ref={ref} className="py-4">
+              {loading && <Spinner />}
             </div>
+          )}
 
-            {hasMore && (
-              <div ref={ref} className="py-4">
-                {loading && <Spinner />}
-              </div>
-            )}
+          {!hasMore && stories.length > 0 && (
+            <StateView variant="end" className="flex flex-col items-center justify-center text-center pt-8" />
+          )}
 
-            {!hasMore && stories.length > 0 && (
-              <StateView variant="end" className="flex flex-col items-center justify-center text-center pt-8" />
-            )}
+          {error && stories.length > 0 && !isRetrying && (
+            <div className="pb-4">
+              <StateView
+                variant="error"
+                compact
+                description={error}
+                action={{ label: 'Retry', onClick: retryLoadMore }}
+                className="flex items-center justify-center gap-3 py-4 text-center"
+              />
+            </div>
+          )}
 
-            {error && stories.length > 0 && !isRetrying && (
-              <div className="pb-4">
-                <StateView
-                  variant="error"
-                  compact
-                  description={error}
-                  action={{ label: 'Retry', onClick: retryLoadMore }}
-                  className="flex items-center justify-center gap-3 py-4 text-center"
-                />
-              </div>
-            )}
-
-            {isRetrying && stories.length > 0 && (
-              <div className="py-4 flex justify-center">
-                <Spinner />
-              </div>
-            )}
-          </>
-        )}
+          {isRetrying && stories.length > 0 && (
+            <div className="py-4 flex justify-center">
+              <Spinner />
+            </div>
+          )}
+        </>
       </PageStage>
     </div>
   );

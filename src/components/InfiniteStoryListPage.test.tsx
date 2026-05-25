@@ -119,7 +119,10 @@ describe('InfiniteStoryListPage', () => {
         emptyTitle: 'No stories from this domain',
       });
 
-      expect(screen.getByText('No stories from this domain')).toBeInTheDocument();
+      const title = screen.getByText('No stories from this domain');
+
+      expect(title).toBeInTheDocument();
+      expect(title.closest('.page-state-center-padded')).not.toBeNull();
     });
 
     it('omits the empty StateView when emptyTitle is undefined', () => {
@@ -140,9 +143,12 @@ describe('InfiniteStoryListPage', () => {
         result: makeResult({ error: 'Network down' }),
       });
 
-      expect(screen.getByText('Failed to load items')).toBeInTheDocument();
+      const title = screen.getByText('Failed to load items');
+
+      expect(title).toBeInTheDocument();
       expect(screen.getByText('Network down')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Try Again' })).toBeInTheDocument();
+      expect(title.closest('.page-state-center-padded')).not.toBeNull();
     });
 
     it('renders the cold-error StateView with an overridden failTitle', () => {
