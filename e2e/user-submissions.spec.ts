@@ -7,6 +7,10 @@ import {
   smoothScrollAndAwaitSettled,
   waitForScrollAtIndex,
 } from './fixtures/swipe-helpers';
+import {
+  expectLocatorCenteredBetweenChrome,
+  setOfflineAndWaitForBar,
+} from './fixtures/layout-helpers';
 
 test.describe('User Submissions - Desktop', () => {
   // Desktop viewport — `MobileUserSubmissionsWrapper` falls through to the
@@ -247,7 +251,7 @@ test.describe('User Submissions - Mobile Swipe', () => {
     ), { timeout: 5_000 }).toBe(1);
   });
 
-  test('shows empty state for a user with no submissions on mobile', async ({ page }) => {
+  test('shows empty state for a user with no submissions on mobile', async ({ page, context }) => {
     await stubEmptyUserSubmissions(page, 'noresults');
 
     await page.goto('/#/submitted/noresults');
@@ -255,6 +259,14 @@ test.describe('User Submissions - Mobile Swipe', () => {
     // The mobile swipe viewer's empty branch surfaces the same copy as the
     // desktop list (centralized in `formatNoUserSubmissionsTitle`).
     await expect(page.getByText('No submissions found by "noresults"')).toBeVisible({ timeout: 10_000 });
+
+    await setOfflineAndWaitForBar(page, context);
+
+    // Mobile empty states use the shared swipe centering helper.
+    const stateRoot = page.getByRole('heading', {
+      name: 'No submissions found by "noresults"',
+    }).locator('xpath=..');
+    await expectLocatorCenteredBetweenChrome(stateRoot);
   });
 
   test('shows error state when Algolia returns 503 on mobile swipe', async ({ page }) => {

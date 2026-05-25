@@ -456,12 +456,13 @@ export function SwipeStoryViewerCore({
   
   if (injectedError) {
     return (
-      <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
+      <div className="swipe-snap-container" data-testid="swipe-container">
         <StateView
           variant={isInjectedNotFound ? 'not-found' : 'error'}
           title={isNonStoryError ? 'This item is not a story' : isInjectedNotFound ? undefined : 'Failed to load item'}
           description={isInjectedNotFound ? undefined : injectedError}
           action={isInjectedNotFound ? { label: 'Back to Home', to: '/' } : { label: 'Try Again', onClick: () => void navigate(0) }}
+          className="swipe-state-center"
         />
       </div>
     );
@@ -501,8 +502,8 @@ export function SwipeStoryViewerCore({
   
   if (error && mergedStories.length === 0 && !isRetrying) {
     return (
-      <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
-        <StateView variant="error" title="Failed to load item" action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore().catch(() => { /* error state set internally */ }); } }} />
+      <div className="swipe-snap-container" data-testid="swipe-container">
+        <StateView variant="error" title="Failed to load item" action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore().catch(() => { /* error state set internally */ }); } }} className="swipe-state-center" />
       </div>
     );
   }
@@ -531,8 +532,8 @@ export function SwipeStoryViewerCore({
     !initialItemId
   ) {
     return (
-      <div className="swipe-snap-container flex items-center justify-center" data-testid="swipe-container">
-        <StateView variant="empty" title={emptyTitle} />
+      <div className="swipe-snap-container" data-testid="swipe-container">
+        <StateView variant="empty" title={emptyTitle} className="swipe-state-center" />
       </div>
     );
   }
