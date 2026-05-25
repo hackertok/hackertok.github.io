@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
+import { expectActiveSwipePanelText } from './fixtures/swipe-helpers';
 
 test.describe('Viewed Items', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
@@ -104,7 +105,7 @@ test.describe('Viewed Items - Mobile', () => {
     // (not just text posts) are marked as detail-viewed on swipe.
     await page.goto('/#/item/12345');
 
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
 
     // 'viewed:session' is the session-only store (cleared per browser session).
     const sessionViewed = await page.evaluate(() => {

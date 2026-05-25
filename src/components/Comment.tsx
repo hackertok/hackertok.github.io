@@ -1,4 +1,4 @@
-import { useState, useMemo, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { isKnownAuthor } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
@@ -17,8 +17,53 @@ interface CommentProps {
   stageIdx?: number;
 }
 
+const REPLY_FADE_DURATION_MS = 180;
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
   const [repliesExpanded, setRepliesExpanded] = useState(false);
+  const [shouldAnimateReplies, setShouldAnimateReplies] = useState(false);
+  const replyFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (replyFadeTimerRef.current) {
+        clearTimeout(replyFadeTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearReplyFadeTimer = () => {
+    if (replyFadeTimerRef.current) {
+      clearTimeout(replyFadeTimerRef.current);
+      replyFadeTimerRef.current = null;
+    }
+  };
+
+  const expandReplies = () => {
+    clearReplyFadeTimer();
+    const reducedMotion = prefersReducedMotion();
+    setShouldAnimateReplies(!reducedMotion);
+    setRepliesExpanded(true);
+    if (reducedMotion) {
+      return;
+    }
+    replyFadeTimerRef.current = setTimeout(() => {
+      setShouldAnimateReplies(false);
+      replyFadeTimerRef.current = null;
+    }, REPLY_FADE_DURATION_MS);
+  };
+
+  const collapseReplies = () => {
+    clearReplyFadeTimer();
+    setShouldAnimateReplies(false);
+    setRepliesExpanded(false);
+  };
 
   const sanitizedText = useMemo(
     () => comment.text ? sanitizeHtml(comment.text) : '',
@@ -90,7 +135,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
           {repliesExpanded && (
             <button
               className="tree-trunk-collapse"
-              onClick={() => setRepliesExpanded(false)}
+              onClick={collapseReplies}
               aria-expanded={true}
               aria-label="Collapse replies"
             />
@@ -102,7 +147,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
             <div className="tree-branch tree-branch--last pt-2">
               {/* Replies expander — negative margin compensates padding for tree alignment. */}
               <button
-                onClick={() => setRepliesExpanded(true)}
+                onClick={expandReplies}
                 className="inline-flex items-center gap-1.5 px-2 py-1 -mx-2 -my-1 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 aria-expanded={false}
               >
@@ -121,7 +166,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
           {repliesExpanded && comment.children.map((child, i) => (
             <div
               key={child.id}
-              className={`tree-branch${i === comment.children.length - 1 ? ' tree-branch--last' : ''} reply-fade`}
+              className={`tree-branch${i === comment.children.length - 1 ? ' tree-branch--last' : ''}${shouldAnimateReplies ? ' reply-fade' : ''}`}
             >
               <Comment comment={child} storyAuthor={storyAuthor} />
             </div>
