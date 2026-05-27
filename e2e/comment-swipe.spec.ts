@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupApiMocks } from './fixtures/api-mocks';
+import { setupApiMocks, FIREBASE_WS_PATTERN, createFirebaseWsHandler } from './fixtures/api-mocks';
 import {
   expectActiveSwipePanelText,
   waitForSwipeReady,
@@ -225,10 +225,11 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   });
 
   test('shows "Comment deleted" for dead/deleted comment', async ({ page }) => {
-    // Firebase: 5555 is a dead comment (MobileItemResolver detects type).
-    await page.route(`**/item/5555.json`, async (route) => {
-      await route.fulfill({
-        json: {
+    // Override WS handler to return a dead comment for item 5555
+    // and a parent story (12345) with kids: [5555].
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({
+      itemOverrides: {
+        5555: {
           id: 5555,
           by: null,
           text: null,
@@ -237,8 +238,19 @@ test.describe('Mobile Comment Swipe Viewer', () => {
           type: 'comment',
           dead: true,
         },
-      });
-    });
+        12345: {
+          id: 12345,
+          title: 'Rust Is the Future of JavaScript Infrastructure',
+          url: 'https://leerob.io/blog/rust',
+          by: 'leerob',
+          score: 284,
+          time: Math.floor(Date.now() / 1000) - 3600,
+          descendants: 1,
+          kids: [5555],
+          type: 'story',
+        },
+      },
+    }));
 
     // Algolia: matching deleted comment shape (null author/text).
     await page.route(`**/items/5555`, async (route) => {
@@ -256,23 +268,6 @@ test.describe('Mobile Comment Swipe Viewer', () => {
       });
     });
 
-    // Parent kids: [5555] only — keeps swipe scope to a single panel.
-    await page.route(`**/item/12345.json`, async (route) => {
-      await route.fulfill({
-        json: {
-          id: 12345,
-          title: 'Rust Is the Future of JavaScript Infrastructure',
-          url: 'https://leerob.io/blog/rust',
-          by: 'leerob',
-          score: 284,
-          time: Math.floor(Date.now() / 1000) - 3600,
-          descendants: 1,
-          kids: [5555],
-          type: 'story',
-        },
-      });
-    });
-
     await page.goto('/#/item/5555');
 
     await expect(page.getByText('Comment deleted').first()).toBeVisible({ timeout: 10000 });
@@ -281,11 +276,11 @@ test.describe('Mobile Comment Swipe Viewer', () => {
   test('shows error state when comment fetch fails', async ({ page }) => {
     // Auto-retry exhausts 3 backoff attempts (2+4+8s) before showing error.
     test.setTimeout(60000);
-    // 99999 is a valid comment so MobileItemResolver routes to comment view;
-    // its parent (88888) returns 500 so useSiblingComments errors out.
-    await page.route(`**/item/99999.json`, async (route) => {
-      await route.fulfill({
-        json: {
+    // Override WS: 99999 is a comment so MobileItemResolver routes to comment view;
+    // its parent (88888) returns error so useSiblingComments errors out.
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({
+      itemOverrides: {
+        99999: {
           id: 99999,
           by: 'someone',
           text: 'placeholder',
@@ -293,12 +288,9 @@ test.describe('Mobile Comment Swipe Viewer', () => {
           parent: 88888,
           type: 'comment',
         },
-      });
-    });
-
-    await page.route(`**/item/88888.json`, async (route) => {
-      await route.fulfill({ status: 500, json: { error: 'Server Error' } });
-    });
+      },
+      errorItemIds: [88888],
+    }));
 
     // Algolia also fails so useCommentDetail can't paper over the parent error.
     await page.route(`**/items/99999`, async (route) => {

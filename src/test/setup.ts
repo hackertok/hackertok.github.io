@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
@@ -118,8 +119,26 @@ class MockResizeObserver {
 globalThis.ResizeObserver = MockResizeObserver;
 
 // Mock requestAnimationFrame (basic implementation for jsdom)
-globalThis.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16));
+globalThis.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16) as unknown as number);
 globalThis.cancelAnimationFrame = vi.fn((id: number) => clearTimeout(id));
+
+// Stub window.scrollTo (not implemented in jsdom)
+window.scrollTo = vi.fn() as typeof window.scrollTo;
+
+// Suppress jsdom "Not implemented: navigation" errors (triggered by anchor clicks / form submits).
+// jsdom writes these directly to stderr via its VirtualConsole, bypassing console.error.
+const origStderrWrite = process.stderr.write;
+process.stderr.write = function (
+  chunk: Uint8Array | string,
+  encodingOrCb?: BufferEncoding | ((error?: Error | null) => void),
+  cb?: (error?: Error | null) => void,
+): boolean {
+  if (typeof chunk === 'string' && chunk.includes('Not implemented: navigation')) return true;
+  if (typeof encodingOrCb === 'function') {
+    return origStderrWrite.call(process.stderr, chunk, undefined, encodingOrCb);
+  }
+  return origStderrWrite.call(process.stderr, chunk, encodingOrCb, cb);
+};
 
 // Start MSW server before all tests
 beforeAll(() => {

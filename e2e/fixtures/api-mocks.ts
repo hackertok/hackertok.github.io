@@ -1,7 +1,6 @@
-import { Page } from '@playwright/test';
+import { Page, WebSocketRoute } from '@playwright/test';
 import {
   ALGOLIA_API,
-  FIREBASE_API,
   mockItem1,
   mockItem2,
   mockItem3,
@@ -35,164 +34,267 @@ import {
   mockUserStory2,
 } from './mock-data';
 
+/** Firebase RTDB WebSocket URL pattern */
+export const FIREBASE_WS_PATTERN = /firebaseio\.com\/\.ws/;
+
 /**
- * Set up all API mocks for E2E tests
- * Intercepts both Algolia and Firebase HN API calls
+ * Attach Firebase RTDB frame-buffering to a WebSocket route.
+ * The Firebase wire protocol sends a frame-count string followed by that many
+ * JSON payload strings. This helper reassembles them before invoking `handler`.
  */
-export async function setupApiMocks(page: Page) {
-  // Firebase: Top items
-  await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
-    await route.fulfill({ json: mockTopItemIds });
-  });
+function attachFrameBuffering(ws: WebSocketRoute, handler: (raw: string) => void | Promise<void>) {
+  let expectedFrames = 0;
+  let frameBuffer: string[] = [];
 
-  // Firebase: Best items
-  await page.route(`${FIREBASE_API}/beststories.json`, async (route) => {
-    await route.fulfill({ json: mockBestItemIds });
-  });
+  ws.onMessage(async (message) => {
+    if (typeof message !== 'string') return;
 
-  // Firebase: Individual items
-  await page.route(`${FIREBASE_API}/item/*.json`, async (route) => {
-    const url = route.request().url();
-    const match = url.match(/\/item\/(\d+)\.json/);
-    const id = match ? parseInt(match[1], 10) : 0;
-
-    // 99999999 / 0 are reserved as "not found" sentinels in tests.
-    if (id === 99999999 || id === 0) {
-      await route.fulfill({ json: null });
+    const asNum = parseInt(message, 10);
+    if (expectedFrames === 0 && !isNaN(asNum) && String(asNum) === message.trim()) {
+      expectedFrames = asNum;
+      frameBuffer = [];
       return;
     }
 
-    const items: Record<number, object> = {
-      12345: mockItem1,
-      12346: mockItem2,
-      12347: mockItem3,
-      1001: mockComment,
-      2001: mockNestedComment,
-      // Best items use distinct IDs so /best and / serve different data.
-      33001: mockBestItem1,
-      33002: mockBestItem2,
-      33003: mockBestItem3,
-      // Firebase shape for Show HN items (Algolia → Firebase translation).
-      99999: {
-        id: 99999,
-        title: mockShowHNItem1.title,
-        url: mockShowHNItem1.url,
-        by: mockShowHNItem1.author,
-        score: mockShowHNItem1.points,
-        time: mockShowHNItem1.created_at_i,
-        descendants: mockShowHNItem1.num_comments,
-        type: 'story',
-      },
-      99998: {
-        id: 99998,
-        title: mockShowHNItem2.title,
-        url: mockShowHNItem2.url,
-        by: mockShowHNItem2.author,
-        score: mockShowHNItem2.points,
-        time: mockShowHNItem2.created_at_i,
-        descendants: mockShowHNItem2.num_comments,
-        type: 'story',
-      },
-      // Ask HN items include `text` (text-only posts have no URL).
-      88888: {
-        id: 88888,
-        title: mockAskHNItem1.title,
-        url: mockAskHNItem1.url,
-        by: mockAskHNItem1.author,
-        score: mockAskHNItem1.points,
-        time: mockAskHNItem1.created_at_i,
-        descendants: mockAskHNItem1.num_comments,
-        text: mockAskHNItem1.story_text,
-        type: 'story',
-      },
-      88887: {
-        id: 88887,
-        title: mockAskHNItem2.title,
-        url: mockAskHNItem2.url,
-        by: mockAskHNItem2.author,
-        score: mockAskHNItem2.points,
-        time: mockAskHNItem2.created_at_i,
-        descendants: mockAskHNItem2.num_comments,
-        type: 'story',
-      },
-      77777: {
-        id: 77777,
-        title: mockDomainItem.title,
-        url: mockDomainItem.url,
-        by: mockDomainItem.author,
-        score: mockDomainItem.points,
-        time: mockDomainItem.created_at_i,
-        descendants: mockDomainItem.num_comments,
-        type: 'story',
-      },
-      // Type=job triggers SwipeStoryViewer's "not a story" error path.
-      55555: mockJobItem,
-      // User-submitted stories — pinned so desktop tests clicking a
-      // comments link from /submitted/pg land on a real-titled /item/:id
-      // (not the generic fallback below).
-      66666: {
-        id: 66666,
-        title: mockUserStory1.title,
-        url: mockUserStory1.url,
-        by: mockUserStory1.author,
-        score: mockUserStory1.points,
-        time: mockUserStory1.created_at_i,
-        descendants: mockUserStory1.num_comments,
-        type: 'story',
-      },
-      66667: {
-        id: 66667,
-        title: mockUserStory2.title,
-        url: mockUserStory2.url,
-        by: mockUserStory2.author,
-        score: mockUserStory2.points,
-        time: mockUserStory2.created_at_i,
-        descendants: mockUserStory2.num_comments,
-        type: 'story',
-      },
-    };
-
-    if (items[id]) {
-      await route.fulfill({ json: items[id] });
-    } else if (id === 1002 || id === 1003) {
-      await route.fulfill({
-        json: {
-          id,
-          by: `user${id}`,
-          text: `Comment ${id}`,
-          time: Math.floor(Date.now() / 1000) - 600,
-          parent: 12345,
-          type: 'comment',
-        },
-      });
-    } else if (id === 1004) {
-      await route.fulfill({
-        json: {
-          id: 1004,
-          by: 'leerob',
-          text: 'Author here — thanks for the discussion! I updated the benchmarks section based on feedback.',
-          time: Math.floor(Date.now() / 1000) - 300,
-          parent: 12345,
-          type: 'comment',
-        },
-      });
+    if (expectedFrames > 0) {
+      frameBuffer.push(message);
+      if (frameBuffer.length < expectedFrames) return;
+      const fullMessage = frameBuffer.join('');
+      expectedFrames = 0;
+      frameBuffer = [];
+      await handler(fullMessage);
     } else {
-      // Generic story for unknown IDs so byline/comments-link clicks
-      // never 404 in tests that don't pin them.
-      await route.fulfill({
-        json: {
-          id,
-          title: `Item ${id}`,
-          url: `https://example.com/item/${id}`,
-          by: 'testuser',
-          score: 50,
-          time: Math.floor(Date.now() / 1000) - 7200,
-          descendants: 5,
-          type: 'story',
-        },
-      });
+      await handler(message);
     }
   });
+}
+
+/**
+ * Build the item lookup table used by the WebSocket mock.
+ */
+function buildItemsMap(): Record<number, object> {
+  return {
+    12345: mockItem1,
+    12346: mockItem2,
+    12347: mockItem3,
+    1001: mockComment,
+    2001: mockNestedComment,
+    33001: mockBestItem1,
+    33002: mockBestItem2,
+    33003: mockBestItem3,
+    99999: {
+      id: 99999,
+      title: mockShowHNItem1.title,
+      url: mockShowHNItem1.url,
+      by: mockShowHNItem1.author,
+      score: mockShowHNItem1.points,
+      time: mockShowHNItem1.created_at_i,
+      descendants: mockShowHNItem1.num_comments,
+      type: 'story',
+    },
+    99998: {
+      id: 99998,
+      title: mockShowHNItem2.title,
+      url: mockShowHNItem2.url,
+      by: mockShowHNItem2.author,
+      score: mockShowHNItem2.points,
+      time: mockShowHNItem2.created_at_i,
+      descendants: mockShowHNItem2.num_comments,
+      type: 'story',
+    },
+    88888: {
+      id: 88888,
+      title: mockAskHNItem1.title,
+      url: mockAskHNItem1.url,
+      by: mockAskHNItem1.author,
+      score: mockAskHNItem1.points,
+      time: mockAskHNItem1.created_at_i,
+      descendants: mockAskHNItem1.num_comments,
+      text: mockAskHNItem1.story_text,
+      type: 'story',
+    },
+    88887: {
+      id: 88887,
+      title: mockAskHNItem2.title,
+      url: mockAskHNItem2.url,
+      by: mockAskHNItem2.author,
+      score: mockAskHNItem2.points,
+      time: mockAskHNItem2.created_at_i,
+      descendants: mockAskHNItem2.num_comments,
+      type: 'story',
+    },
+    77777: {
+      id: 77777,
+      title: mockDomainItem.title,
+      url: mockDomainItem.url,
+      by: mockDomainItem.author,
+      score: mockDomainItem.points,
+      time: mockDomainItem.created_at_i,
+      descendants: mockDomainItem.num_comments,
+      type: 'story',
+    },
+    55555: mockJobItem,
+    66666: {
+      id: 66666,
+      title: mockUserStory1.title,
+      url: mockUserStory1.url,
+      by: mockUserStory1.author,
+      score: mockUserStory1.points,
+      time: mockUserStory1.created_at_i,
+      descendants: mockUserStory1.num_comments,
+      type: 'story',
+    },
+    66667: {
+      id: 66667,
+      title: mockUserStory2.title,
+      url: mockUserStory2.url,
+      by: mockUserStory2.author,
+      score: mockUserStory2.points,
+      time: mockUserStory2.created_at_i,
+      descendants: mockUserStory2.num_comments,
+      type: 'story',
+    },
+  };
+}
+
+/**
+ * Resolve a Firebase path to mock data.
+ * Paths from the SDK have a leading slash: `/v0/topstories`, `/v0/item/12345`, `/v0/user/pg`
+ */
+function resolveFirebasePath(
+  path: string,
+  items: Record<number, object>,
+  opts?: { userResolver?: (username: string) => object | null },
+): unknown {
+  // Strip leading slash — the SDK sends `/v0/...` but our constants use `v0/...`
+  const p = path.replace(/^\//, '');
+
+  if (p === 'v0/topstories') return mockTopItemIds;
+  if (p === 'v0/beststories') return mockBestItemIds;
+  if (p === 'v0/showstories') return [99999, 99998];
+  if (p === 'v0/askstories') return [88888, 88887];
+
+  const itemMatch = /^v0\/item\/(\d+)$/.exec(p);
+  if (itemMatch) {
+    const id = parseInt(itemMatch[1], 10);
+    if (id === 99999999 || id === 0) return null;
+    if (items[id]) return items[id];
+    if (id === 1002 || id === 1003) {
+      return {
+        id,
+        by: `user${id}`,
+        text: `Comment ${id}`,
+        time: Math.floor(Date.now() / 1000) - 600,
+        parent: 12345,
+        type: 'comment',
+      };
+    }
+    if (id === 1004) {
+      return {
+        id: 1004,
+        by: 'leerob',
+        text: 'Author here — thanks for the discussion! I updated the benchmarks section based on feedback.',
+        time: Math.floor(Date.now() / 1000) - 300,
+        parent: 12345,
+        type: 'comment',
+      };
+    }
+    // Generic story fallback
+    return {
+      id,
+      title: `Item ${id}`,
+      url: `https://example.com/item/${id}`,
+      by: 'testuser',
+      score: 50,
+      time: Math.floor(Date.now() / 1000) - 7200,
+      descendants: 5,
+      type: 'story',
+    };
+  }
+
+  const userMatch = /^v0\/user\/(.+)$/.exec(p);
+  if (userMatch) {
+    const username = decodeURIComponent(userMatch[1]);
+    if (opts?.userResolver) return opts.userResolver(username);
+    if (username === 'pg') return mockUserProfile;
+    return { id: username, created: 1160418092, karma: 1, submitted: [] };
+  }
+
+  return null;
+}
+
+/**
+ * Handle a Firebase RTDB WebSocket connection. Speaks the Firebase wire protocol:
+ * - Server sends handshake: {"t":"c","d":{"t":"h","d":{...}}}
+ * - Client sends framed messages: frame-count string, then JSON payload
+ * - Server responds to "g" (get) requests: {"t":"d","d":{"r":N,"b":{"s":"ok","d":...}}}
+ */
+export function createFirebaseWsHandler(opts?: {
+  userResolver?: (username: string) => object | null;
+  delayMs?: number;
+  itemOverrides?: Record<number, object | null>;
+  errorItemIds?: number[];
+}) {
+  const items = { ...buildItemsMap(), ...(opts?.itemOverrides ?? {}) };
+
+  return (ws: WebSocketRoute) => {
+    // Send handshake immediately
+    const handshake = JSON.stringify({
+      t: 'c',
+      d: { t: 'h', d: { ts: Date.now(), v: '5', h: 's-mock.firebaseio.com', s: 'mock-session' } },
+    });
+    ws.send(handshake);
+
+    attachFrameBuffering(ws, async (raw) => {
+      await handleClientMessage(raw);
+    });
+
+    async function handleClientMessage(raw: string) {
+      let msg: { t: string; d: { r?: number; a?: string; b?: { p?: string; q?: unknown } } };
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        return; // Ignore malformed messages
+      }
+
+      if (msg.t !== 'd' || !msg.d) return;
+
+      const { r: reqId, a: action, b: body } = msg.d;
+      if (action !== 'g' || reqId == null || !body?.p) return;
+
+      if (opts?.delayMs) {
+        await new Promise((resolve) => setTimeout(resolve, opts.delayMs));
+      }
+
+      // Check if this is an item request for an error item
+      const pathStr = body.p?.replace(/^\//, '') ?? '';
+      const errorItemMatch = /^v0\/item\/(\d+)$/.exec(pathStr);
+      if (errorItemMatch && opts?.errorItemIds?.includes(parseInt(errorItemMatch[1], 10))) {
+        const errorResponse = JSON.stringify({
+          t: 'd',
+          d: { r: reqId, b: { s: 'permission_denied', d: 'Simulated error' } },
+        });
+        ws.send(errorResponse);
+        return;
+      }
+
+      const data = resolveFirebasePath(body.p, items, { userResolver: opts?.userResolver });
+      const response = JSON.stringify({
+        t: 'd',
+        d: { r: reqId, b: { s: 'ok', d: data } },
+      });
+      ws.send(response);
+    }
+  };
+}
+
+/**
+ * Set up all API mocks for E2E tests.
+ * Intercepts Firebase WebSocket connections and Algolia HTTP calls.
+ */
+export async function setupApiMocks(page: Page) {
+  // Firebase: intercept WebSocket connection used by the SDK
+  await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler());
 
   await page.route(`${ALGOLIA_API}/search*`, async (route) => {
     const url = new URL(route.request().url());
@@ -367,35 +469,6 @@ export async function setupApiMocks(page: Page) {
     });
   });
 
-  // Firebase: user profile (`/user/:id.json`)
-  // Returns `mockUserProfile` for `pg`, `null` for `nope` (HN's "no such user"
-  // signal — `useUserProfile` translates this to NotFoundError → isNotFound=true),
-  // and a synthesized profile for everything else so author-byline links from
-  // arbitrary fixtures (e.g. `leerob`) don't 404 in tests that don't pin them.
-  await page.route(`${FIREBASE_API}/user/*.json`, async (route) => {
-    const url = route.request().url();
-    const idMatch = /\/user\/([^/]+)\.json/.exec(url);
-    const id = idMatch ? decodeURIComponent(idMatch[1]) : '';
-
-    if (id === 'pg') {
-      await route.fulfill({ json: mockUserProfile });
-      return;
-    }
-
-    if (id === 'nope') {
-      await route.fulfill({ json: null });
-      return;
-    }
-
-    await route.fulfill({
-      json: {
-        id,
-        created: 1160418092,
-        karma: 1,
-        submitted: [],
-      },
-    });
-  });
 }
 
 /**
@@ -421,18 +494,18 @@ export async function stubEmptyUserSubmissions(page: Page, username: string) {
 }
 
 /**
- * Stub the Firebase `/user/:id.json` endpoint to return `null` for a specific
- * username (HN's "no such user" signal). Any other request is passed through.
+ * Stub the Firebase user endpoint to return `null` for a specific username.
+ * Must be called AFTER setupApiMocks since routeWebSocket uses LIFO ordering
+ * (most recently registered handler wins).
  */
 export async function stubNotFoundUser(page: Page, username: string) {
-  await page.route(`${FIREBASE_API}/user/*.json`, async (route) => {
-    const url = route.request().url();
-    if (url.includes(`/user/${encodeURIComponent(username)}.json`)) {
-      await route.fulfill({ json: null });
-    } else {
-      await route.continue();
-    }
-  });
+  await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({
+    userResolver: (u) => {
+      if (u === username) return null;
+      if (u === 'pg') return mockUserProfile;
+      return { id: u, created: 1160418092, karma: 1, submitted: [] };
+    },
+  }));
 }
 
 /**
@@ -457,10 +530,24 @@ export async function stubEmptyDomainSearch(page: Page, domain: string) {
   });
 }
 
-/** Mock an empty items response. */
+/** Mock an empty items response (Firebase returns empty arrays, Algolia returns empty hits). */
 export async function mockEmptyItems(page: Page) {
-  await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
-    await route.fulfill({ json: [] });
+  // Firebase WS mock that returns empty arrays for ranked lists
+  await page.routeWebSocket(FIREBASE_WS_PATTERN, (ws: WebSocketRoute) => {
+    ws.send(JSON.stringify({
+      t: 'c',
+      d: { t: 'h', d: { ts: Date.now(), v: '5', h: 's-mock.firebaseio.com', s: 'mock-session' } },
+    }));
+
+    attachFrameBuffering(ws, (raw) => {
+      let msg: { t: string; d: { r?: number; a?: string; b?: { p?: string } } };
+      try { msg = JSON.parse(raw); } catch { return; }
+      if (msg.t !== 'd' || msg.d?.a !== 'g' || msg.d?.r == null) return;
+      // Return empty array for all ranked lists, null for items
+      const path = msg.d.b?.p ?? '';
+      const data = path.includes('stories') ? [] : null;
+      ws.send(JSON.stringify({ t: 'd', d: { r: msg.d.r, b: { s: 'ok', d: data } } }));
+    });
   });
 
   await page.route(`${ALGOLIA_API}/search*`, async (route) => {
@@ -476,11 +563,31 @@ export async function mockEmptyItems(page: Page) {
   });
 }
 
-/** Mock API error responses (Firebase 500 + Algolia 503). */
+/** Mock API error responses. Firebase WS responds with errors; Algolia returns 503. */
+/**
+ * Create a WebSocket handler that sends a handshake then responds to all
+ * Firebase get requests with a `permission_denied` error. Shared between
+ * page-level {@link mockApiError} and context-level `errorMockedPage` fixture.
+ */
+export function createErrorWsHandler() {
+  return (ws: WebSocketRoute) => {
+    ws.send(JSON.stringify({
+      t: 'c',
+      d: { t: 'h', d: { ts: Date.now(), v: '5', h: 's-mock.firebaseio.com', s: 'mock-session' } },
+    }));
+
+    attachFrameBuffering(ws, (raw) => {
+      let msg: { t: string; d: { r?: number; a?: string } };
+      try { msg = JSON.parse(raw); } catch { return; }
+      if (msg.t !== 'd' || msg.d?.a !== 'g' || msg.d?.r == null) return;
+      // Respond with error status for all get requests
+      ws.send(JSON.stringify({ t: 'd', d: { r: msg.d.r, b: { s: 'permission_denied', d: 'Simulated error' } } }));
+    });
+  };
+}
+
 export async function mockApiError(page: Page) {
-  await page.route(`${FIREBASE_API}/**`, async (route) => {
-    await route.fulfill({ status: 500, json: { error: 'Internal Server Error' } });
-  });
+  await page.routeWebSocket(FIREBASE_WS_PATTERN, createErrorWsHandler());
 
   await page.route(`${ALGOLIA_API}/**`, async (route) => {
     await route.fulfill({ status: 503, json: { message: 'Service unavailable' } });
@@ -489,45 +596,8 @@ export async function mockApiError(page: Page) {
 
 /** Set up API mocks with artificial delay so loading states are observable. */
 export async function setupApiMocksWithDelay(page: Page, delayMs: number = 1500) {
-  await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
-    await new Promise((r) => setTimeout(r, delayMs));
-    await route.fulfill({ json: mockTopItemIds });
-  });
-
-  await page.route(`${FIREBASE_API}/beststories.json`, async (route) => {
-    await new Promise((r) => setTimeout(r, delayMs));
-    await route.fulfill({ json: mockBestItemIds });
-  });
-
-  await page.route(`${FIREBASE_API}/item/*.json`, async (route) => {
-    await new Promise((r) => setTimeout(r, delayMs));
-    const url = route.request().url();
-    const match = url.match(/\/item\/(\d+)\.json/);
-    const id = match ? parseInt(match[1], 10) : 0;
-
-    const items: Record<number, object> = {
-      12345: mockItem1,
-      12346: mockItem2,
-      12347: mockItem3,
-    };
-
-    if (items[id]) {
-      await route.fulfill({ json: items[id] });
-    } else {
-      await route.fulfill({
-        json: {
-          id,
-          title: `Item ${id}`,
-          url: `https://example.com/item/${id}`,
-          by: 'testuser',
-          score: 50,
-          time: Math.floor(Date.now() / 1000) - 7200,
-          descendants: 5,
-          type: 'story',
-        },
-      });
-    }
-  });
+  // Firebase WS mock with delay
+  await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ delayMs }));
 
   await page.route(`${ALGOLIA_API}/search*`, async (route) => {
     await new Promise((r) => setTimeout(r, delayMs));

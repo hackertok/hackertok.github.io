@@ -1,14 +1,27 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { Routes, Route } from 'react-router-dom';
 import { UserProfile } from './UserProfile';
 import { __resetUserProfileCacheForTests } from '../hooks/useUserProfile';
 import { ScrollContainerProvider } from '../context/ScrollContainerContext';
-import { http, HttpResponse } from 'msw';
-import { server } from '../mocks/server';
-import { errorHandlers } from '../mocks/handlers';
-import { FIREBASE_API } from '../config/api';
+import { hnSdk } from '../api/hnSdk';
+import type { UserProfile as UserProfileType } from '../types';
+
+const mockUserProfile: UserProfileType = {
+  id: 'leerob',
+  created: 1160418092,
+  karma: 12345,
+  about: 'Engineer at Vercel. <a href="https://leerob.io">leerob.io</a>',
+  submitted: [12345, 99999, 88888],
+};
+
+const mockMinimalUser: UserProfileType = {
+  id: 'minimaluser',
+  created: 1160418092,
+  karma: 1,
+  submitted: [],
+};
 
 function renderProfile(username: string) {
   // ScrollContainerProvider matches the production tree (App.tsx wraps the
@@ -29,6 +42,16 @@ describe('UserProfile', () => {
     __resetUserProfileCacheForTests();
     document.documentElement.classList.remove('swipe-mode');
     document.body.classList.remove('swipe-mode');
+    vi.spyOn(hnSdk, 'readUser').mockImplementation(async (username) => {
+      if (username === 'leerob') return mockUserProfile;
+      if (username === 'minimaluser') return mockMinimalUser;
+      if (username === 'pg') return { id: 'pg', created: 1160418092, karma: 155555, submitted: [12345] };
+      return null;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('loaded profile', () => {
@@ -85,17 +108,12 @@ describe('UserProfile', () => {
     });
 
     it('preserves username case (HN is case-sensitive)', async () => {
-      server.use(
-        http.get(`${FIREBASE_API}/user/:id.json`, ({ params }) => {
-          const id = params.id as string;
-          return HttpResponse.json({
-            id,
-            created: 1160418092,
-            karma: 1,
-            submitted: [],
-          });
-        }),
-      );
+      vi.spyOn(hnSdk, 'readUser').mockImplementation(async (username) => ({
+        id: username,
+        created: 1160418092,
+        karma: 1,
+        submitted: [],
+      }));
 
       renderProfile('PaulG');
 
@@ -110,7 +128,7 @@ describe('UserProfile', () => {
 
   describe('not found', () => {
     beforeEach(() => {
-      server.use(errorHandlers.userNotFound);
+      vi.spyOn(hnSdk, 'readUser').mockResolvedValue(null);
     });
 
     it('renders the "user not found" StateView when Firebase returns null', async () => {
@@ -133,11 +151,7 @@ describe('UserProfile', () => {
 
   describe('error', () => {
     beforeEach(() => {
-      server.use(
-        http.get(`${FIREBASE_API}/user/:id.json`, () =>
-          HttpResponse.json({ error: 'boom' }, { status: 503 }),
-        ),
-      );
+      vi.spyOn(hnSdk, 'readUser').mockRejectedValue(new Error('Service unavailable'));
     });
 
     it('renders the error StateView with a Try Again action', async () => {

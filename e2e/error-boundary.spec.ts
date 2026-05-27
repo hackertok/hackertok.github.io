@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { FIREBASE_API, ALGOLIA_API, mockTopItemIds, mockAlgoliaItem1, mockAlgoliaItem2, mockAlgoliaItem3 } from './fixtures/mock-data';
+import { createFirebaseWsHandler, FIREBASE_WS_PATTERN } from './fixtures/api-mocks';
+import { ALGOLIA_API, mockAlgoliaItem1, mockAlgoliaItem2, mockAlgoliaItem3 } from './fixtures/mock-data';
 
 test.describe('Error Boundary', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
@@ -7,21 +8,11 @@ test.describe('Error Boundary', () => {
   test('displays error UI when a component crashes', async ({ page }) => {
     // Malformed title (object instead of string) makes React throw
     // "Objects are not valid as a React child" when rendering {item.title}.
-    await page.route(`${FIREBASE_API}/topstories.json`, async (route) => {
-      await route.fulfill({ json: mockTopItemIds });
-    });
-    await page.route(`${FIREBASE_API}/beststories.json`, async (route) => {
-      await route.fulfill({ json: [12345] });
-    });
-    await page.route(`${FIREBASE_API}/item/*.json`, async (route) => {
-      const url = route.request().url();
-      const match = url.match(/\/item\/(\d+)\.json/);
-      const id = match ? parseInt(match[1], 10) : 0;
-
-      await route.fulfill({
-        json: {
-          id,
-          title: { nested: 'this will crash React render' },
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({
+      itemOverrides: {
+        12345: {
+          id: 12345,
+          title: { nested: 'this will crash React render' } as unknown as string,
           url: 'https://example.com',
           by: 'testuser',
           score: 100,
@@ -29,8 +20,9 @@ test.describe('Error Boundary', () => {
           descendants: 5,
           type: 'story',
         },
-      });
-    });
+      },
+    }));
+
     await page.route(`${ALGOLIA_API}/search*`, async (route) => {
       await route.fulfill({
         json: {

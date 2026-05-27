@@ -62,10 +62,11 @@ export default defineConfig({
   webServer: {
     command: 'npm run build && npm run preview',
     url: 'http://localhost:4173',
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
     stdout: 'pipe',
     stderr: 'pipe',
+    env: { ...process.env, NODE_OPTIONS: '--disable-warning=DEP0205' },
   },
   timeout: 30 * 1000,
   expect: {

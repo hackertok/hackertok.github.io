@@ -1,14 +1,36 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { FullScreenComment } from './FullScreenComment';
 import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import { ALGOLIA_API } from '../config/api';
+import { hnSdk } from '../api/hnSdk';
+import type { FirebaseItem } from '../types';
+
+const mockItem: FirebaseItem = {
+  id: 12345,
+  title: 'Rust Is the Future of JavaScript Infrastructure',
+  url: 'https://leerob.io/blog/rust',
+  by: 'leerob',
+  score: 284,
+  time: Math.floor(Date.now() / 1000) - 3600,
+  descendants: 137,
+  kids: [1001, 1002, 1003, 1004],
+  type: 'story',
+};
 
 describe('FullScreenComment', () => {
+  beforeEach(() => {
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+      if (Number(id) === 12345) return mockItem;
+      return null;
+    });
+  });
+
   afterEach(() => {
     server.resetHandlers();
+    vi.restoreAllMocks();
   });
 
   it('renders comment author and text', async () => {

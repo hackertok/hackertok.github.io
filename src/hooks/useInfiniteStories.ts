@@ -215,7 +215,7 @@ export function useInfiniteStories(type: FeedType = 'top') {
           hasStaleCacheRef.current = false;
         }
 
-        positionRef.current = result.nextWindow;
+        positionRef.current = result.nextOffset;
         setHasMore(result.hasMore);
         
         if (uniqueStories.length > 0) {

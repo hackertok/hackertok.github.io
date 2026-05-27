@@ -1,4 +1,5 @@
-import { ALGOLIA_API, FIREBASE_API } from '../config/api';
+import { ALGOLIA_API } from '../config/api';
+import { hnSdk } from './hnSdk';
 import type { Item, StoryItem, Comment, AlgoliaHit, AlgoliaComment, AlgoliaSearchResponse, FirebaseItem, PrefetchResult, AlgoliaItemResponse, AlgoliaItemChild } from '../types';
 
 export class NotFoundError extends Error {
@@ -9,15 +10,15 @@ export class NotFoundError extends Error {
 }
 
 let bestStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
+let showStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
+let askStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// HN's gravity constant for ranking
-const HN_GRAVITY = 1.8;
-
-// score = (points - 1) / pow((hoursAgo + 2), gravity)
-function calculateHNScore(points: number, createdAtMs: number): number {
-  const hoursAgo = (Date.now() - createdAtMs) / (1000 * 60 * 60);
-  return (points - 1) / Math.pow(hoursAgo + 2, HN_GRAVITY);
+/** @internal Testing helper to reset module-level caches between tests. */
+export function __resetFetchCachesForTests() {
+  bestStoriesCache = { ids: null, timestamp: 0 };
+  showStoriesCache = { ids: null, timestamp: 0 };
+  askStoriesCache = { ids: null, timestamp: 0 };
 }
 
 function getDayRange(daysAgo = 0) {
@@ -92,34 +93,30 @@ function normalizeFirebaseItem(fbItem: FirebaseItem): Item {
 }
 
 /**
- * Current front page stories from Algolia. Sorted by HN's gravity algorithm
- * for approximate ranking (HN's actual ranking isn't exposed via the API).
+ * Top stories from HN's official ranked list. Items are returned in HN's
+ * native ranking order (no local gravity approximation needed).
  */
 export async function fetchTopStories(limit = 20): Promise<StoryItem[]> {
-  const url = `${ALGOLIA_API}/search?tags=front_page&hitsPerPage=${limit}`;
-  
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch top stories: ${response.status}`);
+  const allIds = await hnSdk.readRankedIds('topstories');
+  const stories: StoryItem[] = [];
+  let cursor = 0;
+
+  while (stories.length < limit && cursor < allIds.length) {
+    const batchIds = allIds.slice(cursor, cursor + limit * 2);
+    const items = await Promise.all(
+      batchIds.map(id => hnSdk.readItem(id).catch(() => null))
+    );
+    for (const item of items) {
+      if (stories.length >= limit) break;
+      if (!item || item.deleted || item.dead) continue;
+      if (item.type === 'job') continue;
+      const title = (item.title ?? '').toLowerCase();
+      if (title.includes('who is hiring') || title.includes('who wants to be hired')) continue;
+      stories.push(normalizeFirebaseToStoryItem(item));
+    }
+    cursor += batchIds.length;
   }
-  
-  const data = await response.json() as AlgoliaSearchResponse;
-  
-  const stories = data.hits
-    .filter((hit) => {
-      if (hit.type === 'job' || hit._tags?.includes('job')) return false;
-      const title = (hit.title || '').toLowerCase();
-      if (title.includes('who is hiring') || title.includes('who wants to be hired')) return false;
-      return true;
-    })
-    .map(normalizeAlgoliaHit);
-  
-  stories.sort((a, b) => {
-    const scoreA = calculateHNScore(a.points, a.createdAt);
-    const scoreB = calculateHNScore(b.points, b.createdAt);
-    return scoreB - scoreA;
-  });
-  
+
   return stories;
 }
 
@@ -161,11 +158,7 @@ export async function fetchBestStories(offset = 0, limit = 30) {
   const now = Date.now();
   
   if (!bestStoriesCache.ids || (now - bestStoriesCache.timestamp) >= CACHE_TTL) {
-    const response = await fetch(`${FIREBASE_API}/beststories.json`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch best stories: ${response.status}`);
-    }
-    bestStoriesCache = { ids: await response.json() as number[], timestamp: now };
+    bestStoriesCache = { ids: await hnSdk.readRankedIds('beststories'), timestamp: now };
   }
   
   const allIds = bestStoriesCache.ids ?? [];
@@ -176,7 +169,7 @@ export async function fetchBestStories(offset = 0, limit = 30) {
   }
   
   const fetched = await Promise.all(
-    pageIds.map((id: number) => fetchFirebaseItem(id).catch(() => null))
+    pageIds.map((id: number) => hnSdk.readItem(id).catch(() => null))
   );
   
   const stories = fetched
@@ -204,68 +197,54 @@ function normalizeFirebaseToStoryItem(fb: FirebaseItem): StoryItem {
   };
 }
 
-// Top 20 stories per 24-hour window, sorted by HN gravity. Skips empty days
-// (up to 30 consecutive) so users don't dead-end on a quiet day.
-async function fetchTaggedStories(tag: string, windowIndex = 0) {
-  const now = Math.floor(Date.now() / 1000);
-  const maxEmptyDays = 30;
-  
-  let currentWindow = windowIndex;
-  let attempts = 0;
-  
-  while (attempts < maxEmptyDays) {
-    const windowStart = now - ((currentWindow + 1) * 24 * 60 * 60);
-    const windowEnd = now - (currentWindow * 24 * 60 * 60);
-    
-    const url = `${ALGOLIA_API}/search?tags=${tag}&numericFilters=created_at_i>${windowStart},created_at_i<=${windowEnd}&hitsPerPage=100`;
-    
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${tag} stories: ${response.status}`);
-    }
-    
-    const data = await response.json() as AlgoliaSearchResponse;
-    const stories = data.hits.map(normalizeAlgoliaHit);
-    
-    if (stories.length > 0) {
-      stories.sort((a, b) => {
-        const scoreA = calculateHNScore(a.points, a.createdAt);
-        const scoreB = calculateHNScore(b.points, b.createdAt);
-        return scoreB - scoreA;
-      });
-      
-      return {
-        stories: stories.slice(0, 20),
-        hasMore: true,
-        nextWindow: currentWindow + 1,
-      };
-    }
-    
-    currentWindow++;
-    attempts++;
+async function fetchRankedStories(
+  list: string,
+  cache: { ids: number[] | null; timestamp: number },
+  type: 'show' | 'ask',
+  offset = 0,
+  limit = 20,
+) {
+  const now = Date.now();
+  if (!cache.ids || (now - cache.timestamp) >= CACHE_TTL) {
+    cache.ids = await hnSdk.readRankedIds(list);
+    cache.timestamp = now;
   }
-  
+
+  const allIds = cache.ids ?? [];
+  const pageIds = allIds.slice(offset, offset + limit);
+
+  if (pageIds.length === 0) {
+    return { stories: [] as StoryItem[], hasMore: false, nextOffset: offset };
+  }
+
+  const items = await Promise.all(
+    pageIds.map(id => hnSdk.readItem(id).catch(() => null))
+  );
+
+  const stories = items
+    .filter((fb): fb is FirebaseItem => fb != null && !fb.deleted && !fb.dead)
+    .map(fb => ({ ...normalizeFirebaseToStoryItem(fb), type: type }));
+
   return {
-    stories: [] as StoryItem[],
-    hasMore: false,
-    nextWindow: currentWindow,
+    stories,
+    hasMore: offset + limit < allIds.length,
+    nextOffset: offset + limit,
   };
 }
 
-export function fetchShowStories(windowIndex = 0) {
-  return fetchTaggedStories('show_hn', windowIndex);
+export function fetchShowStories(offset = 0) {
+  return fetchRankedStories('showstories', showStoriesCache, 'show', offset);
 }
 
-export function fetchAskStories(windowIndex = 0) {
-  return fetchTaggedStories('ask_hn', windowIndex);
+export function fetchAskStories(offset = 0) {
+  return fetchRankedStories('askstories', askStoriesCache, 'ask', offset);
 }
 
 export async function fetchFirebaseItem(id: number | string, signal?: AbortSignal): Promise<FirebaseItem> {
-  const response = await fetch(`${FIREBASE_API}/item/${id}.json`, { signal });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch item ${id}: ${response.status}`);
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
   }
-  const item = await response.json() as FirebaseItem | null;
+  const item = await hnSdk.readItem(id);
   if (item == null) {
     throw new NotFoundError(`Item ${id} not found`);
   }
@@ -330,10 +309,10 @@ function buildCommentTree(comments: AlgoliaComment[], itemId: number, kidsOrder 
       const parent = commentMap.get(comment.parentId);
       if (parent) {
         parent.children.push(comment);
-      } else {
-        // Parent not found (might be deleted), treat as root
-        rootComments.push(comment);
       }
+      // Parent not in map → parent is dead/deleted. HN hides the entire
+      // subtree under a dead comment, so we drop the orphan (its children
+      // still attach to it in the map but the subtree is unreachable).
     }
   });
   
@@ -452,7 +431,7 @@ async function fetchKidsOrdering(commentIds: number[], signal?: AbortSignal): Pr
     const results = await Promise.all(
       batch.map(async (id) => {
         try {
-          const item = await fetchFirebaseItem(id, signal);
+          const item = await hnSdk.readItem(id);
           if (item?.kids) {
             return { id: item.id, kids: item.kids };
           }

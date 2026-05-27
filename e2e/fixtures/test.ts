@@ -5,8 +5,8 @@
  */
 import { test as base, expect, Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { mockEmptyItems, mockApiError } from './api-mocks';
-import { FIREBASE_API, ALGOLIA_API } from './mock-data';
+import { mockEmptyItems, mockApiError, createErrorWsHandler, FIREBASE_WS_PATTERN } from './api-mocks';
+import { ALGOLIA_API } from './mock-data';
 
 /**
  * Extended test fixture types
@@ -52,9 +52,8 @@ export const test = base.extend<CustomFixtures>({
    * `page.route()` may not be active by the time `page.goto()` fires.
    */
   errorMockedPage: async ({ context }, use) => {
-    await context.route(`${FIREBASE_API}/**`, async (route) => {
-      await route.fulfill({ status: 500, json: { error: 'Internal Server Error' } });
-    });
+    // Use the shared error handler with proper frame-count buffering
+    await context.routeWebSocket(FIREBASE_WS_PATTERN, createErrorWsHandler());
     await context.route(`${ALGOLIA_API}/**`, async (route) => {
       await route.fulfill({ status: 503, json: { message: 'Service unavailable' } });
     });
