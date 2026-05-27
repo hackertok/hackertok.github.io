@@ -1,10 +1,29 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useInfiniteStories } from './useInfiniteStories';
 import { setCachedFeed, clearFeedCache } from '../utils/feedCache';
 import { clearListSessionState } from '../utils/itemCache';
 import { createStoryItem } from '../test/factories';
 import { server } from '../mocks/server';
+import { hnSdk } from '../api/hnSdk';
+import { __resetFetchCachesForTests } from '../api/hn';
+import type { FirebaseItem } from '../types';
+
+function makeFirebaseItem(id: number): FirebaseItem {
+  return {
+    id,
+    title: `Story ${id}`,
+    url: `https://example.com/${id}`,
+    by: 'testuser',
+    score: 50 + id,
+    time: Math.floor(Date.now() / 1000) - 3600,
+    descendants: 5,
+    type: 'story',
+  };
+}
+
+// Generate 50 item IDs for ranked lists
+const rankedIds = Array.from({ length: 50 }, (_, i) => i + 1);
 
 describe('useInfiniteStories', () => {
   beforeEach(() => {
@@ -13,11 +32,15 @@ describe('useInfiniteStories', () => {
     clearListSessionState('best');
     clearListSessionState('show');
     clearListSessionState('ask');
+    __resetFetchCachesForTests();
+    vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(rankedIds);
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => makeFirebaseItem(Number(id)));
   });
 
   afterEach(() => {
     server.resetHandlers();
     clearFeedCache();
+    vi.restoreAllMocks();
   });
 
   it('loads stories on first loadMore when no cache', async () => {

@@ -12,6 +12,14 @@ test.describe('Network Status Bar - Viewport Switch', () => {
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
+    // Pre-load lazy-loaded mobile chunks (SwipeStoryViewer, etc.) while still
+    // online. Without this, resizing to mobile viewport while offline causes a
+    // dynamic import failure that triggers the Error Boundary instead of the
+    // network status bar.
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto('/#/');
+    await page.waitForLoadState('networkidle');
+    await page.setViewportSize({ width: 1280, height: 720 });
   });
 
   test('no horizontal overflow when going offline on desktop then switching to mobile', async ({ page, context }) => {

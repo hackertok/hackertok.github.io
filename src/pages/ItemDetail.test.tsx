@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { Routes, Route } from 'react-router-dom';
@@ -6,8 +6,22 @@ import { ItemDetail } from './ItemDetail';
 import { clearViewed, markViewed, isViewed } from '../utils/viewedItems';
 import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
-import { FIREBASE_API, ALGOLIA_API } from '../config/api';
+import { hnSdk } from '../api/hnSdk';
+import { ALGOLIA_API } from '../config/api';
 import { mockAlgoliaCommentItem } from '../mocks/handlers';
+import type { FirebaseItem } from '../types';
+
+const defaultItem: FirebaseItem = {
+  id: 12345,
+  title: 'Rust Is the Future of JavaScript Infrastructure',
+  url: 'https://leerob.io/blog/rust',
+  by: 'leerob',
+  score: 284,
+  time: Math.floor(Date.now() / 1000) - 3600,
+  descendants: 137,
+  kids: [1001, 1002, 1003, 1004],
+  type: 'story',
+};
 
 // Render ItemDetail inside a route so useParams() resolves :id
 function renderItemDetail(itemId: number) {
@@ -22,6 +36,15 @@ function renderItemDetail(itemId: number) {
 describe('ItemDetail', () => {
   beforeEach(() => {
     clearViewed();
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+      if (Number(id) === 12345) return defaultItem;
+      return null;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    server.resetHandlers();
   });
 
   describe('viewed state', () => {
@@ -62,9 +85,7 @@ describe('ItemDetail', () => {
 
   describe('back-to-home action on not-found', () => {
     beforeEach(() => {
-      server.use(
-        http.get(`${FIREBASE_API}/item/:id.json`, () => HttpResponse.json(null)),
-      );
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue(null);
     });
 
     it('links to / with "Back to Home" label', async () => {
@@ -77,30 +98,14 @@ describe('ItemDetail', () => {
 
   describe('comment detection', () => {
     it('renders CommentDetail when item.type is comment', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 1001) {
+          return { id: 1001, by: 'patio11', text: 'The wasm-bindgen approach is really interesting.', time: Math.floor(Date.now() / 1000) - 1800, parent: 12345, type: 'comment' };
+        }
+        return { id: Number(id), title: 'Rust Is the Future of JavaScript Infrastructure', by: 'leerob', score: 284, time: Math.floor(Date.now() / 1000) - 3600, descendants: 137, type: 'story' };
+      });
+
       server.use(
-        http.get(`${FIREBASE_API}/item/:id.json`, ({ params }) => {
-          const id = parseInt(params.id as string, 10);
-          if (id === 1001) {
-            return HttpResponse.json({
-              id: 1001,
-              by: 'patio11',
-              text: 'The wasm-bindgen approach is really interesting.',
-              time: Math.floor(Date.now() / 1000) - 1800,
-              parent: 12345,
-              type: 'comment',
-            });
-          }
-          // Fallback handler covers the parent-story fetch (item title lookup).
-          return HttpResponse.json({
-            id,
-            title: 'Rust Is the Future of JavaScript Infrastructure',
-            by: 'leerob',
-            score: 284,
-            time: Math.floor(Date.now() / 1000) - 3600,
-            descendants: 137,
-            type: 'story',
-          });
-        }),
         http.get(`${ALGOLIA_API}/items/:id`, () => {
           return HttpResponse.json(mockAlgoliaCommentItem);
         }),

@@ -1,13 +1,23 @@
 import { HashRouter, Routes, Route, useParams, useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect, type ReactNode } from 'react';
+import { lazy, Suspense, useState, useEffect, type ReactNode } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
-import { Header, ErrorBoundary, SwipeStoryViewer, SwipeDomainStoryViewer, SwipeUserSubmissionsViewer, SwipeCommentViewer, FullScreenCommentSkeletonPanel, StateView, NetworkStatusBar } from './components';
+import { Header, ErrorBoundary, FullScreenCommentSkeletonPanel, Spinner, StateView, NetworkStatusBar } from './components';
 import { TooltipProvider } from './components/ui';
-import { StoryList, ItemDetail, DomainStories, UserProfile, UserSubmissions } from './pages';
+import { StoryList } from './pages';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
+
+// Lazy-loaded route components for code splitting
+const ItemDetail = lazy(() => import('./pages/ItemDetail').then(m => ({ default: m.ItemDetail })));
+const DomainStories = lazy(() => import('./pages/DomainStories').then(m => ({ default: m.DomainStories })));
+const UserProfile = lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
+const UserSubmissions = lazy(() => import('./pages/UserSubmissions').then(m => ({ default: m.UserSubmissions })));
+const SwipeStoryViewer = lazy(() => import('./components/SwipeStoryViewer').then(m => ({ default: m.SwipeStoryViewer })));
+const SwipeDomainStoryViewer = lazy(() => import('./components/SwipeDomainStoryViewer').then(m => ({ default: m.SwipeDomainStoryViewer })));
+const SwipeUserSubmissionsViewer = lazy(() => import('./components/SwipeUserSubmissionsViewer').then(m => ({ default: m.SwipeUserSubmissionsViewer })));
+const SwipeCommentViewer = lazy(() => import('./components/SwipeCommentViewer').then(m => ({ default: m.SwipeCommentViewer })));
 import { NetworkStatusProvider } from './context/NetworkStatusContext';
 import { fetchItemOnly } from './api/hn';
 import type { FeedType, LocationState } from './types';
@@ -193,17 +203,19 @@ function App() {
                   <Header />
                   <NetworkStatusBar />
                   <MainContent>
-                    <Routes>
-                      <Route path="/" element={<MobileStoryListWrapper type="top" />} />
-                      <Route path="/show" element={<MobileStoryListWrapper type="show" />} />
-                      <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
-                      <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
-                      <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
-                      <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
-                      <Route path="/user/:id" element={<UserProfile />} />
-                      <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
-                      <Route path="*" element={<NotFoundPage />} />
-                    </Routes>
+                    <Suspense fallback={<div className="flex items-center justify-center h-[50vh]"><Spinner size="lg" /></div>}>
+                      <Routes>
+                        <Route path="/" element={<MobileStoryListWrapper type="top" />} />
+                        <Route path="/show" element={<MobileStoryListWrapper type="show" />} />
+                        <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
+                        <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
+                        <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
+                        <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
+                        <Route path="/user/:id" element={<UserProfile />} />
+                        <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
+                        <Route path="*" element={<NotFoundPage />} />
+                      </Routes>
+                    </Suspense>
                   </MainContent>
                 </div>
               </LocationAwareErrorBoundary>

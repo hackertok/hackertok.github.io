@@ -1,15 +1,34 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { FullScreenItem } from './FullScreenItem';
 import { clearViewed, markViewed, isViewed } from '../utils/viewedItems';
-import { http, HttpResponse } from 'msw';
-import { server } from '../mocks/server';
-import { FIREBASE_API } from '../config/api';
+import { hnSdk } from '../api/hnSdk';
+import type { FirebaseItem } from '../types';
+
+const defaultItem: FirebaseItem = {
+  id: 12345,
+  title: 'Rust Is the Future of JavaScript Infrastructure',
+  url: 'https://leerob.io/blog/rust',
+  by: 'leerob',
+  score: 284,
+  time: Math.floor(Date.now() / 1000) - 3600,
+  descendants: 137,
+  kids: [1001, 1002, 1003, 1004],
+  type: 'story',
+};
 
 describe('FullScreenItem', () => {
   beforeEach(() => {
     clearViewed();
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+      if (Number(id) === 12345) return defaultItem;
+      return null;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('viewed state', () => {
@@ -48,30 +67,12 @@ describe('FullScreenItem', () => {
 
   describe('comment handling', () => {
     it('shows "Item not found" when item type is comment', async () => {
-      server.use(
-        http.get(`${FIREBASE_API}/item/:id.json`, ({ params }) => {
-          const id = parseInt(params.id as string, 10);
-          if (id === 1001) {
-            return HttpResponse.json({
-              id: 1001,
-              by: 'patio11',
-              text: 'The wasm-bindgen approach is really interesting.',
-              time: Math.floor(Date.now() / 1000) - 1800,
-              parent: 12345,
-              type: 'comment',
-            });
-          }
-          return HttpResponse.json({
-            id,
-            title: 'Rust Is the Future of JavaScript Infrastructure',
-            by: 'leerob',
-            score: 284,
-            time: Math.floor(Date.now() / 1000) - 3600,
-            descendants: 137,
-            type: 'story',
-          });
-        }),
-      );
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 1001) {
+          return { id: 1001, by: 'patio11', text: 'The wasm-bindgen approach is really interesting.', time: Math.floor(Date.now() / 1000) - 1800, parent: 12345, type: 'comment' };
+        }
+        return { id: Number(id), title: 'Rust Is the Future of JavaScript Infrastructure', by: 'leerob', score: 284, time: Math.floor(Date.now() / 1000) - 3600, descendants: 137, type: 'story' };
+      });
 
       render(<FullScreenItem itemId={1001} />);
 

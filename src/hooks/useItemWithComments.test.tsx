@@ -5,11 +5,24 @@ import { useItemWithComments } from './useItemWithComments';
 import { setCachedItem, getCachedItem, ITEM_CACHE_KEY_PREFIX } from '../utils/itemCache';
 import { _resetForTesting, isPriorityFetchActive } from '../utils/fetchPriority';
 import { server } from '../mocks/server';
-import { FIREBASE_API, ALGOLIA_API } from '../config/api';
-import type { Comment } from '../types';
+import { hnSdk } from '../api/hnSdk';
+import { ALGOLIA_API } from '../config/api';
+import type { Comment, FirebaseItem } from '../types';
 import { createStoryItem, createComment } from '../test/factories';
 import { NetworkStatusProvider } from '../context/NetworkStatusContext';
 import type { ReactNode } from 'react';
+
+const mockFirebaseStory: FirebaseItem = {
+  id: 12345,
+  title: 'Sample HN Post',
+  url: 'https://example.com',
+  by: 'testuser',
+  score: 100,
+  time: Math.floor(Date.now() / 1000) - 3600,
+  descendants: 3,
+  kids: [1001, 1002],
+  type: 'story',
+};
 
 const testItem = createStoryItem({
   id: 12345,
@@ -31,10 +44,15 @@ describe('useItemWithComments', () => {
   beforeEach(() => {
     localStorage.clear();
     _resetForTesting();
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+      if (Number(id) === 12345) return mockFirebaseStory;
+      return null;
+    });
   });
 
   afterEach(() => {
     _resetForTesting();
+    vi.restoreAllMocks();
   });
 
   describe('basic fetching', () => {
@@ -175,11 +193,7 @@ describe('useItemWithComments', () => {
     });
 
     it('unregisters priority on item fetch failure', async () => {
-      server.use(
-        http.get(`${FIREBASE_API}/item/:id.json`, () => {
-          return HttpResponse.json(null, { status: 500 });
-        })
-      );
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue(null);
 
       expect(isPriorityFetchActive()).toBe(false);
 
@@ -271,7 +285,7 @@ describe('useItemWithComments', () => {
         return originalAbort.call(this);
       };
 
-      const { rerender } = renderHook(
+      const { result, rerender } = renderHook(
         ({ itemId }) => useItemWithComments(itemId),
         { initialProps: { itemId: 12345 } }
       );
@@ -281,6 +295,11 @@ describe('useItemWithComments', () => {
       expect(abortSpy).toHaveBeenCalled();
 
       AbortController.prototype.abort = originalAbort;
+
+      // Let async updates settle to avoid act() warnings
+      await waitFor(() => {
+        expect(result.current.itemLoading).toBe(false);
+      });
     });
 
     it('does NOT abort when deferComments changes to true (same itemId)', async () => {
@@ -345,11 +364,7 @@ describe('useItemWithComments', () => {
 
   describe('error handling', () => {
     it('sets error state on item fetch failure', async () => {
-      server.use(
-        http.get(`${FIREBASE_API}/item/:id.json`, () => {
-          return HttpResponse.error();
-        })
-      );
+      vi.spyOn(hnSdk, 'readItem').mockRejectedValue(new Error('Network error'));
 
       const { result } = renderHook(() => useItemWithComments(12345));
 
@@ -622,10 +637,10 @@ describe('useItemWithComments', () => {
 
       // 50ms delay simulates a real network round trip so the test can
       // observe the "loading null" intermediate state.
-      server.use(
-        http.get('https://hacker-news.firebaseio.com/v0/item/44444.json', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 44444) {
           await new Promise(resolve => setTimeout(resolve, 50));
-          return HttpResponse.json({
+          return {
             id: 44444,
             type: 'story',
             title: 'Fresh Item B',
@@ -633,10 +648,11 @@ describe('useItemWithComments', () => {
             score: 200,
             by: 'user2',
             time: Math.floor(Date.now() / 1000),
-            descendants: 10
-          });
-        })
-      );
+            descendants: 10,
+          };
+        }
+        return mockFirebaseStory;
+      });
 
       const { result, rerender } = renderHook(
         ({ itemId }) => useItemWithComments(itemId),
@@ -650,6 +666,11 @@ describe('useItemWithComments', () => {
 
       // Either null (loading) or the new B is acceptable; the old A is not.
       expect(result.current.item?.id).not.toBe(33333);
+
+      // Let async updates settle to avoid act() warnings
+      await waitFor(() => {
+        expect(result.current.itemLoading).toBe(false);
+      });
     });
   });
 
@@ -784,11 +805,9 @@ describe('useItemWithComments', () => {
       expect(result.current.commentsLoading).toBe(true);
 
       // Both endpoints must fail since fetchCommentsForItem touches Firebase too.
+      vi.spyOn(hnSdk, 'readItem').mockRejectedValue(new Error('Offline'));
       server.use(
         http.get(`${ALGOLIA_API}/search`, () => {
-          return new HttpResponse(null, { status: 500 });
-        }),
-        http.get(`${FIREBASE_API}/item/:id.json`, () => {
           return new HttpResponse(null, { status: 500 });
         })
       );
@@ -815,15 +834,10 @@ describe('useItemWithComments', () => {
       expect(result.current.itemLoading).toBe(false);
 
       // Slow the refresh fetch so the synchronous loading flip is observable.
-      server.use(
-        http.get(`${FIREBASE_API}/item/:id.json`, async () => {
-          await new Promise(r => setTimeout(r, 200));
-          return HttpResponse.json({
-            id: 12345, type: 'story', title: 'Sample HN Post', url: 'https://example.com',
-            score: 100, by: 'testuser', time: Math.floor(Date.now() / 1000), descendants: 3,
-          });
-        })
-      );
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async () => {
+        await new Promise(r => setTimeout(r, 200));
+        return mockFirebaseStory;
+      });
 
       // Loading states must flip BEFORE the await, not after the fetch settles.
       let refreshPromise: Promise<void>;
@@ -841,11 +855,7 @@ describe('useItemWithComments', () => {
     });
 
     it('clears error and commentsError during refresh', async () => {
-      server.use(
-        http.get(`${FIREBASE_API}/item/:id.json`, () => {
-          return HttpResponse.error();
-        })
-      );
+      vi.spyOn(hnSdk, 'readItem').mockRejectedValue(new Error('Network error'));
 
       const { result } = renderHook(() => useItemWithComments(12345));
 
@@ -853,7 +863,7 @@ describe('useItemWithComments', () => {
         expect(result.current.error).toBeTruthy();
       });
 
-      server.resetHandlers();
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue(mockFirebaseStory);
 
       let refreshPromise: Promise<void>;
       act(() => {
@@ -880,11 +890,7 @@ describe('useItemWithComments', () => {
         expect(result.current.commentsLoading).toBe(false);
       });
 
-      server.use(
-        http.get(`${FIREBASE_API}/item/:id.json`, () => {
-          return HttpResponse.error();
-        })
-      );
+      vi.spyOn(hnSdk, 'readItem').mockRejectedValue(new Error('Network error'));
 
       await act(async () => {
         await result.current.refresh().catch(() => { /* error set internally */ });

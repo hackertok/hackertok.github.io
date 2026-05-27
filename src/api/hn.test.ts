@@ -13,14 +13,42 @@ import {
   fetchFirebaseItem,
   fetchItemOnly,
   fetchAlgoliaItem,
+  fetchCommentsForItem,
   normalizeAlgoliaItemChildren,
   NotFoundError,
+  __resetFetchCachesForTests,
 } from './hn';
-import { http, HttpResponse } from 'msw';
-import { server } from '../mocks/server';
-import { FIREBASE_API } from '../config/api';
+import { hnSdk } from './hnSdk';
+import type { FirebaseItem } from '../types';
+
+const mockFirebaseItem: FirebaseItem = {
+  id: 12345,
+  title: 'Rust Is the Future of JavaScript Infrastructure',
+  url: 'https://leerob.io/blog/rust',
+  by: 'leerob',
+  score: 284,
+  time: Math.floor(Date.now() / 1000) - 3600,
+  descendants: 137,
+  kids: [1001, 1002, 1003, 1004],
+  type: 'story',
+};
+
+const mockCommentItem: FirebaseItem = {
+  id: 1001,
+  by: 'patio11',
+  text: 'The wasm-bindgen approach is really interesting.',
+  time: Math.floor(Date.now() / 1000) - 1800,
+  parent: 12345,
+  kids: [2001],
+  type: 'comment',
+};
 
 describe('hn API utilities', () => {
+  beforeEach(() => {
+    __resetFetchCachesForTests();
+    vi.restoreAllMocks();
+  });
+
   describe('formatTimeAgo', () => {
     beforeEach(() => {
       vi.useFakeTimers();
@@ -416,13 +444,25 @@ describe('hn API utilities', () => {
   });
 
   describe('fetchShowStories', () => {
+    const mockShowIds = [99999, 99998, 99997];
+    const mockShowItems: Record<number, FirebaseItem> = {
+      99999: { id: 99999, title: 'Show HN: My Awesome Project', url: 'https://github.com/andydunstall/piko', by: 'andydunstall', score: 312, time: Math.floor(Date.now() / 1000) - 7200, descendants: 89, type: 'story' },
+      99998: { id: 99998, title: 'Show HN: Another Cool Demo', url: 'https://github.com/opticdev/optic', by: 'aidan_cully', score: 143, time: Math.floor(Date.now() / 1000) - 3600, descendants: 47, type: 'story' },
+      99997: { id: 99997, title: 'Show HN: Third Project', url: 'https://example.com', by: 'user3', score: 50, time: Math.floor(Date.now() / 1000) - 1800, descendants: 10, type: 'story' },
+    };
+
+    beforeEach(() => {
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(mockShowIds);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => mockShowItems[Number(id)] ?? null);
+    });
+
     it('returns normalized Show HN items', async () => {
       const result = await fetchShowStories(0);
       
       expect(result.stories).toBeDefined();
       expect(result.stories.length).toBeGreaterThan(0);
       expect(result.hasMore).toBeDefined();
-      expect(result.nextWindow).toBe(1);
+      expect(result.nextOffset).toBe(20);
     });
 
     it('returns items with show type', async () => {
@@ -445,42 +485,59 @@ describe('hn API utilities', () => {
       expect(item).toHaveProperty('commentCount');
     });
 
-    it('sorts items by gravity score', async () => {
+    it('returns items in ranked order (same order as ID list)', async () => {
       const result = await fetchShowStories(0);
       
-      // With 2 mock items:
-      // - Item1: 312 pts, 2hr ago → gravity = (312-1)/(2+2)^1.8 ≈ 27.5
-      // - Item2: 143 pts, 1hr ago → gravity = (143-1)/(1+2)^1.8 ≈ 22.8
-      // Higher gravity score ranks first
-      expect(result.stories.length).toBe(2);
-      expect(result.stories[0].points).toBe(312); // Higher gravity score first
-      expect(result.stories[1].points).toBe(143);
+      expect(result.stories.length).toBe(3);
+      expect(result.stories[0].id).toBe(99999);
+      expect(result.stories[1].id).toBe(99998);
+      expect(result.stories[2].id).toBe(99997);
     });
 
     it('returns correct pagination info', async () => {
       const result = await fetchShowStories(0);
       
-      expect(result.nextWindow).toBe(1);
-      expect(result.hasMore).toBe(true); // Always true when items are found (skips empty days)
+      expect(result.nextOffset).toBe(20);
+      expect(result.hasMore).toBe(false);
     });
 
-    it('increments window index for next page', async () => {
+    it('paginates by offset', async () => {
+      const manyIds = Array.from({ length: 25 }, (_, i) => 90000 + i);
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(manyIds);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => ({
+        id: Number(id), title: `Item ${id}`, by: 'user', score: 10, time: Math.floor(Date.now() / 1000), descendants: 0, type: 'story',
+      }));
+
       const result1 = await fetchShowStories(0);
-      expect(result1.nextWindow).toBe(1);
+      expect(result1.nextOffset).toBe(20);
+      expect(result1.hasMore).toBe(true);
       
-      const result2 = await fetchShowStories(result1.nextWindow);
-      expect(result2.nextWindow).toBe(2);
+      const result2 = await fetchShowStories(result1.nextOffset);
+      expect(result2.stories.length).toBe(5);
+      expect(result2.hasMore).toBe(false);
     });
   });
 
   describe('fetchAskStories', () => {
+    const mockAskIds = [88888, 88887, 88886];
+    const mockAskItems: Record<number, FirebaseItem> = {
+      88888: { id: 88888, title: 'Ask HN: What are you working on?', text: 'Tell me!', by: 'whoishiring', score: 245, time: Math.floor(Date.now() / 1000) - 7200, descendants: 312, type: 'story' },
+      88887: { id: 88887, title: 'Ask HN: Best resources to learn Rust?', text: 'Looking for help', by: 'rustlearner', score: 178, time: Math.floor(Date.now() / 1000) - 3600, descendants: 95, type: 'story' },
+      88886: { id: 88886, title: 'Ask HN: Favorite editor?', text: 'vim or emacs?', by: 'curious', score: 50, time: Math.floor(Date.now() / 1000) - 1800, descendants: 20, type: 'story' },
+    };
+
+    beforeEach(() => {
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(mockAskIds);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => mockAskItems[Number(id)] ?? null);
+    });
+
     it('returns normalized Ask HN items', async () => {
       const result = await fetchAskStories(0);
       
       expect(result.stories).toBeDefined();
       expect(result.stories.length).toBeGreaterThan(0);
       expect(result.hasMore).toBeDefined();
-      expect(result.nextWindow).toBe(1);
+      expect(result.nextOffset).toBe(20);
     });
 
     it('returns items with ask type', async () => {
@@ -506,43 +563,57 @@ describe('hn API utilities', () => {
     it('handles Ask HN posts without URL', async () => {
       const result = await fetchAskStories(0);
       
-      // Ask HN posts typically have no external URL
       result.stories.forEach(item => {
-        // url can be null or undefined for Ask HN
         expect(item.url === null || item.url === undefined).toBe(true);
       });
     });
 
-    it('sorts items by gravity score', async () => {
+    it('returns items in ranked order (same order as ID list)', async () => {
       const result = await fetchAskStories(0);
       
-      // With 2 mock items:
-      // - Item1: 245 pts, 2hr ago → gravity = (245-1)/(2+2)^1.8 ≈ 17.5
-      // - Item2: 178 pts, 1hr ago → gravity = (178-1)/(1+2)^1.8 ≈ 24.5
-      // Higher gravity score ranks first
-      expect(result.stories.length).toBe(2);
-      expect(result.stories[0].points).toBe(178); // Higher gravity score first
-      expect(result.stories[1].points).toBe(245);
+      expect(result.stories.length).toBe(3);
+      expect(result.stories[0].id).toBe(88888);
+      expect(result.stories[1].id).toBe(88887);
+      expect(result.stories[2].id).toBe(88886);
     });
 
     it('returns correct pagination info', async () => {
       const result = await fetchAskStories(0);
       
-      expect(result.nextWindow).toBe(1);
-      expect(result.hasMore).toBe(true); // Always true when items are found (skips empty days)
+      expect(result.nextOffset).toBe(20);
+      expect(result.hasMore).toBe(false);
     });
 
-    it('increments window index for next page', async () => {
+    it('paginates by offset', async () => {
+      const manyIds = Array.from({ length: 25 }, (_, i) => 80000 + i);
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(manyIds);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => ({
+        id: Number(id), title: `Item ${id}`, by: 'user', score: 10, time: Math.floor(Date.now() / 1000), descendants: 0, type: 'story',
+      }));
+
       const result1 = await fetchAskStories(0);
-      expect(result1.nextWindow).toBe(1);
+      expect(result1.nextOffset).toBe(20);
       
-      const result2 = await fetchAskStories(result1.nextWindow);
-      expect(result2.nextWindow).toBe(2);
+      const result2 = await fetchAskStories(result1.nextOffset);
+      expect(result2.stories.length).toBe(5);
+      expect(result2.hasMore).toBe(false);
     });
   });
 
   describe('fetchTopStories', () => {
-    it('returns normalized items from Algolia', async () => {
+    const mockTopIds = [12345, 12346, 12347];
+    const mockTopItems: Record<number, FirebaseItem> = {
+      12345: mockFirebaseItem,
+      12346: { id: 12346, title: 'SQLite Does Not Do Full FSYNC by Default', url: 'https://sqlite.org/draft/wal.html', by: 'ingve', score: 198, time: Math.floor(Date.now() / 1000) - 7200, descendants: 73, type: 'story' },
+      12347: { id: 12347, title: 'Why We Moved from React to htmx', url: 'https://htmx.org/essays/react-to-htmx/', by: 'carsongross', score: 156, time: Math.floor(Date.now() / 1000) - 10800, descendants: 241, type: 'story' },
+    };
+
+    beforeEach(() => {
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(mockTopIds);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => mockTopItems[Number(id)] ?? null);
+    });
+
+    it('returns normalized items from ranked list', async () => {
       const result = await fetchTopStories(20);
       
       expect(result).toBeDefined();
@@ -569,14 +640,26 @@ describe('hn API utilities', () => {
       expect(result.length).toBeLessThanOrEqual(20);
     });
 
-    it('sorts items by gravity score', async () => {
+    it('returns items in ranked order (same as ID list)', async () => {
       const result = await fetchTopStories(20);
 
-      expect(result.length).toBeGreaterThan(0);
+      expect(result.length).toBe(3);
+      expect(result[0].id).toBe(12345);
+      expect(result[1].id).toBe(12346);
+      expect(result[2].id).toBe(12347);
     });
   });
 
   describe('fetchBestStories', () => {
+    const mockBestIds = [12345, 12346, 12347, 12348, 12349];
+
+    beforeEach(() => {
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(mockBestIds);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => ({
+        id: Number(id), title: `Item ${id}`, by: 'testuser', score: 50, time: Math.floor(Date.now() / 1000) - 7200, descendants: 5, type: 'story',
+      }));
+    });
+
     it('returns items with pagination info', async () => {
       const result = await fetchBestStories(0, 30);
       
@@ -614,6 +697,14 @@ describe('hn API utilities', () => {
   });
 
   describe('fetchFirebaseItem', () => {
+    beforeEach(() => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 12345) return mockFirebaseItem;
+        if (Number(id) === 1001) return mockCommentItem;
+        return null;
+      });
+    });
+
     it('fetches an item by ID', async () => {
       const result = await fetchFirebaseItem(12345);
       
@@ -638,19 +729,20 @@ describe('hn API utilities', () => {
         .rejects.toThrow();
     });
 
-    it('throws NotFoundError when Firebase returns null for non-existent item', async () => {
-      server.use(
-        http.get(`${FIREBASE_API}/item/:id.json`, () => {
-          return HttpResponse.json(null);
-        }),
-      );
-
+    it('throws NotFoundError when SDK returns null for non-existent item', async () => {
       await expect(fetchFirebaseItem(99999)).rejects.toThrow(NotFoundError);
       await expect(fetchFirebaseItem(99999)).rejects.toThrow('Item 99999 not found');
     });
   });
 
   describe('fetchItemOnly', () => {
+    beforeEach(() => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 12345) return mockFirebaseItem;
+        return null;
+      });
+    });
+
     it('returns item metadata without comments', async () => {
       const result = await fetchItemOnly(12345);
       
@@ -668,18 +760,14 @@ describe('hn API utilities', () => {
       expect(result.type).not.toBe('comment');
       if (result.type === 'comment') throw new Error('unexpected');
       
-      // Firebase uses 'score' but we return 'points'
       expect(result.points).toBe(284);
-      // Firebase uses 'by' but we return 'author'
       expect(result.author).toBe('leerob');
-      // Firebase uses 'descendants' but we return 'commentCount'
       expect(result.type !== 'job' ? result.commentCount : 0).toBe(137);
     });
 
     it('converts Unix timestamp to milliseconds', async () => {
       const result = await fetchItemOnly(12345);
       
-      // createdAt should be in milliseconds (> 1 trillion)
       expect(result.createdAt).toBeGreaterThan(1000000000000);
     });
 
@@ -795,6 +883,61 @@ describe('hn API utilities', () => {
     it('handles empty children array', () => {
       const result = normalizeAlgoliaItemChildren([]);
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('fetchCommentsForItem', () => {
+    it('drops orphaned comments whose parent is dead (not in Algolia)', async () => {
+      const itemId = 9000;
+
+      // Item has 3 root-level kids: 101 (alive), 102 (dead), 103 (alive)
+      const firebaseItem: FirebaseItem = {
+        id: itemId,
+        title: 'Test Story',
+        by: 'author',
+        score: 10,
+        time: 1700000000,
+        descendants: 5,
+        kids: [101, 102, 103],
+        type: 'story',
+      };
+
+      // Comment 102 is dead — Algolia won't return it.
+      // Comments 201, 202 are children of the dead comment 102.
+      const algoliaHits = [
+        { objectID: '101', author: 'alice', comment_text: 'Alive root', created_at_i: 1700000100, parent_id: itemId },
+        { objectID: '103', author: 'bob', comment_text: 'Also alive root', created_at_i: 1700000200, parent_id: itemId },
+        { objectID: '201', author: 'charlie', comment_text: 'Reply to dead parent', created_at_i: 1700000300, parent_id: 102 },
+        { objectID: '202', author: 'dave', comment_text: 'Another reply to dead parent', created_at_i: 1700000400, parent_id: 102 },
+      ];
+
+      // Mock hnSdk.readItem for the initial item fetch and kids ordering
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === itemId) return firebaseItem;
+        return null;
+      });
+
+      // Mock fetch for Algolia search
+      const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ hits: algoliaHits, nbHits: algoliaHits.length }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+      const comments = await fetchCommentsForItem(itemId);
+
+      // Only the 2 alive root comments should appear; orphans 201/202 are dropped
+      expect(comments).toHaveLength(2);
+      expect(comments[0].id).toBe(101);
+      expect(comments[1].id).toBe(103);
+
+      // Orphaned comments should NOT be promoted to root
+      const allIds = comments.map(c => c.id);
+      expect(allIds).not.toContain(201);
+      expect(allIds).not.toContain(202);
+
+      mockFetch.mockRestore();
     });
   });
 });

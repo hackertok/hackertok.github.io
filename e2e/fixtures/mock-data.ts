@@ -1,7 +1,6 @@
 /** Mock data for E2E tests */
 
 export const ALGOLIA_API = 'https://hn.algolia.com/api/v1';
-export const FIREBASE_API = 'https://hacker-news.firebaseio.com/v0';
 
 const now = () => Math.floor(Date.now() / 1000);
 

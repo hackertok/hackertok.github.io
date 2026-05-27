@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { ALGOLIA_API, FIREBASE_API } from '../config/api';
+import { ALGOLIA_API } from '../config/api';
 
 export const mockItem = {
   id: 12345,
@@ -207,65 +207,6 @@ export const mockUserStory2 = {
 };
 
 export const handlers = [
-  // Firebase: Get top items
-  http.get(`${FIREBASE_API}/topstories.json`, () => {
-    return HttpResponse.json(mockTopItemIds);
-  }),
-
-  // Firebase: Get best items
-  http.get(`${FIREBASE_API}/beststories.json`, () => {
-    return HttpResponse.json(mockTopItemIds);
-  }),
-
-  // Firebase: Get individual item
-  http.get(`${FIREBASE_API}/item/:id.json`, ({ params }) => {
-    const id = parseInt(params.id as string, 10);
-    
-    if (id === 12345) {
-      return HttpResponse.json(mockItem);
-    }
-    if (id === 1001) {
-      return HttpResponse.json(mockComment);
-    }
-    if (id === 2001) {
-      return HttpResponse.json(mockNestedComment);
-    }
-    if (id === 1002 || id === 1003) {
-      return HttpResponse.json({
-        id,
-        by: id === 1002 ? 'jgrahamc' : 'dang',
-        text: id === 1002
-          ? 'This is a great point. The performance characteristics of the new compiler are impressive — especially the cold-start times.'
-          : 'We discussed this on HN a while back. The context from the original thread is worth reading.',
-        time: Math.floor(Date.now() / 1000) - 600,
-        parent: 12345,
-        type: 'comment',
-      });
-    }
-    if (id === 1004) {
-      return HttpResponse.json({
-        id: 1004,
-        by: 'leerob',
-        text: 'Author here — thanks for the discussion! I updated the benchmarks section based on feedback.',
-        time: Math.floor(Date.now() / 1000) - 300,
-        parent: 12345,
-        type: 'comment',
-      });
-    }
-    
-    // Return a generic item for other IDs
-    return HttpResponse.json({
-      id,
-      title: `Item ${id}`,
-      url: `https://example.com/item/${id}`,
-      by: 'testuser',
-      score: 50,
-      time: Math.floor(Date.now() / 1000) - 7200,
-      descendants: 5,
-      type: 'story',
-    });
-  }),
-
   // Algolia: Search (used for front page items and show items)
   http.get(`${ALGOLIA_API}/search`, ({ request }) => {
     const url = new URL(request.url);
@@ -350,34 +291,6 @@ export const handlers = [
     });
   }),
 
-  // Firebase: Get user profile
-  http.get(`${FIREBASE_API}/user/:id.json`, ({ params }) => {
-    const id = params.id as string;
-    if (id === 'leerob') {
-      return HttpResponse.json(mockUserProfile);
-    }
-    if (id === 'pg') {
-      return HttpResponse.json({
-        id: 'pg',
-        created: 1160418092,
-        karma: 155555,
-        about: 'Founder of Y Combinator.',
-        submitted: [12345],
-      });
-    }
-    if (id === 'minimaluser') {
-      // No `about` field — exercises the conditional-render path in UserProfile.
-      return HttpResponse.json({
-        id: 'minimaluser',
-        created: 1160418092,
-        karma: 1,
-        submitted: [],
-      });
-    }
-    // Unknown users → Firebase's "no such user" response is JSON `null`.
-    return HttpResponse.json(null);
-  }),
-
   // Algolia: Items endpoint (used for comment detail)
   http.get(`${ALGOLIA_API}/items/:id`, ({ params }) => {
     const id = parseInt(params.id as string, 10);
@@ -403,42 +316,14 @@ export const handlers = [
 
 /**
  * Error handlers for testing error states.
- * Use server.use(...errorHandlers.notFound) in tests to override default handlers.
+ * Use server.use(...errorHandlers.algoliaError) in tests to override default handlers.
  */
 export const errorHandlers = {
-  // 404 Not Found for item
-  notFound: http.get(`${FIREBASE_API}/item/:id.json`, () => {
-    return HttpResponse.json(null);
-  }),
-  
-  // 500 Server Error
-  serverError: http.get(`${FIREBASE_API}/item/:id.json`, () => {
-    return HttpResponse.json(
-      { error: 'Internal Server Error' },
-      { status: 500 }
-    );
-  }),
-  
-  // Network Error (connection failure)
-  networkError: http.get(`${FIREBASE_API}/item/:id.json`, () => {
-    return HttpResponse.error();
-  }),
-  
-  // Empty items list
-  emptyItems: http.get(`${FIREBASE_API}/topstories.json`, () => {
-    return HttpResponse.json([]);
-  }),
-  
   // Algolia API error
   algoliaError: http.get(`${ALGOLIA_API}/search`, () => {
     return HttpResponse.json(
       { message: 'Service temporarily unavailable' },
       { status: 503 }
     );
-  }),
-
-  // Firebase: User not found (returns JSON null per HN convention)
-  userNotFound: http.get(`${FIREBASE_API}/user/:id.json`, () => {
-    return HttpResponse.json(null);
   }),
 };

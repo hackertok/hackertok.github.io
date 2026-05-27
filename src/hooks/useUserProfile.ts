@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { FIREBASE_API } from '../config/api';
+import { hnSdk } from '../api/hnSdk';
 import { NotFoundError } from '../api/hn';
 import type { UserProfile } from '../types';
 
@@ -69,19 +69,7 @@ export function useUserProfile(username: string): UseUserProfileResult {
     setIsNotFound(false);
 
     try {
-      // Encode the username for URL safety. HN usernames are validated upstream
-      // (USERNAME_REGEX in sanitize.ts allows only `[a-zA-Z0-9_-]{2,15}`, all
-      // encoding-stable), so this is a no-op on the happy path. It exists for
-      // defense-in-depth against hand-crafted URLs whose `:id` decodes to
-      // characters that would otherwise truncate the path (e.g. `?` becomes a
-      // query string, `#` strips the `.json` suffix, `/` extends the path).
-      // Mirrors `useUserInfiniteStories.ts`'s author tag encoding.
-      const response = await fetch(`${FIREBASE_API}/user/${encodeURIComponent(username)}.json`);
-      if (versionRef.current !== currentVersion) return;
-      if (!response.ok) {
-        throw new Error(`Failed to fetch user ${username}: ${response.status}`);
-      }
-      const data = (await response.json()) as UserProfile | null;
+      const data = await hnSdk.readUser(username);
       if (versionRef.current !== currentVersion) return;
       if (data === null) {
         throw new NotFoundError(`User ${username} not found`);
