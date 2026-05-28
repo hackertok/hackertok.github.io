@@ -107,6 +107,7 @@ interface SessionState {
   position: number;
   seenIds: Iterable<number>;
   hasMore: boolean;
+  phase?: 'firebase' | 'algolia';
 }
 
 export function saveListSessionState(feedType: FeedType, state: SessionState): void {
@@ -118,6 +119,7 @@ export function saveListSessionState(feedType: FeedType, state: SessionState): v
       position: state.position,
       seenIds: Array.from(state.seenIds),
       hasMore: state.hasMore,
+      phase: state.phase,
       timestamp: Date.now(),
     };
     sessionStorage.setItem(key, JSON.stringify(data));
@@ -133,7 +135,7 @@ export function getListSessionState(feedType: FeedType): ListSessionState | null
     
     const data = JSON.parse(cached) as {
       scrollY?: number; storyIds?: number[]; position?: number;
-      seenIds?: number[]; hasMore?: boolean; timestamp: number;
+      seenIds?: number[]; hasMore?: boolean; phase?: string; timestamp: number;
     };
     
     // Session state expires after 30 minutes
@@ -149,6 +151,7 @@ export function getListSessionState(feedType: FeedType): ListSessionState | null
       position: data.position ?? 0,
       seenIds: new Set(data.seenIds ?? []),
       hasMore: data.hasMore ?? true,
+      phase: (data.phase === 'firebase' || data.phase === 'algolia') ? data.phase : undefined,
     };
   } catch {
     return null;

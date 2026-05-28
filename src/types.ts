@@ -133,6 +133,7 @@ export interface ListSessionState {
   position: number;
   seenIds: Set<number>;
   hasMore: boolean;
+  phase?: 'firebase' | 'algolia';
 }
 
 export interface PrefetchResult {
