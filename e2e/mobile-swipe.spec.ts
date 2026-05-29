@@ -304,7 +304,8 @@ test.describe('Mobile Swipe Viewer', () => {
     const activePanel = getActiveSwipePanel(page);
     await activePanel.getByRole('button', { name: /1 reply|\d+ replies/i }).first().click();
 
-    await expect(activePanel.locator('.reply-fade > *').first()).toBeVisible({ timeout: 5000 });
+    // Wait for reply content to appear (stable selector — .reply-fade is transient and removed after 180ms)
+    await expect(activePanel.locator('.tree-trunk > .tree-branch .comment-content').first()).toBeVisible({ timeout: 5000 });
 
     const getReplyState = () => activePanel.evaluate((panel) => {
       const replyBranch = panel.querySelector('.tree-trunk > .tree-branch');

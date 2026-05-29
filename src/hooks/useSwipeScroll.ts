@@ -370,6 +370,26 @@ export function useSwipeScroll({
         if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) {
           directionLocked = true;
           if (Math.abs(deltaX) > Math.abs(deltaY)) {
+            // Check if touch originated in an element that should handle its own horizontal scroll
+            const el = touch.target instanceof Element
+              ? touch.target
+              : (touch.target as Node)?.parentElement;
+
+            // Unconditional bail: developer opt-out via data-swipe-ignore
+            if (el?.closest('[data-swipe-ignore]')) {
+              touchActive = false;
+              isDraggingRef.current = false;
+              return;
+            }
+
+            // Conditional bail: scrollable <pre> with horizontal overflow
+            const scrollable = el?.closest('pre') as HTMLElement | null;
+            if (scrollable && scrollable.scrollWidth > scrollable.clientWidth + 1) {
+              touchActive = false;
+              isDraggingRef.current = false;
+              return;
+            }
+
             isSwiping = true;
             // Hide scroll indicator immediately to prevent visible jump during swipe
             document.body.classList.remove('is-scrolling');

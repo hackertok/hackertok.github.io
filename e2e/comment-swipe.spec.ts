@@ -367,4 +367,98 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
     await waitForSwipeReady(page, 4);
   });
+
+  test('horizontal swipe inside <pre> code block scrolls code, not panel', async ({ page }) => {
+    // Navigate to comment 1001 which contains a <pre> block with wide content
+    await page.goto('/#/item/1001');
+
+    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
+    await waitForSwipeReady(page, 4);
+
+    // Find the <pre> element inside the active comment panel
+    const pre = page.locator('.swipe-snap-panel.active .comment-content pre');
+    await expect(pre).toBeVisible({ timeout: 5000 });
+
+    // Verify it actually has horizontal overflow (scrollable)
+    const isScrollable = await pre.evaluate((el) => el.scrollWidth > el.clientWidth);
+    expect(isScrollable).toBe(true);
+
+    // Get bounding box for touch coordinates
+    const box = await pre.boundingBox();
+    expect(box).not.toBeNull();
+
+    const startX = box!.x + box!.width / 2;
+    const startY = box!.y + box!.height / 2;
+
+    // Perform horizontal touch swipe inside the <pre>
+    await page.touchscreen.tap(startX, startY);
+    // Manual touch sequence: start, move left, end
+    // Use page.evaluate to dispatch proper touch events with correct target
+    // Note: WebKit doesn't support `new Touch()` constructor, so we use the
+    // deprecated document.createTouch/document.createTouchList as a fallback.
+    await page.evaluate(({ x, y, distance }) => {
+      const el = document.elementFromPoint(x, y);
+      if (!el) return;
+
+      interface WebKitDocument {
+        createTouch?(view: Window, target: EventTarget, id: number, pageX: number, pageY: number, screenX: number, screenY: number): Touch;
+        createTouchList?(...touches: Touch[]): TouchList;
+      }
+
+      function makeTouch(target: EventTarget, id: number, cx: number, cy: number): Touch {
+        try {
+          return new Touch({ identifier: id, target, clientX: cx, clientY: cy });
+        } catch {
+          // WebKit fallback (deprecated but still functional in Safari)
+          const doc = document as unknown as WebKitDocument;
+          return doc.createTouch!(window, target, id, cx, cy, cx, cy);
+        }
+      }
+
+      function makeTouchList(...touches: Touch[]): Touch[] | TouchList {
+        const doc = document as unknown as WebKitDocument;
+        if (doc.createTouchList) {
+          return doc.createTouchList(...touches);
+        }
+        return touches;
+      }
+
+      const startTouch = makeTouch(el, 1, x, y);
+      const touchStart = new TouchEvent('touchstart', {
+        bubbles: true,
+        cancelable: true,
+        touches: makeTouchList(startTouch),
+        changedTouches: makeTouchList(startTouch),
+      });
+      el.dispatchEvent(touchStart);
+
+      const endX = x - distance;
+      const moveTouch = makeTouch(el, 1, endX, y);
+      const touchMove = new TouchEvent('touchmove', {
+        bubbles: true,
+        cancelable: true,
+        touches: makeTouchList(moveTouch),
+        changedTouches: makeTouchList(moveTouch),
+      });
+      el.dispatchEvent(touchMove);
+
+      const endTouch = makeTouch(el, 1, endX, y);
+      const touchEnd = new TouchEvent('touchend', {
+        bubbles: true,
+        cancelable: true,
+        touches: makeTouchList(),
+        changedTouches: makeTouchList(endTouch),
+      });
+      el.dispatchEvent(touchEnd);
+    }, { x: startX, y: startY, distance: 80 });
+
+    // Wait a moment for any potential panel transition
+    await page.waitForTimeout(300);
+
+    // Panel should still show the same comment (not transitioned)
+    await expectActiveSwipePanelText(page, 'patio11');
+
+    // URL should not have changed
+    await expect(page).toHaveURL(/\/item\/1001/);
+  });
 });

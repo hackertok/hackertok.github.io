@@ -240,6 +240,8 @@ function isAutoLinkifiedText(text: string, parsed: URL): boolean {
 
 purify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'PRE') {
+    // Make scrollable pre blocks keyboard-accessible (WCAG 2.1.1)
+    node.setAttribute('tabindex', '0');
     // Target the inner <code> when present so the <code> wrapper
     // survives (keeps `.comment-content pre code`'s background-reset
     // / font-size override applying). Falls back to the <pre> itself
