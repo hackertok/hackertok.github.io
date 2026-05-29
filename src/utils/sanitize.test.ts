@@ -25,7 +25,7 @@ describe('sanitizeHtml', () => {
       expect(sanitizeHtml('<strong>bold</strong>')).toContain('<strong>');
       expect(sanitizeHtml('<em>italic</em>')).toContain('<em>');
       expect(sanitizeHtml('<code>code</code>')).toContain('<code>');
-      expect(sanitizeHtml('<pre>pre</pre>')).toContain('<pre>');
+      expect(sanitizeHtml('<pre>pre</pre>')).toContain('<pre tabindex="0">');
     });
   });
 
@@ -33,25 +33,25 @@ describe('sanitizeHtml', () => {
     it('strips uniform leading indent from a <pre><code> block', () => {
       const html = '<pre><code>    line1\n    line2\n    line3</code></pre>';
       const result = sanitizeHtml(html);
-      expect(result).toContain('<pre><code>line1\nline2\nline3</code></pre>');
+      expect(result).toContain('<pre tabindex="0"><code>line1\nline2\nline3</code></pre>');
     });
 
     it('preserves relative indent (continuation lines stay indented under their parent)', () => {
       const html = '<pre><code>    if (x)\n        foo();\n    bar();</code></pre>';
       const result = sanitizeHtml(html);
-      expect(result).toContain('<pre><code>if (x)\n    foo();\nbar();</code></pre>');
+      expect(result).toContain('<pre tabindex="0"><code>if (x)\n    foo();\nbar();</code></pre>');
     });
 
     it('ignores blank lines when computing the common indent', () => {
       const html = '<pre><code>    line1\n\n    line2</code></pre>';
       const result = sanitizeHtml(html);
-      expect(result).toContain('<pre><code>line1\n\nline2</code></pre>');
+      expect(result).toContain('<pre tabindex="0"><code>line1\n\nline2</code></pre>');
     });
 
     it('leaves a block with no leading indent unchanged', () => {
       const html = '<pre><code>line1\nline2</code></pre>';
       const result = sanitizeHtml(html);
-      expect(result).toContain('<pre><code>line1\nline2</code></pre>');
+      expect(result).toContain('<pre tabindex="0"><code>line1\nline2</code></pre>');
     });
 
     it('preserves the inner <code> wrapper so `.comment-content pre code` styles still apply', () => {
@@ -64,7 +64,7 @@ describe('sanitizeHtml', () => {
     it('handles bare <pre> (no <code> child) by dedenting the <pre> directly', () => {
       const html = '<pre>    line1\n    line2</pre>';
       const result = sanitizeHtml(html);
-      expect(result).toContain('<pre>line1\nline2</pre>');
+      expect(result).toContain('<pre tabindex="0">line1\nline2</pre>');
     });
 
     it('preserves an auto-linkified URL inside a <pre> at the cost of skipping dedent', () => {
@@ -92,7 +92,7 @@ describe('sanitizeHtml', () => {
         '    {</code></pre>';
       const result = sanitizeHtml(html);
       expect(result).toContain(
-        '<pre><code>// Step 9. Null move search\n' +
+        '<pre tabindex="0"><code>// Step 9. Null move search\n' +
           'if (cutNode\n' +
           '    &amp;&amp; pos.non_pawn_material(us))\n' +
           '{</code></pre>',

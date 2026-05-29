@@ -602,4 +602,92 @@ describe('useSwipeScroll', () => {
       expect(vi.getTimerCount()).toBe(0);
     });
   });
+
+  describe('scrollable element bail', () => {
+    it('yields horizontal gesture to a scrollable <pre> with scroll room', () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      const panel = getPanel(0);
+
+      // Create a <pre> element inside the panel with scrollable content
+      const pre = document.createElement('pre');
+      panel.appendChild(pre);
+      Object.defineProperty(pre, 'scrollLeft', { value: 0, writable: true, configurable: true });
+      Object.defineProperty(pre, 'scrollWidth', { value: 800, configurable: true });
+      Object.defineProperty(pre, 'clientWidth', { value: 300, configurable: true });
+
+      // Dispatch touch events directly on the <pre> (they bubble to container)
+      dispatchTouch(pre, 'touchstart', CENTER_X, CENTER_Y);
+      // Horizontal swipe left (drag finger left = deltaX negative = scroll content right)
+      dispatchTouch(pre, 'touchmove', CENTER_X - 30, CENTER_Y);
+      dispatchTouch(pre, 'touchend', CENTER_X - 30, CENTER_Y);
+
+      // Panel should NOT have transitioned
+      expect(hookResult.currentIndex).toBe(0);
+      expect(Element.prototype.animate).not.toHaveBeenCalled();
+    });
+
+    it('blocks swipe when <pre> has overflow even if no scroll room in drag direction', () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      const container = getContainer();
+      const panel = getPanel(0);
+      Object.defineProperty(container, 'clientWidth', { value: 375, configurable: true });
+
+      const pre = document.createElement('pre');
+      panel.appendChild(pre);
+      // Scrolled all the way to the right — no room left to scroll left
+      Object.defineProperty(pre, 'scrollLeft', { value: 500, configurable: true });
+      Object.defineProperty(pre, 'scrollWidth', { value: 800, configurable: true });
+      Object.defineProperty(pre, 'clientWidth', { value: 300, configurable: true });
+
+      dispatchTouch(pre, 'touchstart', CENTER_X, CENTER_Y);
+      dispatchTouch(pre, 'touchmove', CENTER_X - 30, CENTER_Y);
+      dispatchTouch(pre, 'touchend', CENTER_X - 30, CENTER_Y);
+
+      // Panel should NOT transition — browser handles overscroll bounce
+      expect(Element.prototype.animate).not.toHaveBeenCalled();
+    });
+
+    it('allows swipe when <pre> has no horizontal overflow', () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      const container = getContainer();
+      const panel = getPanel(0);
+      Object.defineProperty(container, 'clientWidth', { value: 375, configurable: true });
+
+      const pre = document.createElement('pre');
+      panel.appendChild(pre);
+      // No overflow — content fits within the element
+      Object.defineProperty(pre, 'scrollLeft', { value: 0, configurable: true });
+      Object.defineProperty(pre, 'scrollWidth', { value: 300, configurable: true });
+      Object.defineProperty(pre, 'clientWidth', { value: 300, configurable: true });
+
+      dispatchTouch(pre, 'touchstart', CENTER_X, CENTER_Y);
+      dispatchTouch(pre, 'touchmove', CENTER_X - 30, CENTER_Y);
+      dispatchTouch(pre, 'touchend', CENTER_X - 30, CENTER_Y);
+
+      // Panel SHOULD transition since <pre> has no overflow
+      expect(Element.prototype.animate).toHaveBeenCalled();
+    });
+
+    it('bails unconditionally for elements with data-swipe-ignore', () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      const panel = getPanel(0);
+
+      const wrapper = document.createElement('div');
+      wrapper.setAttribute('data-swipe-ignore', '');
+      const child = document.createElement('span');
+      wrapper.appendChild(child);
+      panel.appendChild(wrapper);
+
+      dispatchTouch(child, 'touchstart', CENTER_X, CENTER_Y);
+      dispatchTouch(child, 'touchmove', CENTER_X - 30, CENTER_Y);
+      dispatchTouch(child, 'touchend', CENTER_X - 30, CENTER_Y);
+
+      expect(hookResult.currentIndex).toBe(0);
+      expect(Element.prototype.animate).not.toHaveBeenCalled();
+    });
+  });
 });

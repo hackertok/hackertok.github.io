@@ -20,7 +20,7 @@ export const mockItem1 = {
 export const mockComment = {
   id: 1001,
   by: 'patio11',
-  text: 'This is a really well-written piece. The section on <code>wasm-bindgen</code> was particularly insightful.',
+  text: 'This is a really well-written piece. The section on <code>wasm-bindgen</code> was particularly insightful.<pre>const longCodeLine = "this is a very long line of code that extends well beyond the viewport width to ensure horizontal scrolling is required to see all content";</pre>',
   time: now() - 1800,
   parent: 12345,
   kids: [2001],
@@ -226,7 +226,7 @@ export const mockAlgoliaCommentItem = {
   id: 1001,
   type: 'comment',
   author: 'patio11',
-  text: 'The wasm-bindgen approach is really interesting. It essentially lets you write Rust that compiles to WebAssembly and then generates <code>JS bindings</code> automatically.',
+  text: 'This is a really well-written piece. The section on <code>wasm-bindgen</code> was particularly insightful.<pre>const longCodeLine = "this is a very long line of code that extends well beyond the viewport width to ensure horizontal scrolling is required to see all content";</pre>',
   created_at_i: now() - 1800,
   parent_id: 12345,
   story_id: 12345,
