@@ -87,6 +87,12 @@ test.describe('Item Detail', () => {
   });
 
   test('returns to same item after visiting external link', async ({ page }) => {
+    // Intercept the external URL so navigation completes instantly
+    // (Mobile Safari times out waiting for real external DNS resolution)
+    await page.route('**/example.com/**', route =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>External</body></html>' }),
+    );
+
     await page.goto('/#/item/12345');
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
 

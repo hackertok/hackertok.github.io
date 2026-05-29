@@ -6,7 +6,7 @@
  * Deduplication across pages via a `seenIds` set.
  */
 import { useState, useCallback, useRef } from 'react';
-import { fetchTopStories, fetchFrontPageForDay, fetchBestStories, fetchShowStories, fetchAskStories } from '../api/hn';
+import { fetchTopStories, fetchFrontPageForDay, fetchBestStories, fetchShowStories, fetchAskStories, fetchAskStoriesForDay, fetchShowStoriesForDay } from '../api/hn';
 import { getCachedFeed, setCachedFeed } from '../utils/feedCache';
 import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/itemCache';
 import type { StoryItem, FeedType, ListSessionState } from '../types';
@@ -73,14 +73,27 @@ export function useInfiniteStories(type: FeedType = 'top') {
   
   // For top: 0 = current front page (Firebase), 1+ = days ago (Algolia)
   // For best: tracks offset into the list
-  const positionRef = useRef(
-    initialState.sessionState?.position ?? 0
-  );
+  // Safety fallback: if phase is missing but position > 200, it's a corrupt session blob
+  const safePosition = (() => {
+    const session = initialState.sessionState;
+    if (session && !session.phase && session.position > 200) return 0;
+    return session?.position ?? 0;
+  })();
+  const positionRef = useRef(safePosition);
   const seenIdsRef = useRef<Set<number>>(
     new Set(initialState.sessionState?.seenIds)
   );
   const versionRef = useRef(0);
   const hasStaleCacheRef = useRef(initialState.isFromCache);
+  // For ask/show: tracks whether we've exhausted Firebase and moved to Algolia
+  const phaseRef = useRef<'firebase' | 'algolia'>(
+    (() => {
+      const session = initialState.sessionState;
+      if (!session) return 'firebase';
+      if (!session.phase && session.position > 200) return 'firebase';
+      return session.phase ?? 'firebase';
+    })()
+  );
 
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
@@ -191,38 +204,79 @@ export function useInfiniteStories(type: FeedType = 'top') {
           }
         }
       } else if (type === 'show' || type === 'ask') {
-        const fetchFn = type === 'show' ? fetchShowStories : fetchAskStories;
         const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
-        const result = await fetchFn(positionRef.current);
-        
-        if (versionRef.current !== currentVersion) return;
-        
-        if (isRevalidating) {
-          seenIdsRef.current.clear();
-        }
-        
-        const uniqueStories = result.stories.filter(story => {
-          if (seenIdsRef.current.has(story.id)) {
-            return false;
-          }
-          seenIdsRef.current.add(story.id);
-          return true;
-        });
 
-        if (positionRef.current === 0 && uniqueStories.length > 0) {
-          setCachedFeed(type, uniqueStories);
-          setIsFromCache(false);
-          hasStaleCacheRef.current = false;
-        }
+        if (phaseRef.current === 'firebase') {
+          const fetchFn = type === 'show' ? fetchShowStories : fetchAskStories;
+          const result = await fetchFn(positionRef.current);
 
-        positionRef.current = result.nextOffset;
-        setHasMore(result.hasMore);
-        
-        if (uniqueStories.length > 0) {
+          if (versionRef.current !== currentVersion) return;
+
           if (isRevalidating) {
-            setStories(uniqueStories);
-          } else {
-            setStories(prev => [...prev, ...uniqueStories]);
+            seenIdsRef.current.clear();
+          }
+
+          const uniqueStories = result.stories.filter(story => {
+            if (seenIdsRef.current.has(story.id)) {
+              return false;
+            }
+            seenIdsRef.current.add(story.id);
+            return true;
+          });
+
+          if (positionRef.current === 0 && uniqueStories.length > 0) {
+            setCachedFeed(type, uniqueStories);
+            setIsFromCache(false);
+            hasStaleCacheRef.current = false;
+          }
+
+          positionRef.current = result.nextOffset;
+
+          // Boundary: Firebase exhausted → transition to Algolia
+          if (!result.hasMore) {
+            phaseRef.current = 'algolia';
+            positionRef.current = 1; // Start with yesterday
+            // Do NOT call setHasMore(false) — Algolia has more content
+          }
+
+          if (uniqueStories.length > 0) {
+            if (isRevalidating) {
+              setStories(uniqueStories);
+            } else {
+              setStories(prev => [...prev, ...uniqueStories]);
+            }
+          }
+        } else {
+          // Algolia phase: fetch day-by-day
+          const fetchDayFn = type === 'ask' ? fetchAskStoriesForDay : fetchShowStoriesForDay;
+          let newStories: StoryItem[] = [];
+          let attempts = 0;
+          const maxAttempts = 14;
+
+          while (newStories.length === 0 && attempts < maxAttempts && positionRef.current < 365) {
+            const dayStories = await fetchDayFn(positionRef.current);
+
+            if (versionRef.current !== currentVersion) return;
+
+            const uniqueStories = dayStories.filter(story => {
+              if (seenIdsRef.current.has(story.id)) {
+                return false;
+              }
+              seenIdsRef.current.add(story.id);
+              return true;
+            });
+
+            newStories = uniqueStories;
+            positionRef.current += 1;
+            attempts += 1;
+          }
+
+          if (versionRef.current !== currentVersion) return;
+
+          if (newStories.length === 0 && positionRef.current >= 365) {
+            setHasMore(false);
+          } else if (newStories.length > 0) {
+            setStories(prev => [...prev, ...newStories]);
           }
         }
       }
@@ -255,6 +309,7 @@ export function useInfiniteStories(type: FeedType = 'top') {
     setHasMore(true);
     positionRef.current = 0;
     seenIdsRef.current.clear();
+    phaseRef.current = 'firebase';
     clearListSessionState(type);
   }, [type]);
 
@@ -268,6 +323,7 @@ export function useInfiniteStories(type: FeedType = 'top') {
       position: positionRef.current,
       seenIds: [...seenIdsRef.current],
       hasMore,
+      phase: phaseRef.current,
     });
     
     // Also update the stories cache with current full list (for session reconstruction)

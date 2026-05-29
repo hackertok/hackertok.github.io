@@ -240,6 +240,52 @@ export function fetchAskStories(offset = 0) {
   return fetchRankedStories('askstories', askStoriesCache, 'ask', offset);
 }
 
+/**
+ * Fetch stories for a specific day from Algolia, filtered by tag.
+ * Used for historical fallback when Firebase ranked lists are exhausted.
+ */
+export async function fetchTaggedStoriesForDay(
+  tag: 'ask_hn' | 'show_hn',
+  daysAgo: number,
+  excludeTitles?: string[],
+): Promise<StoryItem[]> {
+  const { start, end } = getDayRange(daysAgo);
+  const url = `${ALGOLIA_API}/search?tags=story,${tag}&numericFilters=created_at_i>=${start},created_at_i<${end}&hitsPerPage=30`;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${tag} stories: ${response.status}`);
+  }
+
+  const data = await response.json() as AlgoliaSearchResponse;
+
+  let hits = data.hits;
+  if (excludeTitles && excludeTitles.length > 0) {
+    hits = hits.filter((hit) => {
+      const title = (hit.title || '').toLowerCase();
+      return !excludeTitles.some(t => title.includes(t));
+    });
+  }
+
+  const sorted = hits.sort((a, b) => (b.points || 0) - (a.points || 0));
+  return sorted.map(normalizeAlgoliaHit);
+}
+
+const ASK_EXCLUDE_TITLES = [
+  'who is hiring',
+  'who wants to be hired',
+  'freelancer?',
+  'seeking freelancer',
+];
+
+export function fetchAskStoriesForDay(daysAgo: number): Promise<StoryItem[]> {
+  return fetchTaggedStoriesForDay('ask_hn', daysAgo, ASK_EXCLUDE_TITLES);
+}
+
+export function fetchShowStoriesForDay(daysAgo: number): Promise<StoryItem[]> {
+  return fetchTaggedStoriesForDay('show_hn', daysAgo);
+}
+
 export async function fetchFirebaseItem(id: number | string, signal?: AbortSignal): Promise<FirebaseItem> {
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
