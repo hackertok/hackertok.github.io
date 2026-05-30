@@ -1,23 +1,21 @@
 import { HashRouter, Routes, Route, useParams, useLocation, useNavigate } from 'react-router-dom';
-import { lazy, Suspense, useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
-import { Header, ErrorBoundary, FullScreenCommentSkeletonPanel, Spinner, StateView, NetworkStatusBar } from './components';
+import { Header, ErrorBoundary, FullScreenCommentSkeletonPanel, StateView, NetworkStatusBar } from './components';
 import { TooltipProvider } from './components/ui';
 import { StoryList } from './pages';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
-
-// Lazy-loaded route components for code splitting
-const ItemDetail = lazy(() => import('./pages/ItemDetail').then(m => ({ default: m.ItemDetail })));
-const DomainStories = lazy(() => import('./pages/DomainStories').then(m => ({ default: m.DomainStories })));
-const UserProfile = lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
-const UserSubmissions = lazy(() => import('./pages/UserSubmissions').then(m => ({ default: m.UserSubmissions })));
-const SwipeStoryViewer = lazy(() => import('./components/SwipeStoryViewer').then(m => ({ default: m.SwipeStoryViewer })));
-const SwipeDomainStoryViewer = lazy(() => import('./components/SwipeDomainStoryViewer').then(m => ({ default: m.SwipeDomainStoryViewer })));
-const SwipeUserSubmissionsViewer = lazy(() => import('./components/SwipeUserSubmissionsViewer').then(m => ({ default: m.SwipeUserSubmissionsViewer })));
-const SwipeCommentViewer = lazy(() => import('./components/SwipeCommentViewer').then(m => ({ default: m.SwipeCommentViewer })));
+import { ItemDetail } from './pages/ItemDetail';
+import { DomainStories } from './pages/DomainStories';
+import { UserProfile } from './pages/UserProfile';
+import { UserSubmissions } from './pages/UserSubmissions';
+import { SwipeStoryViewer } from './components/SwipeStoryViewer';
+import { SwipeDomainStoryViewer } from './components/SwipeDomainStoryViewer';
+import { SwipeUserSubmissionsViewer } from './components/SwipeUserSubmissionsViewer';
+import { SwipeCommentViewer } from './components/SwipeCommentViewer';
 import { NetworkStatusProvider } from './context/NetworkStatusContext';
 import { fetchItemOnly } from './api/hn';
 import type { FeedType, LocationState } from './types';
@@ -203,19 +201,17 @@ function App() {
                   <Header />
                   <NetworkStatusBar />
                   <MainContent>
-                    <Suspense fallback={<div className="flex items-center justify-center h-[50vh]"><Spinner size="lg" /></div>}>
-                      <Routes>
-                        <Route path="/" element={<MobileStoryListWrapper type="top" />} />
-                        <Route path="/show" element={<MobileStoryListWrapper type="show" />} />
-                        <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
-                        <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
-                        <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
-                        <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
-                        <Route path="/user/:id" element={<UserProfile />} />
-                        <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
-                        <Route path="*" element={<NotFoundPage />} />
-                      </Routes>
-                    </Suspense>
+                    <Routes>
+                      <Route path="/" element={<MobileStoryListWrapper type="top" />} />
+                      <Route path="/show" element={<MobileStoryListWrapper type="show" />} />
+                      <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
+                      <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
+                      <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
+                      <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
+                      <Route path="/user/:id" element={<UserProfile />} />
+                      <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
                   </MainContent>
                 </div>
               </LocationAwareErrorBoundary>

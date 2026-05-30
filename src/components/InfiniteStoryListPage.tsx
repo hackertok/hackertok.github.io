@@ -137,7 +137,7 @@ export function InfiniteStoryListPage({
             ))}
           </div>
 
-          {hasMore && (
+          {hasMore && stories.length > 0 && (
             <div ref={ref} className="py-4">
               {loading && <Spinner />}
             </div>
