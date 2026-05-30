@@ -122,6 +122,14 @@ globalThis.ResizeObserver = MockResizeObserver;
 globalThis.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16) as unknown as number);
 globalThis.cancelAnimationFrame = vi.fn((id: number) => clearTimeout(id));
 
+// Polyfill requestIdleCallback for jsdom so that Vitest's fake-timer system
+// (which natively supports requestIdleCallback) will detect and replace it.
+// The implementation here doesn't matter — fake timers override it entirely.
+if (typeof globalThis.requestIdleCallback === 'undefined') {
+  (globalThis as unknown as Record<string, unknown>).requestIdleCallback = function requestIdleCallback() { return 0; };
+  (globalThis as unknown as Record<string, unknown>).cancelIdleCallback = function cancelIdleCallback() { /* noop */ };
+}
+
 // Stub window.scrollTo (not implemented in jsdom)
 window.scrollTo = vi.fn() as typeof window.scrollTo;
 

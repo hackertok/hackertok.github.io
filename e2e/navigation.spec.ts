@@ -29,12 +29,19 @@ test.describe('Navigation', () => {
   test('navigates to Show HN section', async ({ page }) => {
     await page.goto('/#/');
 
+    // On mobile, the swipe viewer auto-rewrites / → /item/<id>. Wait for
+    // this replace-navigation to complete so the subsequent click isn't
+    // swallowed by WebKit during the transition (Mobile Safari flake).
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+    if (isMobile) {
+      await page.waitForURL(/\/#\/item\/\d+/, { timeout: 10000 });
+    }
+
     await page.getByRole('link', { name: /show/i }).click();
 
     // Wait for navigation to fully settle — the "show" link only receives
     // bg-accent after the route resolves to /show (or /item/<id> with
-    // state.from="show"). Without this, on Mobile Safari the old URL
-    // /#/item/<top-story-id> can match a loose regex prematurely.
+    // state.from="show").
     await expect(page.getByRole('link', { name: 'show', exact: true })).toHaveClass(/bg-accent/, { timeout: 10000 });
 
     await expect(page.getByText('Show HN: Piko – Open-Source Ngrok Alternative in Go').first()).toBeVisible({ timeout: 10000 });
@@ -47,6 +54,12 @@ test.describe('Navigation', () => {
 
   test('navigates to Ask HN section', async ({ page }) => {
     await page.goto('/#/');
+
+    // Same mobile stabilization as Show HN test above.
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+    if (isMobile) {
+      await page.waitForURL(/\/#\/item\/\d+/, { timeout: 10000 });
+    }
 
     await page.getByRole('link', { name: /ask/i }).click();
 
@@ -87,13 +100,22 @@ test.describe('Navigation', () => {
   test('navigates back to Top from other section', async ({ page }) => {
     await page.goto('/#/show');
 
+    // On mobile, wait for the show swipe-rewrite to settle before clicking.
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+    if (isMobile) {
+      await page.waitForURL(/\/#\/item\/\d+/, { timeout: 10000 });
+    }
+
     await page.getByRole('link', { name: /hackertok/i }).click();
 
-    // /#/ on desktop, /#/item/<first-id> on mobile (auto swipe-viewer rewrite).
-    await expect(page).toHaveURL(/\/#\/(item\/\d+)?$/);
+    // On mobile, wait for the top swipe-rewrite to settle (ensures top
+    // stories have loaded and replaced the old show content in the DOM).
+    if (isMobile) {
+      await page.waitForURL(/\/#\/item\/12345/, { timeout: 10000 });
+    } else {
+      await expect(page).toHaveURL(/\/#\/(item\/\d+)?$/);
+    }
 
-    // On mobile, wait for the swipe-viewer panel to become active before
-    // asserting visibility (Safari may need an extra frame after route change).
     await expectTopStoryVisible(page);
   });
 

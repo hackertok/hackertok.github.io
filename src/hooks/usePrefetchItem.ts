@@ -10,24 +10,32 @@ const MAX_CONCURRENT = 3;
 const prefetchQueue = new Map<number, { index: number }>(); // itemId -> { index }
 const activePrefetches = new Map<number, AbortController>(); // itemId -> AbortController
 let isProcessing = false;
-let scheduleTimeout: ReturnType<typeof setTimeout> | null = null;
+let cancelSchedule: (() => void) | null = null;
 let priorityUnsubscribe: (() => void) | null = null;
 
-// Debounce so all visible items land in the queue before processing starts —
-// 200ms is enough for IntersectionObservers to fire and React to flush state.
+// Defer to browser idle so prefetches don't compete with initial render/paint.
+// Timeout ensures they still start within 2s on busy pages.
 function scheduleProcessQueue() {
-  if (scheduleTimeout) return;
-  scheduleTimeout = setTimeout(() => {
-    scheduleTimeout = null;
-    void processQueue();
-  }, 200);
+  if (cancelSchedule) return; // Already scheduled
+
+  if (typeof requestIdleCallback !== 'undefined') {
+    const id = requestIdleCallback(() => {
+      cancelSchedule = null;
+      void processQueue();
+    }, { timeout: 2000 });
+    cancelSchedule = () => { cancelIdleCallback(id); cancelSchedule = null; };
+  } else {
+    // Fallback for environments without requestIdleCallback (SSR, old WebViews)
+    const id = setTimeout(() => {
+      cancelSchedule = null;
+      void processQueue();
+    }, 200);
+    cancelSchedule = () => { clearTimeout(id); cancelSchedule = null; };
+  }
 }
 
 function processQueueNow() {
-  if (scheduleTimeout) {
-    clearTimeout(scheduleTimeout);
-    scheduleTimeout = null;
-  }
+  cancelSchedule?.();
   void processQueue();
 }
 
@@ -169,10 +177,7 @@ export function usePrefetchItems(currentIndex: number, items: Item[], count = 3)
 
 /** Cancel all in-flight prefetches. Call when navigating to an item. */
 export function cancelAllPrefetches() {
-  if (scheduleTimeout) {
-    clearTimeout(scheduleTimeout);
-    scheduleTimeout = null;
-  }
+  cancelSchedule?.();
   
   prefetchQueue.clear();
   
