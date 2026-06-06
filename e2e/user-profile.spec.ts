@@ -115,7 +115,7 @@ test.describe('User Profile - Mobile', () => {
     // and <body> for ANY `#/...` route on mobile (the regex
     // `^#\/(show|ask|best|item\/)?` is not end-anchored and the group is
     // optional, so `#/user/pg` matches via the empty-group fallback). That
-    // class sets `overflow: hidden` on the body, which would wedge the
+    // class sets `overflow: clip` on the body, which would wedge the
     // vertically scrollable profile if nothing cleared it. UserProfile's
     // mount effect imperatively calls `disableSwipeMode()` to unwedge it —
     // this assertion runs AFTER the heading is visible (i.e. after React has
@@ -125,8 +125,8 @@ test.describe('User Profile - Mobile', () => {
 
     await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
 
-    // Both class targets must clear — html has `overflow: clip`, body has
-    // `overflow: hidden`. Either one being stuck blocks vertical scroll.
+    // Both class targets must clear — html and body both have `overflow: clip`.
+    // Either one being stuck blocks vertical scroll.
     await expect(page.locator('html')).not.toHaveClass(/swipe-mode/);
     await expect(page.locator('body')).not.toHaveClass(/swipe-mode/);
   });

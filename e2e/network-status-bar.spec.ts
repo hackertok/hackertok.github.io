@@ -70,13 +70,14 @@ test.describe('Network Status Bar - Viewport Switch', () => {
       return panels.length >= 2;
     }, { timeout: 5000 });
 
-    // Swipe mode must clip overflow on html/body to prevent horizontal scroll.
+    // html/body use `clip` not `hidden`: `hidden` would make <body> a scroll
+    // container that traps the sticky header. `clip` avoids that side effect.
     const overflowState = await page.evaluate(() => ({
       htmlOx: getComputedStyle(document.documentElement).overflowX,
       bodyOx: getComputedStyle(document.body).overflowX,
     }));
     expect(overflowState.htmlOx).toBe('clip');
-    expect(overflowState.bodyOx).toBe('hidden');
+    expect(overflowState.bodyOx).toBe('clip');
 
     // Active assertion: scrolling to 9999 must be clamped to 0.
     await page.evaluate(() => window.scrollTo(9999, 0));

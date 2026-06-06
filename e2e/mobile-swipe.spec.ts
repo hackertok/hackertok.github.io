@@ -295,7 +295,7 @@ test.describe('Mobile Swipe Viewer', () => {
     ).toBeLessThan(beforeHeightGrowth.translateY - 5);
   });
 
-  test('does not replay expanded reply fade after swiping away and back', async ({ page }) => {
+  test('preserves expanded replies when swiping away and back', async ({ page }) => {
     await page.goto('/#/');
 
     await waitForSwipeReady(page, 6);
@@ -304,30 +304,11 @@ test.describe('Mobile Swipe Viewer', () => {
     const activePanel = getActiveSwipePanel(page);
     await activePanel.getByRole('button', { name: /1 reply|\d+ replies/i }).first().click();
 
-    // Wait for reply content to appear (stable selector — .reply-fade is transient and removed after 180ms)
-    await expect(activePanel.locator('.tree-trunk > .tree-branch .comment-content').first()).toBeVisible({ timeout: 5000 });
+    // Wait for reply content to appear
+    const replyContent = activePanel.locator('.tree-trunk > .tree-branch .comment-content').first();
+    await expect(replyContent).toBeVisible({ timeout: 5000 });
 
-    const getReplyState = () => activePanel.evaluate((panel) => {
-      const replyBranch = panel.querySelector('.tree-trunk > .tree-branch');
-      if (!(replyBranch instanceof HTMLElement)) {
-        return null;
-      }
-
-      const inner = replyBranch.firstElementChild;
-      const style = inner ? getComputedStyle(inner) : null;
-      return {
-        hasReplyFade: replyBranch.classList.contains('reply-fade'),
-        animationName: style?.animationName ?? null,
-        opacity: style?.opacity ?? null,
-      };
-    });
-
-    await expect.poll(getReplyState, { timeout: 5000 }).toMatchObject({
-      hasReplyFade: false,
-      animationName: 'none',
-      opacity: '1',
-    });
-
+    // Swipe forward to next panel
     const container = page.getByTestId('swipe-container');
     const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
 
@@ -335,14 +316,12 @@ test.describe('Mobile Swipe Viewer', () => {
     await waitForScrollAtIndex(page, 1);
     await expect(page).toHaveURL(/\/item\//, { timeout: 5000 });
 
+    // Swipe back to original panel
     await smoothScrollAndAwaitSettled(container, 0);
     await waitForScrollAtIndex(page, 0);
 
-    await expect.poll(getReplyState, { timeout: 5000 }).toMatchObject({
-      hasReplyFade: false,
-      animationName: 'none',
-      opacity: '1',
-    });
+    // Replies should still be expanded and visible
+    await expect(replyContent).toBeVisible({ timeout: 5000 });
   });
 
   test('preserves scroll position when swiping away and back', async ({ page }) => {

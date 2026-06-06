@@ -220,14 +220,20 @@ export function Header() {
   };
 
   return (
+    // Swipe mode pins the header with `sticky` (not `fixed`) so Firefox Android's
+    // URL bar can't re-anchor it mid-swipe (the blink fix). The negative margin
+    // cancels the flow height `sticky` adds, which would otherwise double up with
+    // the panel's `padding-top: var(--header-height)`.
     <header
       className={`
-        ${isSwipeMode ? 'bg-card/98' : 'bg-card/95 backdrop-blur-sm'}
+        ${isSwipeMode ? 'bg-card' : 'bg-card/95 backdrop-blur-sm'}
         border-b border-border
-        md:relative md:transform-none
-        fixed top-0 left-0 right-0 z-50
-        transition-transform duration-300 ease-out
-        ${!isSwipeMode && mobileHidden ? '-translate-y-full' : 'translate-y-0'}
+        md:relative md:transform-none md:mb-0
+        ${isSwipeMode
+          ? 'sticky top-0 z-50 mb-[calc(-1*var(--header-height))]'
+          : 'fixed top-0 left-0 right-0 z-50'}
+        ${isSwipeMode ? '' : 'transition-transform duration-300 ease-out'}
+        ${isSwipeMode ? '' : !mobileHidden ? 'translate-y-0' : '-translate-y-full'}
         md:translate-y-0
       `}
     >
