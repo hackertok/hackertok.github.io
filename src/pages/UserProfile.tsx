@@ -38,7 +38,7 @@ export function UserProfile() {
   // index.html optimistically applies `swipe-mode` to <html>/<body>
   // for any `#/...` route on mobile so swipe viewers don't double-
   // paint a scrollable page first. This page IS vertically scrollable,
-  // so we undo that on mount or `overflow: hidden` sticks on direct
+  // so we undo that on mount or `overflow: clip` sticks on direct
   // load (`https://.../#/user/pg`). Desktop is a no-op via the
   // provider's noop fallback.
   //

@@ -135,11 +135,23 @@ test.describe('Navigation', () => {
     await page.goto('/#/');
     await expectTopStoryVisible(page);
 
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+
     const bestLink = page.getByRole('link', { name: /best/i });
     await bestLink.scrollIntoViewIfNeeded();
     await bestLink.click({ force: true });
 
-    await expect(page).toHaveURL(/\/#\/(best|item\/)/);
+    // Wait for the route to actually resolve before going back. A URL check is
+    // unreliable on mobile (pre-click URL is already /#/item/:id), so assert the
+    // active (bg-accent) "best" tab instead.
+    await expect(page.getByRole('link', { name: 'best', exact: true }))
+      .toHaveClass(/bg-accent/, { timeout: 10_000 });
+
+    if (isMobile) {
+      // Wait for the swipe viewer's /#/best → /#/item/:id replaceState, so goBack()
+      // doesn't race a pending replace that overwrites the restored history entry.
+      await expect(page).toHaveURL(/\/#\/item\//, { timeout: 10_000 });
+    }
 
     await page.goBack();
 

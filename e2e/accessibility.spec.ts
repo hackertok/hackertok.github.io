@@ -449,37 +449,4 @@ test.describe('Accessibility - prefers-reduced-motion', () => {
     expect(['none', 'unmounted']).toContain(overlayDisplay);
   });
 
-  test('disables .reply-fade animation when reduced motion is preferred', async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-
-    // Emulate BEFORE navigation so the @media query resolves at first
-    // paint and reduced-motion behavior applies the moment replies
-    // mount on expand.
-    await page.goto('/#/item/12345');
-
-    // Wait for the top-level comment to mount, then expand its reply
-    // tree. Mock data: comment 1001 (patio11) has child 2001 (tptacek).
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
-    await page.getByText(/1 reply/i).first().click();
-    const replyAuthor = page.getByRole('link', { name: 'tptacek' }).first();
-    await expect(replyAuthor).toBeVisible();
-
-    // Reduced-motion users should never pass through the transient
-    // `.reply-fade` state. The branch stays mounted, so asserting on
-    // the branch that owns the visible reply is stable even if the DOM
-    // is slow.
-    const replyBranch = replyAuthor.locator('xpath=ancestor::div[contains(@class, "tree-branch")][1]');
-    await expect(replyBranch).not.toHaveClass(/reply-fade/);
-
-    // The inner Comment row remains the element that would animate in
-    // motion-enabled mode, so we still verify it rests at the reduced-
-    // motion contract: `animation-name:none` and `opacity:1`.
-    const replyChild = replyBranch.locator(':scope > .comment-row').first();
-    const replyStyles = await replyChild.evaluate((el) => {
-      const style = getComputedStyle(el);
-      return { animationName: style.animationName, opacity: style.opacity };
-    });
-    expect(replyStyles.animationName).toBe('none');
-    expect(replyStyles.opacity).toBe('1');
-  });
 });

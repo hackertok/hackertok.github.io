@@ -38,9 +38,11 @@ Object.defineProperty(mockVisualViewport, 'height', {
   configurable: true,
 });
 
-window.scrollTo = vi.fn((...args: unknown[]) => {
+const updateMockScrollY = (...args: unknown[]) => {
   if (typeof args[0] === 'number') mockScrollY = args[1] as number;
-});
+};
+
+window.scrollTo = vi.fn(updateMockScrollY);
 
 // Web Animations API stub (jsdom doesn't implement it)
 Element.prototype.animate = vi.fn(() => {
@@ -152,6 +154,10 @@ function hasActive(index: number) {
   return getPanel(index).classList.contains('active');
 }
 
+function activePanelCount() {
+  return document.querySelectorAll('[data-testid^="panel-"].active').length;
+}
+
 // ---- Tests ----
 
 describe('useSwipeScroll', () => {
@@ -165,6 +171,7 @@ describe('useSwipeScroll', () => {
     createdAnimations.length = 0;
     resizeObserverCallback = null;
     observedResizeTarget = null;
+    vi.mocked(window.scrollTo).mockImplementation(updateMockScrollY);
     vi.mocked(window.scrollTo).mockClear();
     vi.mocked(Element.prototype.animate).mockClear();
     document.documentElement.className = '';
@@ -441,6 +448,64 @@ describe('useSwipeScroll', () => {
 
       // Panel 0's position (200) should be restored
       expect(window.scrollTo).toHaveBeenCalledWith(0, 200);
+    });
+
+    it('suppresses the scroll indicator during a deep forward panel swap', async () => {
+      reducedMotionValue = true;
+      mockInnerHeight = 400;
+      mockScrollHeight = 5000;
+      mockScrollY = 4600;
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      const activeCountsAtScroll: number[] = [];
+      vi.mocked(window.scrollTo).mockImplementation((...args: unknown[]) => {
+        activeCountsAtScroll.push(activePanelCount());
+        updateMockScrollY(...args);
+      });
+      vi.mocked(window.scrollTo).mockClear();
+      swipeGesture(getContainer(), 'left', 150);
+
+      expect(hasActive(0)).toBe(false);
+      expect(hasActive(1)).toBe(true);
+      expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+      expect(activeCountsAtScroll).toEqual([1, 1]);
+      expect(Number(document.body.style.getPropertyValue('--swipe-scroll-progress'))).toBeCloseTo(0);
+
+      act(() => {
+        window.dispatchEvent(new Event('scroll'));
+      });
+
+      expect(document.body.classList.contains('is-scrolling')).toBe(false);
+
+      act(() => {
+        vi.runAllTimers();
+      });
+      await act(async () => { /* flush */ });
+    });
+
+    it('keeps outgoing panel in flow for non-zero scroll restores', async () => {
+      reducedMotionValue = true;
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      mockScrollY = 200;
+      swipeGesture(getContainer(), 'left', 150);
+      act(() => { vi.runAllTimers(); });
+      await act(async () => { /* flush */ });
+
+      const activeCountsAtScroll: number[] = [];
+      vi.mocked(window.scrollTo).mockImplementation((...args: unknown[]) => {
+        activeCountsAtScroll.push(activePanelCount());
+        updateMockScrollY(...args);
+      });
+      vi.mocked(window.scrollTo).mockClear();
+
+      swipeGesture(getContainer(), 'right', 150);
+
+      expect(window.scrollTo).toHaveBeenCalledWith(0, 200);
+      expect(activeCountsAtScroll[0]).toBe(2);
+
+      act(() => { vi.runAllTimers(); });
+      await act(async () => { /* flush */ });
     });
 
     it('ignores vertical gestures', () => {

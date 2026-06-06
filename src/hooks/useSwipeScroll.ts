@@ -29,6 +29,7 @@ export function useSwipeScroll({
   const currentIndexRef = useRef(currentIndex);
   const itemCountRef = useRef(itemCount);
   const isScrollingProgrammaticallyRef = useRef(false);
+  const isSuppressingScrollIndicatorRef = useRef(false);
   const isDraggingRef = useRef(false);
   const updateScrollIndicatorRef = useRef<() => void>(noop);
   const syncObservedPanelRef = useRef<() => void>(noop);
@@ -106,7 +107,14 @@ export function useSwipeScroll({
     const showIndicator = () => {
       updateScrollIndicator();
       // Don't show indicator during programmatic scrolls (panel switch) or active gestures
-      if (isScrollingProgrammaticallyRef.current || isDraggingRef.current) return;
+      if (
+        isScrollingProgrammaticallyRef.current ||
+        isSuppressingScrollIndicatorRef.current ||
+        isDraggingRef.current
+      ) {
+        document.body.classList.remove('is-scrolling');
+        return;
+      }
       document.body.classList.add('is-scrolling');
       if (scrollTimer) clearTimeout(scrollTimer);
       scrollTimer = setTimeout(() => {
@@ -129,6 +137,8 @@ export function useSwipeScroll({
       if (scrollTimer) clearTimeout(scrollTimer);
       document.body.classList.remove('is-scrolling');
       document.body.style.removeProperty('--swipe-scroll-progress');
+      document.body.style.removeProperty('--swipe-viewport-height');
+      isSuppressingScrollIndicatorRef.current = false;
       updateScrollIndicatorRef.current = noop;
       syncObservedPanelRef.current = noop;
       if (observedPanel && panelResizeObserver) {
@@ -203,6 +213,83 @@ export function useSwipeScroll({
     let dragFrameId = 0;
     let pendingDragDelta = 0;
 
+    // Pin --swipe-viewport-height to a px value so panel min-height doesn't shift
+    // when the URL bar toggles 100dvh. Released ~350ms later (after chrome settles).
+    const lockViewportHeight = () => {
+      const height = window.visualViewport?.height ?? window.innerHeight;
+      document.body.style.setProperty('--swipe-viewport-height', `${height}px`);
+    };
+    const unlockViewportHeight = () => {
+      document.body.style.removeProperty('--swipe-viewport-height');
+    };
+    const suppressScrollIndicatorDuringSwap = () => {
+      isSuppressingScrollIndicatorRef.current = true;
+      document.body.classList.remove('is-scrolling');
+
+      // Re-enable only after the swap + scrollTo settle, so it can't flash
+      // mid-swap. 180ms is empirical (swaps run ~50–250ms).
+      const releaseTimeout = setTimeout(() => {
+        pendingTimeouts = pendingTimeouts.filter(id => id !== releaseTimeout);
+        isSuppressingScrollIndicatorRef.current = false;
+        updateScrollIndicatorRef.current();
+      }, 180);
+      pendingTimeouts.push(releaseTimeout);
+    };
+
+    const clearPanelTransitionState = (panel: HTMLElement) => {
+      panel.classList.remove('peeking', 'incoming', 'dragging');
+      panel.style.transform = '';
+      panel.style.opacity = '';
+      panel.style.transformOrigin = '';
+    };
+
+    // Shared panel-swap. Non-zero restores keep the outgoing panel in flow through
+    // scrollTo so Firefox/APZ won't clamp the offset; top restores drop it first to
+    // avoid a tall dual-flow layout that flickers fixed chrome.
+    const commitPanelSwap = (
+      targetPanel: HTMLElement | undefined,
+      activePanel: HTMLElement | undefined,
+      targetIndex: number,
+    ) => {
+      suppressScrollIndicatorDuringSwap();
+      lockViewportHeight();
+
+      const savedY = scrollMapRef.current.get(targetIndex) ?? 0;
+      const restoreAtTop = savedY <= 0;
+
+      if (restoreAtTop && activePanel && activePanel !== targetPanel) {
+        activePanel.classList.remove('active');
+        clearPanelTransitionState(activePanel);
+      }
+
+      // 1. Target into flow.
+      if (targetPanel) {
+        targetPanel.classList.add('active');
+        clearPanelTransitionState(targetPanel);
+        targetPanel.scrollTop = 0;
+      }
+      // 2. Scroll while both panels are in flow (non-zero restores) so FF won't clamp.
+      window.scrollTo(0, savedY);
+      // 3. Drop the outgoing panel after non-zero restores.
+      if (!restoreAtTop && activePanel && activePanel !== targetPanel) {
+        activePanel.classList.remove('active');
+        clearPanelTransitionState(activePanel);
+      }
+      // Reflow + re-scroll — backward swipes may have changed content height since savedY.
+      void document.documentElement.scrollHeight;
+      window.scrollTo(0, savedY);
+      updateScrollIndicatorRef.current();
+      syncObservedPanelRef.current();
+      setCurrentIndex(targetIndex);
+      isDraggingRef.current = false;
+      // Release viewport height lock after browser chrome animation settles
+      const unlockTimeout = setTimeout(() => {
+        pendingTimeouts = pendingTimeouts.filter(id => id !== unlockTimeout);
+        unlockViewportHeight();
+      }, 350);
+      pendingTimeouts.push(unlockTimeout);
+    };
+
     const cleanSlate = () => {
       // Cancel any in-progress animations
       runningAnimations.forEach(a => a.cancel());
@@ -214,8 +301,12 @@ export function useSwipeScroll({
       // Kill stale safety timeouts from previous gestures
       pendingTimeouts.forEach(id => clearTimeout(id));
       pendingTimeouts = [];
+      isSuppressingScrollIndicatorRef.current = false;
       // Increment generation so any lingering callbacks become no-ops
       gestureId++;
+      // Release any viewport height lock from a previous gesture
+      unlockViewportHeight();
+      document.body.classList.remove('is-scrolling');
       // Remove residual card-stack classes and inline styles from all panels
       for (const panel of Array.from(container.children) as HTMLElement[]) {
         panel.classList.remove('peeking', 'dragging', 'incoming');
@@ -455,16 +546,7 @@ export function useSwipeScroll({
         if (reducedMotion) {
           // Instant swap — no animation
           cleanSlate();
-          activatePanelAndRestoreScroll(targetIndex);
-          isDraggingRef.current = false;
-          // Schedule React state update AFTER cleanSlate (which clears pendingTimeouts).
-          // Without this, setCurrentIndex is never called and currentIndex stays stale —
-          // breaking URL updates and causing the useLayoutEffect to revert the swap.
-          const deferredCommitTimeout = setTimeout(() => {
-            pendingTimeouts = pendingTimeouts.filter((timeoutId) => timeoutId !== deferredCommitTimeout);
-            setCurrentIndex(targetIndex);
-          }, 0);
-          pendingTimeouts.push(deferredCommitTimeout);
+          commitPanelSwap(targetPanel, activePanel, targetIndex);
         } else {
           // Velocity-matched duration: animation continues at finger speed.
           // Slight 1.2× boost gives a "pop" feel on release (iOS-like).
@@ -543,24 +625,7 @@ export function useSwipeScroll({
               if (gestureId !== myGesture) return;
               runningAnimations = [];
               anims.forEach(a => a.cancel());
-              // Hide old panel
-              if (activePanel) {
-                activePanel.classList.remove('active', 'dragging');
-                activePanel.style.transform = '';
-                activePanel.style.opacity = '';
-                activePanel.style.transformOrigin = '';
-              }
-              // Switch target into document flow first (gives document height),
-              // then scroll — order matters because scrollTo is clamped by document height
-              if (targetPanel) {
-                targetPanel.classList.remove('peeking', 'incoming');
-                targetPanel.style.transform = '';
-                targetPanel.style.opacity = '';
-                targetPanel.scrollTop = 0;
-              }
-              activatePanelAndRestoreScroll(targetIndex);
-              setCurrentIndex(targetIndex);
-              isDraggingRef.current = false;
+              commitPanelSwap(targetPanel, activePanel, targetIndex);
             });
           };
 
@@ -687,6 +752,7 @@ export function useSwipeScroll({
         cancelAnimationFrame(dragFrameId);
       }
       pendingTimeouts.forEach(id => clearTimeout(id));
+      isSuppressingScrollIndicatorRef.current = false;
       gestureId++;
       delete container.dataset.swipeEnabled;
     };

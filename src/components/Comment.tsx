@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { isKnownAuthor } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
@@ -17,51 +17,14 @@ interface CommentProps {
   stageIdx?: number;
 }
 
-const REPLY_FADE_DURATION_MS = 180;
-
-function prefersReducedMotion() {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
 export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
   const [repliesExpanded, setRepliesExpanded] = useState(false);
-  const [shouldAnimateReplies, setShouldAnimateReplies] = useState(false);
-  const replyFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (replyFadeTimerRef.current) {
-        clearTimeout(replyFadeTimerRef.current);
-      }
-    };
-  }, []);
-
-  const clearReplyFadeTimer = () => {
-    if (replyFadeTimerRef.current) {
-      clearTimeout(replyFadeTimerRef.current);
-      replyFadeTimerRef.current = null;
-    }
-  };
 
   const expandReplies = () => {
-    clearReplyFadeTimer();
-    const reducedMotion = prefersReducedMotion();
-    setShouldAnimateReplies(!reducedMotion);
     setRepliesExpanded(true);
-    if (reducedMotion) {
-      return;
-    }
-    replyFadeTimerRef.current = setTimeout(() => {
-      setShouldAnimateReplies(false);
-      replyFadeTimerRef.current = null;
-    }, REPLY_FADE_DURATION_MS);
   };
 
   const collapseReplies = () => {
-    clearReplyFadeTimer();
-    setShouldAnimateReplies(false);
     setRepliesExpanded(false);
   };
 
@@ -81,10 +44,8 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
 
   const isOp = isKnownAuthor(storyAuthor) && comment.author === storyAuthor;
 
-  // Top-level comments inside a tree get a cascade slot; nested
-  // children fade in together via `.reply-fade` on their
-  // `.tree-branch` wrappers when the user expands a thread (no
-  // stagger — reply expansion is a deliberate user-initiated reveal).
+  // Top-level comments get a cascade slot (stagger-fade); nested
+  // children appear instantly when the user expands a thread.
   const wrapperClass = stageIdx !== undefined ? 'py-2 comment-row stagger-fade' : 'py-2 comment-row';
   const wrapperStyle: CSSProperties | undefined =
     stageIdx !== undefined
@@ -157,16 +118,11 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
             </div>
           )}
 
-          {/* Children re-mount on every expand (React's conditional
-              render); the `.reply-fade` fade animation re-fires each
-              time. The .tree-branch wrapper itself stays opaque so
-              its `::before` connector and `--last::after` trunk-end
-              mask render at full opacity from frame 0 — see the
-              comment on `.reply-fade > *` in src/index.css. */}
+          {/* Children re-mount on every expand (React's conditional render). */}
           {repliesExpanded && comment.children.map((child, i) => (
             <div
               key={child.id}
-              className={`tree-branch${i === comment.children.length - 1 ? ' tree-branch--last' : ''}${shouldAnimateReplies ? ' reply-fade' : ''}`}
+              className={`tree-branch${i === comment.children.length - 1 ? ' tree-branch--last' : ''}`}
             >
               <Comment comment={child} storyAuthor={storyAuthor} />
             </div>
