@@ -24,14 +24,14 @@ export async function waitForSwipeReady(page: Page, minPanels = 2) {
   await page.waitForFunction(() => {
     const el = document.querySelector('[data-testid="swipe-container"]');
     return el && el.getBoundingClientRect().width > 0;
-  }, { timeout: 5000 });
+  }, undefined, { timeout: 5000 });
 
   // Wait for the gesture system to signal readiness (listeners attached).
   // This eliminates the race between panels rendering and useEffect attaching handlers.
   await page.waitForFunction(() => {
     const el = document.querySelector('[data-testid="swipe-container"]');
     return el && (el as HTMLElement).dataset.swipeEnabled === 'true';
-  }, { timeout: 5000 });
+  }, undefined, { timeout: 5000 });
 
   // Some Mobile Safari route transitions attach listeners one frame before the
   // viewer finishes applying its `.active` marker. Tests that scope to the
@@ -45,7 +45,7 @@ export async function waitForSwipeReady(page: Page, minPanels = 2) {
 
     const activePanel = activePanels[0] as HTMLElement;
     return activePanel.getBoundingClientRect().width > 0;
-  }, { timeout: 5000 });
+  }, undefined, { timeout: 5000 });
 }
 
 /** Returns the currently active swipe panel. */
@@ -81,10 +81,25 @@ export async function expectActiveSwipePanelText(
 export async function smoothScrollAndAwaitSettled(container: Locator, targetLeft: number) {
   const page = container.page();
 
+  // The container width can momentarily read 0 while React is mid-commit
+  // (notably Firefox re-rendering the offline feed as its load/error state
+  // churns during a deep swipe). Measuring then makes `target` below Infinity,
+  // which crashes the `Array.from({ length })` step builder with
+  // "Invalid array length". Wait for a laid-out container before measuring.
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[data-testid="swipe-container"]');
+    return !!el && el.getBoundingClientRect().width > 0;
+  }, undefined, { timeout: 5000 });
+
   // Determine target index and current index
   const { targetIndex, currentIndex, panelWidth } = await container.evaluate((el, left) => {
     const width = el.getBoundingClientRect().width;
-    const target = Math.round(left / width);
+    const childCount = el.children.length;
+    // Defense in depth against a transient 0/elem-detached read slipping past
+    // the wait above: clamp the derived index to a real child so a mismeasure
+    // can never yield a non-finite or out-of-range step count.
+    const rawTarget = width > 0 ? Math.round(left / width) : 0;
+    const target = Math.max(0, Math.min(Math.max(childCount - 1, 0), rawTarget));
     let current = 0;
     for (let i = 0; i < el.children.length; i++) {
       if (el.children[i].classList.contains('active')) {

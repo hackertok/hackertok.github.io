@@ -105,7 +105,12 @@ function dispatchTouch(el: EventTarget, type: string, clientX: number, clientY: 
   Object.defineProperty(event, 'touches', { value: isEnd ? [] : [touch] });
   Object.defineProperty(event, 'changedTouches', { value: [touch] });
   Object.defineProperty(event, 'targetTouches', { value: isEnd ? [] : [touch] });
-  el.dispatchEvent(event);
+  // Touch handlers can synchronously commit a panel swap (reduced-motion path
+  // calls setCurrentIndex), so wrap the native dispatch in act() to flush any
+  // resulting React state update inside the test's act scope.
+  act(() => {
+    el.dispatchEvent(event);
+  });
 }
 
 const CENTER_X = 187.5;

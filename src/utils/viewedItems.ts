@@ -75,122 +75,140 @@ export function useIsViewed(itemId: number | string): boolean {
 }
 
 // ============================================================================
-// Time-based viewed tracking (differentiated TTLs for swipe-mode filtering)
+// Time-based viewed tracking (swipe-mode filtering)
+//
+// Each map stores `id -> expiresAt` (absolute ms). An item is hidden from the
+// swipe feed while `expiresAt > now`. Title clicks use a fixed 5-day window;
+// detail views use a dwell-based window (the longer you look, the longer it
+// stays hidden). Storing the expiry — rather than the view time + a fixed TTL —
+// lets each entry carry its own variable lifetime.
 // ============================================================================
 
 export const VIEWED_TITLE_TIMES_KEY = 'viewed:times:title';
 export const VIEWED_DETAIL_TIMES_KEY = 'viewed:times:detail';
-export const TITLE_CLICK_TTL_HOURS = 120; // 5 days
-export const DETAIL_VIEW_TTL_HOURS = 12;
+export const TITLE_CLICK_TTL_HOURS = 120;        // 5 days
+export const DETAIL_VIEW_TTL_HOURS = 12;         // dwell < 3s (short / floor)
+export const DETAIL_VIEW_TTL_MEDIUM_HOURS = 24;  // dwell 3-60s
+export const DETAIL_VIEW_TTL_LONG_HOURS = 48;    // dwell >= 60s (2 days)
+export const DETAIL_DWELL_MEDIUM_MS = 3_000;
+export const DETAIL_DWELL_LONG_MS = 60_000;
 
-let titleTimesCache: Record<string, number> | null = null;
-let detailTimesCache: Record<string, number> | null = null;
-
-function loadTitleTimes(): Record<string, number> {
-  if (titleTimesCache !== null) return titleTimesCache;
-  try {
-    const stored = localStorage.getItem(VIEWED_TITLE_TIMES_KEY);
-    titleTimesCache = stored ? JSON.parse(stored) as Record<string, number> : {};
-  } catch {
-    titleTimesCache = {};
-  }
-  return titleTimesCache;
+/** Map detail-view dwell time to a hide TTL (hours): longer engagement hides longer. */
+export function detailTtlHoursForDwell(dwellMs: number): number {
+  if (dwellMs >= DETAIL_DWELL_LONG_MS) return DETAIL_VIEW_TTL_LONG_HOURS;
+  if (dwellMs >= DETAIL_DWELL_MEDIUM_MS) return DETAIL_VIEW_TTL_MEDIUM_HOURS;
+  return DETAIL_VIEW_TTL_HOURS;
 }
 
-function saveTitleTimes(): void {
-  try {
-    localStorage.setItem(VIEWED_TITLE_TIMES_KEY, JSON.stringify(titleTimesCache));
-  } catch { /* best-effort */ }
+// Each kind (title / detail) is an `id -> expiresAt` map backed by localStorage
+// with a lazily-built in-memory cache. The factory is the single source of truth
+// for that load/cache/save/reset behavior; `titleTimeMap`/`detailTimeMap` are its
+// two instances.
+function createTimeMap(storageKey: string) {
+  let cache: Record<string, number> | null = null;
+  return {
+    load(): Record<string, number> {
+      if (cache !== null) return cache;
+      try {
+        const stored = localStorage.getItem(storageKey);
+        // Tolerate a corrupt/foreign value at our key. Only a plain object is a
+        // valid id->expiresAt map, and only finite-number values are valid
+        // expiries — drop anything else so the rest of the code can assume
+        // `times[id]` is always a number. (A non-number would poison the
+        // Math.max merge with NaN, which `===` can never settle, permanently
+        // wedging that id: never hidden, re-written on every view.)
+        const parsed: unknown = stored ? JSON.parse(stored) : null;
+        const raw = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? parsed as Record<string, unknown>
+          : {};
+        const clean: Record<string, number> = {};
+        for (const [id, expiresAt] of Object.entries(raw)) {
+          if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+            clean[id] = expiresAt;
+          }
+        }
+        cache = clean;
+      } catch {
+        cache = {};
+      }
+      return cache;
+    },
+    save(): void {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(cache));
+      } catch { /* best-effort */ }
+    },
+    reset(): void {
+      cache = null;
+    },
+  };
 }
 
-function loadDetailTimes(): Record<string, number> {
-  if (detailTimesCache !== null) return detailTimesCache;
-  try {
-    const stored = localStorage.getItem(VIEWED_DETAIL_TIMES_KEY);
-    detailTimesCache = stored ? JSON.parse(stored) as Record<string, number> : {};
-  } catch {
-    detailTimesCache = {};
-  }
-  return detailTimesCache;
-}
+const titleTimeMap = createTimeMap(VIEWED_TITLE_TIMES_KEY);
+const detailTimeMap = createTimeMap(VIEWED_DETAIL_TIMES_KEY);
 
-function saveDetailTimes(): void {
-  try {
-    localStorage.setItem(VIEWED_DETAIL_TIMES_KEY, JSON.stringify(detailTimesCache));
-  } catch { /* best-effort */ }
-}
-
-/** Get IDs that should be filtered (hidden) in swipe mode, using per-kind TTLs. */
+/** Get IDs that should be filtered (hidden) in swipe mode — entries not yet expired. */
 export function getFilteredViewedIds(): Set<number> {
   const now = Date.now();
   const result = new Set<number>();
 
-  const titleTimes = loadTitleTimes();
-  const titleCutoff = now - TITLE_CLICK_TTL_HOURS * 3_600_000;
-  for (const [id, timestamp] of Object.entries(titleTimes)) {
-    if (timestamp >= titleCutoff) {
-      result.add(Number(id));
-    }
-  }
-
-  const detailTimes = loadDetailTimes();
-  const detailCutoff = now - DETAIL_VIEW_TTL_HOURS * 3_600_000;
-  for (const [id, timestamp] of Object.entries(detailTimes)) {
-    if (timestamp >= detailCutoff) {
-      result.add(Number(id));
+  for (const map of [titleTimeMap.load(), detailTimeMap.load()]) {
+    for (const [id, expiresAt] of Object.entries(map)) {
+      if (expiresAt > now) result.add(Number(id));
     }
   }
 
   return result;
 }
 
-/** Mark viewed with timestamp; persists to permanent + session stores. */
-export function markViewedWithTime(itemId: number | string, kind: 'title' | 'detail' = 'detail'): void {
+/**
+ * Mark viewed with an expiry; persists to the time-based + session stores (and,
+ * for title clicks, the permanent store that drives visual dimming).
+ *
+ * `ttlHours` controls how long the item stays hidden in swipe mode. The stored
+ * expiry is merged with `Math.max`, so re-viewing only ever extends the hide
+ * window — a later or shorter view never shortens an existing one.
+ */
+export function markViewedWithTime(
+  itemId: number | string,
+  kind: 'title' | 'detail' = 'detail',
+  ttlHours = kind === 'title' ? TITLE_CLICK_TTL_HOURS : DETAIL_VIEW_TTL_HOURS,
+): void {
   const id = Number(itemId);
 
   if (kind === 'title') markViewed(id);
   addToSessionViewed(id);
 
-  if (kind === 'title') {
-    const times = loadTitleTimes();
-    times[id] = Date.now();
-    saveTitleTimes();
-  } else {
-    const times = loadDetailTimes();
-    times[id] = Date.now();
-    saveDetailTimes();
-  }
+  const map = kind === 'title' ? titleTimeMap : detailTimeMap;
+  const nextExpiry = Date.now() + ttlHours * 3_600_000;
+  const times = map.load();
+  const merged = Math.max(times[id] ?? 0, nextExpiry);
+  // Skip the stringify + write when the merge changes nothing — e.g. re-viewing
+  // an item whose hide window is already longer, or an idempotent re-finalize.
+  if (merged === times[id]) return;
+  times[id] = merged;
+  map.save();
 }
 
 export function pruneExpiredViewed(): void {
   const now = Date.now();
 
-  const titleTimes = loadTitleTimes();
-  const titleCutoff = now - TITLE_CLICK_TTL_HOURS * 3_600_000;
-  let pruned = false;
-  for (const [id, timestamp] of Object.entries(titleTimes)) {
-    if (timestamp < titleCutoff) {
-      delete titleTimes[id];
-      pruned = true;
+  for (const map of [titleTimeMap, detailTimeMap]) {
+    const times = map.load();
+    let pruned = false;
+    for (const [id, expiresAt] of Object.entries(times)) {
+      if (expiresAt <= now) {
+        delete times[id];
+        pruned = true;
+      }
     }
+    if (pruned) map.save();
   }
-  if (pruned) saveTitleTimes();
-
-  const detailTimes = loadDetailTimes();
-  const detailCutoff = now - DETAIL_VIEW_TTL_HOURS * 3_600_000;
-  pruned = false;
-  for (const [id, timestamp] of Object.entries(detailTimes)) {
-    if (timestamp < detailCutoff) {
-      delete detailTimes[id];
-      pruned = true;
-    }
-  }
-  if (pruned) saveDetailTimes();
 }
 
 export function clearViewedTimes() {
-  titleTimesCache = null;
-  detailTimesCache = null;
+  titleTimeMap.reset();
+  detailTimeMap.reset();
   try {
     localStorage.removeItem(VIEWED_TITLE_TIMES_KEY);
     localStorage.removeItem(VIEWED_DETAIL_TIMES_KEY);
