@@ -8,7 +8,8 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
 import { fetchItemOnly, NotFoundError } from '../api/hn';
-import { getFilteredViewedIds, getSessionViewedIds, markViewedWithTime } from '../utils/viewedItems';
+import { getFilteredViewedIds, getSessionViewedIds } from '../utils/viewedItems';
+import { useViewDwell } from '../hooks/useViewDwell';
 import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
 import { StateView } from './StateView';
@@ -81,7 +82,8 @@ export function SwipeStoryViewerCore({
   const isOurNavigationRef = useRef(false);
   
   // Snapshots at mount for filtering logic:
-  // - recentlyViewedOnMount: stories that should be filtered (title=5d, detail=12h TTLs)
+  // - recentlyViewedOnMount: stories still within their hide window and thus
+  //   filtered out (title click = 5d; detail view = dwell-based 12h/24h/48h)
   // - sessionViewedOnMount: stories viewed THIS session (from sessionStorage)
   // Stories in sessionStorage are NOT filtered (can always go back to them)
   // Stories in localStorage but NOT sessionStorage are filtered
@@ -395,13 +397,9 @@ export function SwipeStoryViewerCore({
   
   usePrefetchItems(currentIndex, mergedStories, 6);
   
-  // Mark all stories as viewed (detail) on swipe — each panel IS the story detail on mobile
-  useEffect(() => {
-    const currentStory = mergedStories[currentIndex];
-    if (currentStory) {
-      markViewedWithTime(currentStory.id, 'detail');
-    }
-  }, [currentIndex, mergedStories]);
+  // Each panel IS the story detail on mobile — track how long the active story
+  // is looked at and hide it for a window scaled to that dwell time.
+  useViewDwell(currentStory?.id);
   
   // Load more stories when approaching the end (don't auto-retry on error — user taps Retry)
   useEffect(() => {

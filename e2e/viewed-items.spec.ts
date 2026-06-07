@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
-import { expectActiveSwipePanelText } from './fixtures/swipe-helpers';
+import { expectActiveSwipePanelText, getActiveSwipePanel } from './fixtures/swipe-helpers';
 
 test.describe('Viewed Items', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
@@ -14,9 +14,10 @@ test.describe('Viewed Items', () => {
   });
 
   test('viewed items persist across page reload', async ({ page }) => {
-    // 'viewed:times:detail' is the detail time-based store: { itemId: timestamp }.
+    // 'viewed:times:detail' is the detail time-based store: { itemId: expiresAt }.
+    // Seed a live (future) expiry so the entry survives the startup prune.
     await page.addInitScript(() => {
-      const viewed = { '12345': Date.now() };
+      const viewed = { '12345': Date.now() + 12 * 60 * 60 * 1000 };
       localStorage.setItem('viewed:times:detail', JSON.stringify(viewed));
     });
 
@@ -57,7 +58,7 @@ test.describe('Viewed Items', () => {
     await expect(unviewedCard).not.toHaveAttribute('data-viewed', 'true');
   });
 
-  test('old viewed items are cleaned up after 5 days (title)', async ({ browser, baseURL }) => {
+  test('expired viewed entries are pruned on load; live ones are kept (title)', async ({ browser, baseURL }) => {
     // Multiple page loads + storage manipulation push past default timeout.
     test.setTimeout(60000);
 
@@ -66,12 +67,17 @@ test.describe('Viewed Items', () => {
     const page = await context.newPage();
     await setupApiMocks(page);
 
-    const oldTimestamp = Date.now() - (121 * 60 * 60 * 1000); // 121h ago: past 120h (5-day) window
-
-    await page.addInitScript((oldTime) => {
-      const viewed = { '12345': oldTime };
+    // 'viewed:times:title' stores { itemId: expiresAt }. The 5-day window is
+    // applied at write time, so prune just drops anything already expired: seed
+    // one expired (past) entry and one live (future) entry.
+    await page.addInitScript(() => {
+      const hour = 60 * 60 * 1000;
+      const viewed = {
+        '12345': Date.now() - hour, // expired -> pruned on load
+        '12346': Date.now() + hour, // live    -> retained
+      };
       localStorage.setItem('viewed:times:title', JSON.stringify(viewed));
-    }, oldTimestamp);
+    });
 
     await page.goto('/#/');
 
@@ -83,6 +89,13 @@ test.describe('Viewed Items', () => {
       const viewedTimes = stored ? JSON.parse(stored) : {};
       return viewedTimes['12345'];
     }, { timeout: 10000 }).toBeUndefined();
+
+    const liveEntry = await page.evaluate(() => {
+      const stored = localStorage.getItem('viewed:times:title');
+      const viewedTimes = stored ? JSON.parse(stored) : {};
+      return viewedTimes['12346'];
+    });
+    expect(liveEntry).toBeGreaterThan(0);
   });
 });
 
@@ -127,20 +140,27 @@ test.describe('Viewed Items - Mobile', () => {
 
   test('viewed items are filtered in mobile swipe mode', async ({ page }) => {
     // Seed 'viewed:times:detail' WITHOUT touching 'viewed:session' — the swipe
-    // filter should hide items that are time-viewed but not session-viewed.
+    // filter should hide items whose hide window is still live but not
+    // session-viewed. Values are expiresAt, so use a future time (not expired).
+    // The top feed is [12345, 12346, 12347, ...]; hiding 12345 + 12346 must
+    // promote 12347 ("Why We Moved from React to htmx") to the active panel.
     await page.addInitScript(() => {
       const viewed = {
-        '12345': Date.now() - 1000,
-        '12346': Date.now() - 1000,
+        '12345': Date.now() + 12 * 60 * 60 * 1000,
+        '12346': Date.now() + 12 * 60 * 60 * 1000,
       };
       localStorage.setItem('viewed:times:detail', JSON.stringify(viewed));
     });
 
     await page.goto('/#/');
 
-    const container = page.getByTestId('swipe-container');
-    await expect(container).toBeVisible();
+    // The first two stories are hidden, so the third is the active panel...
+    await expectActiveSwipePanelText(page, 'Why We Moved from React to htmx');
 
-    await expect(page.getByTestId('swipe-panel').first()).toBeVisible();
+    // ...and the filtered story must not be the one on screen (a filtering
+    // regression would leave 12345's title here, which the old "a panel is
+    // visible" assertion could not catch).
+    const activePanel = getActiveSwipePanel(page);
+    await expect(activePanel.getByText('Rust Is the Future of JavaScript Infrastructure')).toHaveCount(0);
   });
 });
