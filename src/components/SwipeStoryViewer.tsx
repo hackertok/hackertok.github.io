@@ -9,11 +9,21 @@ import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
 import { fetchItemOnly, NotFoundError } from '../api/hn';
 import { getFilteredViewedIds, getSessionViewedIds } from '../utils/viewedItems';
+import { readSwipePosition, saveSwipePosition, clearSwipePosition } from '../utils/swipePosition';
 import { useViewDwell } from '../hooks/useViewDwell';
 import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
 import { StateView } from './StateView';
 import type { StoryItem, FeedType, LocationState } from '../types';
+
+/** Two LocationStates refer to the same viewer when they share a feed/domain/user. */
+function sameViewer(a: LocationState, b: LocationState): boolean {
+  return (
+    (a.from ?? null) === (b.from ?? null) &&
+    (a.fromDomain ?? null) === (b.fromDomain ?? null) &&
+    (a.fromUser ?? null) === (b.fromUser ?? null)
+  );
+}
 
 interface SwipeStoryViewerCoreProps {
   /** Story data from the consumer's data source (feed, domain, etc.) */
@@ -62,6 +72,22 @@ export function SwipeStoryViewerCore({
   const locationState = location.state as LocationState | null;
   const initialItemIdNum = initialItemId != null ? Number(initialItemId) : undefined;
 
+  // Durable restore snapshot (sessionStorage) — survives a full reload (bfcache miss).
+  // FREEZE at mount: `initialItemIdNum` changes on the first swipe (the URL-update
+  // effect rewrites /item/:id), so re-validating per render would drop the snapshot
+  // mid-session and collapse the list back to live `stories`.
+  const [restoreSnapshot] = useState(() => {
+    const snap = readSwipePosition();
+    return snap &&
+      snap.stories.length > 0 &&
+      snap.storyId === initialItemIdNum &&
+      sameViewer(snap.viewer, backState)
+      ? snap
+      : null;
+  });
+  const isRestoringPosition = restoreSnapshot !== null;
+  const restoredStories = restoreSnapshot?.stories ?? null;
+
   const [injectedStory, setInjectedStory] = useState<StoryItem | null>(null);
   const [injectedLoading, setInjectedLoading] = useState(false);
   const [injectedError, setInjectedError] = useState<string | null>(null);
@@ -73,7 +99,10 @@ export function SwipeStoryViewerCore({
   // Recognizes `from` (feed), `fromDomain` (domain), and `fromUser` (user
   // submissions) — any of those signals a history nav and suppresses anchoring.
   const [anchorStoryId, setAnchorStoryId] = useState<number | null>(() => {
-    const isHistoryNav = !!(locationState?.from ?? locationState?.fromDomain ?? locationState?.fromUser);
+    // A matching snapshot counts as history nav: on a stateless reload `locationState`
+    // is null, so `isRestoringPosition` is what suppresses the index-0 anchor.
+    const isHistoryNav = isRestoringPosition ||
+      !!(locationState?.from ?? locationState?.fromDomain ?? locationState?.fromUser);
     return isHistoryNav ? null : initialItemIdNum ?? null;
   });
   const lastInitialStoryIdRef = useRef(initialItemId);
@@ -89,14 +118,31 @@ export function SwipeStoryViewerCore({
   // Stories in localStorage but NOT sessionStorage are filtered
   const [recentlyViewedOnMount] = useState(() => getFilteredViewedIds());
   const [sessionViewedOnMount] = useState(() => getSessionViewedIds());
+
+  // restoredStories is frozen for the mount, so build this id-set once rather
+  // than on every per-swipe mergedStories recompute.
+  const restoredIds = useMemo(
+    () => (restoredStories ? new Set(restoredStories.map(s => s.id)) : null),
+    [restoredStories],
+  );
   
   // Merge injected story (if any) with feed stories, avoiding duplicates
   // Also filter out recently-viewed stories (unless viewed this session)
   // IMPORTANT: If anchorStoryId is set, that story is moved to index 0
   const mergedStories = useMemo(() => {
+    // Restoring: seed the list with the restored stories first, then live stories
+    // not already present (id-dedup is mandatory — panels key on story.id). The
+    // snapshot holds the scrollback from the front (index 0), so prepending it keeps
+    // feed order: live front-stories are dups and drop out, nothing is sorted behind
+    // the anchor. Frozen for the mount so the neighborhood survives feeds whose live
+    // `stories` restart at page 0 after a reload; loadMore appends past it.
+    const baseStories = restoredStories
+      ? [...restoredStories, ...stories.filter(s => !restoredIds!.has(s.id))]
+      : stories;
+
     // Find anchor story in feed (the story that should be first)
     const anchorStory = anchorStoryId
-      ? stories.find(s => s.id === anchorStoryId)
+      ? baseStories.find(s => s.id === anchorStoryId)
       : null;
     
     // Priority for first position:
@@ -108,8 +154,8 @@ export function SwipeStoryViewerCore({
     const firstStory = anchorStory ?? (shouldUseInjectedStory ? injectedStory : null);
     
     let result = firstStory 
-      ? [firstStory, ...stories.filter(s => s.id !== firstStory.id)]
-      : stories;
+      ? [firstStory, ...baseStories.filter(s => s.id !== firstStory.id)]
+      : baseStories;
     
     // Also include injectedStory in the list (for swiping back to it)
     // but only if it's not already the firstStory
@@ -121,18 +167,20 @@ export function SwipeStoryViewerCore({
     // - firstStory (linked story at anchor position)
     // - injectedStory (so user can swipe back to it)
     // - initialItemId (current URL - browser back/forward)
+    // - restored stories (keep the neighborhood intact despite hide windows)
     // - stories viewed THIS session (in sessionStorage)
     const filtered = result.filter(story => 
       story === firstStory ||
       story === injectedStory ||
       story.id === initialItemIdNum ||
+      (restoredIds?.has(story.id) ?? false) ||
       sessionViewedOnMount.has(story.id) ||
       !recentlyViewedOnMount.has(story.id)
     );
     
     // Fallback: if all filtered out, show everything
     return filtered.length > 0 ? filtered : result;
-  }, [injectedStory, stories, anchorStoryId, initialItemIdNum, sessionViewedOnMount, recentlyViewedOnMount]);
+  }, [injectedStory, stories, anchorStoryId, initialItemIdNum, sessionViewedOnMount, recentlyViewedOnMount, restoredStories, restoredIds]);
   
   // Defer listener attachment until the main container (with ref) actually renders.
   // On cold start (no localStorage cache), stories start empty → loading skeleton renders
@@ -184,8 +232,11 @@ export function SwipeStoryViewerCore({
   useEffect(() => {
     if (!initialItemId) return;
     
-    // Don't wait for stories to load - fetch immediately if this is a direct navigation
-    const storyInList = stories.some(s => s.id === initialItemIdNum);
+    // Don't wait for stories to load — fetch immediately on direct navigation.
+    // Count the restored snapshot too: on a reload live `stories` may not hold the
+    // story, and a needless re-fetch could paint an error screen over a good restore.
+    const storyInList = stories.some(s => s.id === initialItemIdNum) ||
+      (restoredStories?.some(s => s.id === initialItemIdNum) ?? false);
     if (storyInList) {
       // Story found in feed, clear injected story and stale error state
       if (injectedStory && injectedStory.id === initialItemIdNum) {
@@ -249,7 +300,7 @@ export function SwipeStoryViewerCore({
         fetchedStoryIdRef.current = null;
       }
     };
-  }, [initialItemId, initialItemIdNum, stories, injectedStory, injectedError]);
+  }, [initialItemId, initialItemIdNum, stories, injectedStory, injectedError, restoredStories]);
   
   // Scroll to index 0 when injected story arrives and is anchored
   // This handles: user navigates to out-of-feed story, we fetch it, then scroll to it
@@ -270,14 +321,37 @@ export function SwipeStoryViewerCore({
   // Uses both pageshow (for bfcache) and visibilitychange (for tab switches)
   // pageshow fires BEFORE first paint on bfcache restore - critical for preventing flash
   const savedIndexOnHideRef = useRef<number | null>(null);
+  // Synced via effect so the long-lived hide listener reads the latest list/viewer
+  // without re-subscribing (avoids a stale closure).
+  const mergedStoriesRef = useRef(mergedStories);
+  const backStateRef = useRef(backState);
+  useEffect(() => {
+    mergedStoriesRef.current = mergedStories;
+    backStateRef.current = backState;
+  });
   
   useEffect(() => {
+    // Persist a snapshot of the current story + neighborhood for reload restore.
+    const persistSnapshot = () => {
+      const list = mergedStoriesRef.current;
+      const cur = list[currentIndexRef.current];
+      if (!cur) return;
+      saveSwipePosition({
+        viewer: backStateRef.current,
+        storyId: cur.id,
+        index: currentIndexRef.current,
+        scrollY: window.scrollY,
+        stories: list,
+      });
+    };
+
     // Save position + scrollY when page is about to be hidden/cached
     const handlePageHide = () => {
       savedIndexOnHideRef.current = currentIndexRef.current;
       try {
         sessionStorage.setItem('__swipe_scrollY', String(window.scrollY));
       } catch { /* quota exceeded — non-critical */ }
+      persistSnapshot();
     };
     
     // Restore position when page is shown from bfcache (persisted=true)
@@ -300,6 +374,7 @@ export function SwipeStoryViewerCore({
         try {
           sessionStorage.setItem('__swipe_scrollY', String(window.scrollY));
         } catch { /* quota exceeded — non-critical */ }
+        persistSnapshot();
       } else if (document.visibilityState === 'visible' && savedIndexOnHideRef.current !== null) {
         const targetIndex = savedIndexOnHideRef.current;
         savedIndexOnHideRef.current = null;
@@ -385,15 +460,31 @@ export function SwipeStoryViewerCore({
     
     if (mergedStories.length === 0) return;
     
-    const idx = mergedStories.findIndex(s => s.id === targetStoryId);
+    let idx = mergedStories.findIndex(s => s.id === targetStoryId);
+    // Defensive fallback for a drifted/corrupted snapshot: the target id normally
+    // lives in the restored prefix, but if findIndex misses, use the saved index so
+    // the restore still resolves (and the snapshot clears).
+    if (idx < 0 && restoreSnapshot && restoreSnapshot.index >= 0 && restoreSnapshot.index < mergedStories.length) {
+      idx = restoreSnapshot.index;
+    }
     if (idx >= 0) {
       pendingScrollToStoryIdRef.current = null;
       hasInitializedScrollRef.current = true;
       if (idx !== currentIndexRef.current) {
         scrollToIndex(idx);
       }
+      // Consume the snapshot once: restore the best-effort vertical offset (may
+      // clamp until comments load), then clear it. Use the captured `restoreSnapshot`
+      // (not a fresh read) so this survives clearSwipePosition() and StrictMode's
+      // double-invoke — clearing sessionStorage doesn't disturb the frozen base.
+      if (restoreSnapshot) {
+        if (restoreSnapshot.scrollY > 0) {
+          window.scrollTo(0, restoreSnapshot.scrollY);
+        }
+        clearSwipePosition();
+      }
     }
-  }, [mergedStories, initialItemId, initialItemIdNum, anchorStoryId, scrollToIndex, currentIndexRef]);
+  }, [mergedStories, initialItemId, initialItemIdNum, anchorStoryId, scrollToIndex, currentIndexRef, restoreSnapshot]);
   
   usePrefetchItems(currentIndex, mergedStories, 6);
   
@@ -536,9 +627,14 @@ export function SwipeStoryViewerCore({
     );
   }
   
-  // Virtualization: only render panels within this window around currentIndex
-  // Buffer of 2 ensures smooth swiping (pre-rendered neighbors) while keeping DOM light
-  // Total rendered: up to 5 panels (current + 2 before + 2 after)
+  // Virtualization: render heavy content (FullScreenItem ≈ 100+ DOM nodes) only for
+  // panels within ±BUFFER of currentIndex. Out-of-window panels keep their bare
+  // <div> (so container.children stays 1:1 with story index for the gesture engine)
+  // but render NO content — they're display:none until activated, and the gesture
+  // only ever reveals current ± 1, which is always in-window. This keeps the live
+  // DOM ~constant regardless of feed length: a deep/restored list of N stories costs
+  // ~5 content panels, not N. (A far panel can only become active via a layout-effect
+  // jump — restore/history-nav — which recenters the window before paint, so no flash.)
   const VIRTUALIZE_BUFFER = 2;
   
   return (
@@ -552,8 +648,8 @@ export function SwipeStoryViewerCore({
         const isWithinWindow = distance <= VIRTUALIZE_BUFFER;
         // Current + adjacent panels are priority (fetch in parallel for smooth swiping)
         const isPriority = distance <= 1;
-        // Far panels (distance > 1) defer comment fetch entirely to reduce concurrent requests
-        // Note: linked story is always at index 0 (reordered), so it's never deferred
+        // Far panels (distance > 1) defer comment fetch to reduce concurrent requests;
+        // the active panel (distance 0) is always priority, so it's never deferred.
         const deferComments = distance > 1;
         
         return (
@@ -563,16 +659,13 @@ export function SwipeStoryViewerCore({
             data-testid="swipe-panel"
             data-item-id={story.id}
           >
-            {isWithinWindow ? (
+            {isWithinWindow && (
               <FullScreenItem
                 itemId={story.id}
                 initialItem={story}
                 isPriority={isPriority}
                 deferComments={deferComments}
               />
-            ) : (
-              // Skeleton placeholder for non-visible panels (consistent UX during quick swipes)
-              <FullScreenItemSkeletonPanel />
             )}
           </div>
         );

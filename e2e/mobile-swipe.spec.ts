@@ -678,4 +678,97 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByRole('link', { name: /back to home/i })).toBeVisible();
     await expect(page).toHaveTitle(/Item not available.*HackerTok/);
   });
+
+  test('restores swipe position on the main feed after a full page reload', async ({ page }) => {
+    // The headline bfcache-miss scenario: swipe deep, then a FULL reload (in-memory
+    // feed state AND location.state are gone). The durable sessionStorage snapshot
+    // must restore the story at its prior index instead of collapsing it to 0.
+    // (Distinct from the goBack tests above, which keep the SPA — and its state —
+    // alive.) This describe's beforeEach does not clear storage, so the snapshot
+    // survives the reload.
+    await page.goto('/#/');
+    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
+
+    const container = page.getByTestId('swipe-container');
+    await waitForSwipeReady(page, 6);
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+
+    // Swipe to index 2 (item 12347 — "Why We Moved from React to htmx").
+    await smoothScrollAndAwaitSettled(container, panelWidth);
+    await waitForScrollAtIndex(page, 1);
+    await smoothScrollAndAwaitSettled(container, panelWidth * 2);
+    await waitForScrollAtIndex(page, 2);
+    await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
+
+    // Force the hide-time persist deterministically (pagehide's handler writes the
+    // snapshot unconditionally), and confirm it landed before reloading.
+    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await expect
+      .poll(() => page.evaluate(() => sessionStorage.getItem('__swipe_pos')))
+      .not.toBeNull();
+
+    await page.reload();
+
+    // After reload: no location.state, feed rebuilt from cache, snapshot restores
+    // index 2 — NOT index 0 (the bug).
+    await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
+    await waitForScrollAtIndex(page, 2);
+    await expectActiveSwipePanelText(page, 'Why We Moved from React to htmx', { minPanels: 3 });
+
+    await expect.poll(() => container.evaluate(
+      (el) => {
+        const panels = el.children;
+        for (let i = 0; i < panels.length; i++) {
+          if (panels[i].classList.contains('active')) return i;
+        }
+        return -1;
+      }
+    ), { timeout: 5000 }).toBe(2);
+  });
+
+  test('restores a domain feed after reload (recovers the whole feed, not one item)', async ({ page }) => {
+    // Domain feeds use a non-persisted in-memory cache, so a reload wipes the live
+    // list entirely. Without snapshot-driven viewer recovery the resolver would
+    // show only the single resolved item; Branch 4b must rebuild the domain viewer
+    // and restore the prior index with its neighbors.
+    await page.goto('/#/from/example.com');
+
+    const container = page.getByTestId('swipe-container');
+    await expect(container).toBeVisible();
+    // Mobile domain viewer replaces /#/from/:domain with /#/item/77777 (mockDomainItem).
+    await expect(page).toHaveURL(/\/item\/77777/, { timeout: 5000 });
+    await waitForSwipeReady(page, 2);
+
+    // Swipe to index 1 (first clone — objectID 77770).
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+    await smoothScrollAndAwaitSettled(container, panelWidth);
+    await waitForScrollAtIndex(page, 1);
+    await expect(page).toHaveURL(/\/item\/77770/, { timeout: 5000 });
+
+    await page.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await expect
+      .poll(() => page.evaluate(() => sessionStorage.getItem('__swipe_pos')))
+      .not.toBeNull();
+
+    await page.reload();
+
+    // After reload the domain cache is empty and location.state is gone, but the
+    // snapshot recovers the domain viewer (Branch 4b) and restores index 1 with the
+    // full neighborhood (more than one panel — not collapsed to a single item).
+    await expect(page).toHaveURL(/\/item\/77770/, { timeout: 5000 });
+    await waitForScrollAtIndex(page, 1);
+
+    const panelCount = await page.locator('[data-testid="swipe-panel"]').count();
+    expect(panelCount).toBeGreaterThan(1);
+
+    await expect.poll(() => container.evaluate(
+      (el) => {
+        const panels = el.children;
+        for (let i = 0; i < panels.length; i++) {
+          if (panels[i].classList.contains('active')) return i;
+        }
+        return -1;
+      }
+    ), { timeout: 5000 }).toBe(1);
+  });
 });
