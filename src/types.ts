@@ -141,11 +141,20 @@ export interface PrefetchResult {
   comments: Comment[];
 }
 
+// `Theme` is the *resolved* appearance actually applied to the document.
+// `ThemeMode` is the user's *preference*: an explicit pin ('light'/'dark') or
+// 'system', which tracks the OS color scheme live.
 export type Theme = 'light' | 'dark';
+export type ThemeMode = 'light' | 'dark' | 'system';
 
 export interface ThemeContextValue {
+  /** User preference. 'system' follows the OS scheme. */
+  mode: ThemeMode;
+  /** Resolved appearance currently applied ('light' | 'dark'). */
   theme: Theme;
-  toggleTheme: () => void;
+  setMode: (mode: ThemeMode) => void;
+  /** Advance the preference: system → light → dark → system. */
+  cycleMode: () => void;
 }
 
 export interface ScrollContainerContextValue {

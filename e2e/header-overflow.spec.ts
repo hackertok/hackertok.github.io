@@ -141,6 +141,6 @@ test.describe('Theme toggle — accessible label', () => {
     ).toBeVisible();
 
     const toggle = page.getByTestId('theme-toggle');
-    await expect(toggle).toHaveAccessibleName(/switch to (dark|light) mode/i);
+    await expect(toggle).toHaveAccessibleName(/switch to (system|light|dark)/i);
   });
 });
