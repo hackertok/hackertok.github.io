@@ -161,6 +161,19 @@ export interface LocationState {
   isComment?: boolean;
 }
 
+// Durable per-tab snapshot (sessionStorage) for restoring the mobile swipe viewer
+// after a full reload (bfcache miss). `stories` is a lean projection (omits `text`)
+// of the scrollback from the front through a small look-ahead; `index` is the anchor's
+// position in it and advisory — restore re-finds by `storyId`.
+export interface SwipePosition {
+  viewer: LocationState;
+  storyId: number;
+  index: number;
+  scrollY: number;
+  stories: StoryItem[];
+  savedAt: number;
+}
+
 // Firebase /user/:id.json shape. `delay` omitted (vestigial HN field).
 export interface UserProfile {
   id: string;

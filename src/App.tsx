@@ -18,6 +18,7 @@ import { SwipeUserSubmissionsViewer } from './components/SwipeUserSubmissionsVie
 import { SwipeCommentViewer } from './components/SwipeCommentViewer';
 import { NetworkStatusProvider } from './context/NetworkStatusContext';
 import { fetchItemOnly } from './api/hn';
+import { readSwipePosition } from './utils/swipePosition';
 import type { FeedType, LocationState } from './types';
 
 function MobileStoryListWrapper({ type }: { type: FeedType }) {
@@ -67,12 +68,33 @@ function MobileUserSubmissionsWrapper() {
   return <UserSubmissions />;
 }
 
+// Maps a viewer context to its swipe viewer (priority fromUser → fromDomain → from;
+// written mutually exclusively). Shared by the location.state path (Branches 2–4)
+// and snapshot recovery (4b); the `key` mirrors viewer identity so switching paths
+// reuses the instance. `id` is the story id here (/item/:id), so it's initialItemId.
+function renderSwipeViewer(viewer: LocationState, id: string | undefined): ReactNode {
+  if (viewer.fromUser) {
+    return <SwipeUserSubmissionsViewer key={viewer.fromUser} username={viewer.fromUser} initialItemId={id} />;
+  }
+  if (viewer.fromDomain) {
+    return <SwipeDomainStoryViewer key={viewer.fromDomain} domain={viewer.fromDomain} initialItemId={id} />;
+  }
+  if (viewer.from) {
+    return <SwipeStoryViewer key={viewer.from} type={viewer.from} initialItemId={id} />;
+  }
+  return null;
+}
+
 // Routes /item/:id to the correct mobile viewer based on `location.state`
 // (or the item type for direct URLs without state).
-function MobileItemDetailWrapper() {
+// Exported for focused unit testing of the viewer-recovery branch.
+export function MobileItemDetailWrapper() {
   const { id } = useParams();
   const isMobile = useIsMobile();
   const location = useLocation();
+  // Snapshot read once (sticky for the wrapper's life); used only by Branch 4b to
+  // recover the viewer on a stateless reload.
+  const [recovered] = useState(() => readSwipePosition());
   
   if (isMobile) {
     const state = location.state as LocationState | null;
@@ -84,27 +106,20 @@ function MobileItemDetailWrapper() {
       return <SwipeCommentViewer initialCommentId={id} />;
     }
 
-    // Branch 2: Known user submissions → SwipeUserSubmissionsViewer.
-    // Ordered before fromDomain/from so /item/:id with fromUser anchors on
-    // the user's submissions list. Here `id` IS the story id (we're on
-    // /item/:id), so passing it as initialItemId is correct — distinct from
-    // MobileUserSubmissionsWrapper above where `id` is a username.
-    if (state?.fromUser) {
-      return <SwipeUserSubmissionsViewer key={state.fromUser} username={state.fromUser} initialItemId={id} />;
+    // Branches 2–4: viewer context from location.state (zero-latency path).
+    if (state) {
+      const viewer = renderSwipeViewer(state, id);
+      if (viewer) return viewer;
     }
 
-    // Branch 3: Known domain swipe → SwipeDomainStoryViewer.
-    // Ordered before the `from` branch so /item/:id with fromDomain picks up
-    // the domain viewer; `from`, `fromDomain`, and `fromUser` are written
-    // mutually exclusively by their respective viewers today.
-    if (state?.fromDomain) {
-      return <SwipeDomainStoryViewer key={state.fromDomain} domain={state.fromDomain} initialItemId={id} />;
-    }
-
-    // Branch 4: Known story feed → SwipeStoryViewer (existing zero-latency path)
-    if (state?.from) {
-      const type = state.from;
-      return <SwipeStoryViewer key={type} type={type} initialItemId={id} />;
+    // Branch 4b: stateless reload — recover the viewer from the snapshot so
+    // non-`top` feeds (best/show/ask/domain/user) restore too. Snapshots come only
+    // from story viewers, so we skip the resolver's comment-vs-story fetch. Also
+    // fires for a fresh same-tab nav to a still-snapshotted id+viewer (intended:
+    // resume where you left off), not just back/reload.
+    if (recovered && id && recovered.storyId === Number(id)) {
+      const viewer = renderSwipeViewer(recovered.viewer, id);
+      if (viewer) return viewer;
     }
 
     // Branch 5: Direct URL (no state) → resolve type first
