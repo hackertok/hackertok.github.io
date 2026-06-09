@@ -9,9 +9,12 @@
     <meta name="title" content="HackerTok - Your daily dose of Hacker News" />
     <meta name="description" content="An open-source, blazingly fast, progressive Hacker News client. Swipe or scroll through stories, read comments, and install as an app." />
     
-    <!-- Theme Colors (with dark mode support) -->
-    <meta name="theme-color" content="#fffdfb" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#241e1a" media="(prefers-color-scheme: dark)" />
+    <!-- Status-bar / browser-chrome color. Single JS-controlled tag (no media
+         query) so it tracks the *app* theme, not just the OS scheme. The
+         bootstrap script below sets the correct value before first paint and
+         ThemeProvider keeps it in sync on toggle / OS change. Keep these hex
+         values in sync with THEME_COLORS in src/context/ThemeContext.tsx. -->
+    <meta name="theme-color" content="#fffdfb" />
     
     <!-- Favicons -->
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
@@ -58,11 +61,20 @@
       })();
     </script>
     <script>
-      // Prevent flash of wrong theme
+      // Prevent flash of wrong theme, and set the initial status-bar color
+      // before first paint so the Android PWA chrome matches the resolved theme.
+      // Mirrors ThemeProvider: 'light'/'dark' are explicit pins; 'system' (and
+      // any missing value) follows the OS color scheme.
       (function() {
-        const theme = localStorage.getItem('setting:theme');
-        if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        var mode = localStorage.getItem('setting:theme');
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var isDark = mode === 'dark' || (mode !== 'light' && prefersDark);
+        if (isDark) {
           document.documentElement.classList.add('dark');
+        }
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) {
+          meta.setAttribute('content', isDark ? '#241e1a' : '#fffdfb');
         }
       })();
     </script>

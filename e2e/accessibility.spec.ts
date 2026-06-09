@@ -105,6 +105,9 @@ test.describe('Accessibility', () => {
 
     await expect(themeToggle).toBeFocused();
 
+    // Cycle system → light → dark from the keyboard. Two presses always lands
+    // on the dark pin regardless of the OS scheme.
+    await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
 
     const html = page.locator('html');
