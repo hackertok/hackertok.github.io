@@ -19,6 +19,12 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
   const viewed = useIsViewed(item.id);
   const hostname = getHostname(item.url);
 
+  // Gate the outbound href to http(s) so javascript:/data: URLs can't reach the
+  // DOM; anything else degrades to plain text. Keep it ONE `startsWith` — a `||`
+  // reopens the CodeQL js/xss alert (a LogOrExpr drops the guard's true outcome).
+  const rawUrl = item.url ?? '';
+  const safeUrl = rawUrl.startsWith('http') ? rawUrl : undefined;
+
   const itemText = item.text;
   const sanitizedText = useMemo(
     () => itemText ? sanitizeHtml(itemText) : '',
@@ -31,9 +37,9 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
     // point reads cleanly instead of cascading inside itself.
     <article className={`${className} story-stage-leader`}>
       <h1 className={`text-xl font-semibold mb-2 leading-snug break-words ${viewed ? 'text-viewed' : 'text-foreground'}`}>
-        {item.url ? (
+        {safeUrl ? (
           <a
-            href={item.url}
+            href={safeUrl}
             rel="noreferrer"
             className="hover:text-accent transition-colors"
             onClick={() => markViewedWithTime(item.id, 'title')}

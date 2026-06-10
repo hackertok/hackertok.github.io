@@ -31,6 +31,10 @@ interface StoryCardProps {
 
 export function StoryCard({ story, index = 0, listType = 'top', fromDomain, fromUser, onBeforeNavigate, stageIdx, appendIdx }: StoryCardProps) {
   const hostname = getHostname(story.url);
+  // http(s)-only outbound href (keeps javascript:/data: out); else use the in-app
+  // link below. Keep it ONE `startsWith` — a `||` reopens the CodeQL js/xss alert (see ItemArticle).
+  const rawUrl = story.url ?? '';
+  const safeUrl = rawUrl.startsWith('http') ? rawUrl : undefined;
   const { startPrefetch, stopPrefetch } = usePrefetchItem();
   const isPrefetchingRef = useRef(false);
   const wasInExitZoneRef = useRef(false);
@@ -154,9 +158,9 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
     <article ref={setRefs} className={wrapperClass} style={wrapperStyle} data-testid="story-card" data-story-id={story.id} data-viewed={viewed}>
       <div className="space-y-1.5">
         <h2 className="text-lg md:text-xl leading-[1.35] md:leading-[1.3] font-semibold break-words">
-          {story.url ? (
+          {safeUrl ? (
             <a
-              href={story.url}
+              href={safeUrl}
               rel="noreferrer"
               className={`hover:text-accent transition-colors ${
                 viewed

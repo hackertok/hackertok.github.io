@@ -1,6 +1,6 @@
-import DOMPurify, { type Config } from 'dompurify';
+import createDOMPurify, { type Config } from 'dompurify';
 
-type DOMPurifyFactory = (w: Window) => typeof DOMPurify;
+type DOMPurifyFactory = (w: Window) => typeof createDOMPurify;
 
 // Single source for the browser-environment guard used by the private
 // DOMPurify instance, runtime self-host detection, and base URL resolution.
@@ -10,12 +10,12 @@ const browserLocation: Location | null =
 // Private DOMPurify instance so the link-rewriting hook below is scoped to
 // this module; importing `dompurify` elsewhere gets the unmodified default
 // singleton. Module load requires a DOM (browser or jsdom): in pure Node,
-// the imported `DOMPurify` is a bare factory with no `.addHook`, so the
-// `: DOMPurify` fallback would throw at hook registration. HackerTok runs
-// only in browsers and jsdom, where `browserLocation` is never null.
-const purify = browserLocation
-  ? (DOMPurify as unknown as DOMPurifyFactory)(window)
-  : DOMPurify;
+// the imported `createDOMPurify` is a bare factory with no `.addHook`, so the
+// `: createDOMPurify` fallback would throw at hook registration. HackerTok
+// runs only in browsers and jsdom, where `browserLocation` is never null.
+const DOMPurify = browserLocation
+  ? (createDOMPurify as unknown as DOMPurifyFactory)(window)
+  : createDOMPurify;
 
 const PURIFY_CONFIG: Config = {
   ALLOWED_TAGS: [
@@ -238,7 +238,7 @@ function isAutoLinkifiedText(text: string, parsed: URL): boolean {
   return text.startsWith(parsed.origin);
 }
 
-purify.addHook('afterSanitizeAttributes', (node) => {
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'PRE') {
     // Make scrollable pre blocks keyboard-accessible (WCAG 2.1.1)
     node.setAttribute('tabindex', '0');
@@ -363,5 +363,11 @@ export function sanitizeHtml(html: string | null | undefined): string {
   if (!html || typeof html !== 'string') {
     return '';
   }
-  return purify.sanitize(autoLinkUrls(html), PURIFY_CONFIG);
+  // Defense in depth: sanitize the raw input *before* it is ever parsed into a
+  // DOM by `autoLinkUrls`, so untrusted markup can never reach an `innerHTML`
+  // write unsanitized (and CodeQL sees the DOMPurify barrier before the sink).
+  // The second pass re-runs the afterSanitizeAttributes hook on the anchors
+  // that auto-linking just created.
+  const sanitized = DOMPurify.sanitize(html, PURIFY_CONFIG);
+  return DOMPurify.sanitize(autoLinkUrls(sanitized), PURIFY_CONFIG);
 }
