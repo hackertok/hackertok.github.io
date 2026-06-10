@@ -51,6 +51,26 @@ describe('ItemArticle', () => {
       // Text posts render as plain text, not as a clickable link
       expect(screen.queryByRole('link', { name: 'A great story' })).not.toBeInTheDocument();
     });
+
+    it.each(['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'vbscript:msgbox(1)'])(
+      'does not render an anchor for non-http(s) URL scheme %s',
+      (url) => {
+        render(<ItemArticle item={story({ url })} />);
+
+        // Hostile schemes must never reach the anchor href; the title degrades
+        // to plain text instead.
+        expect(screen.queryByRole('link', { name: 'A great story' })).not.toBeInTheDocument();
+      },
+    );
+
+    it('renders the external link for ordinary http(s) URLs', () => {
+      render(<ItemArticle item={story({ url: 'https://example.com/article' })} />);
+
+      expect(screen.getByRole('link', { name: 'A great story' })).toHaveAttribute(
+        'href',
+        'https://example.com/article',
+      );
+    });
   });
 
   describe('author byline link', () => {

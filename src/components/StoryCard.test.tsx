@@ -141,6 +141,20 @@ describe('StoryCard', () => {
       expect(titleLink).toHaveAttribute('href', '/item/67890');
     });
 
+    it.each(['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'vbscript:msgbox(1)'])(
+      'never points the title link at a non-http(s) URL scheme %s',
+      (url) => {
+        render(<StoryCard story={createStoryItem({ ...mockStory, url })} />);
+
+        // Hostile schemes must not become the outbound href; the title degrades
+        // to the in-app discussion link instead.
+        const titleLink = screen.getByRole('link', {
+          name: 'Rust Is the Future of JavaScript Infrastructure',
+        });
+        expect(titleLink).toHaveAttribute('href', '/item/12345');
+      },
+    );
+
     it('renders comments link', () => {
       render(<StoryCard story={mockStory} />);
       
