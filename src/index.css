@@ -12,6 +12,9 @@ button {
 /* ── Design Tokens ──────────────────────────────────────────────────── */
 /* Light mode (default) — warm stone/taupe palette */
 :root {
+  /* Pins UA surfaces (scrollbars etc.) to the in-app theme: .dark tracks the
+     app theme, not the OS. Pairs with the color-scheme meta in index.html. */
+  color-scheme: light;
   --background: oklch(0.98 0.006 60);        /* warm cream */
   --foreground: oklch(0.22 0.01 60);         /* warm near-black */
   --card: oklch(0.995 0.003 60);             /* warm near-white */
@@ -47,6 +50,7 @@ button {
 
 /* Dark mode — soft dark, warm tones */
 .dark {
+  color-scheme: dark;
   --background: oklch(0.20 0.012 60);        /* soft dark with warm tint */
   --foreground: oklch(0.92 0.005 60);        /* warm light text */
   --card: oklch(0.24 0.012 60);              /* slightly lighter than bg */
