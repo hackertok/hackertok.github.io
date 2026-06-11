@@ -1,8 +1,14 @@
 import { getApps, initializeApp } from 'firebase/app';
-import { get, getDatabase, ref } from 'firebase/database';
+import { forceWebSockets, get, getDatabase, ref } from 'firebase/database';
 import type { FirebaseItem, UserProfile } from '../types';
 
 const APP_NAME = 'hn-sdk';
+
+// Pin RTDB to WebSockets. Its long-poll fallback is <script> injection to
+// *.firebaseio.com/.lp, which our script-src blocks — so it's already dead under
+// the CSP and dropping it only removes failed requests + console errors. Must
+// run before the first connection opens.
+forceWebSockets();
 
 function getDb() {
   const existing = getApps().find(app => app.name === APP_NAME);
