@@ -2,6 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- /404.html itself serves 200 (only unknown paths get a real 404), so
+         noindex this contentless redirect shell. -->
+    <meta name="robots" content="noindex" />
     <title>Redirecting…</title>
     <script>
       // GitHub Pages serves this for unknown paths (e.g. /item/123).

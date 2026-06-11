@@ -3,7 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
+
+    <!-- color-scheme on :root/.dark in index.css pins UA surfaces (scrollbars)
+         to the in-app theme; this meta opts the UA into both schemes first. -->
+    <meta name="color-scheme" content="light dark" />
+
+    <!-- HashRouter has no crawlable per-route URLs, so one site-level canonical is correct. -->
+    <link rel="canonical" href="https://hackertok.github.io/" />
+
     <!-- Primary Meta Tags -->
     <title>HackerTok</title>
     <meta name="title" content="HackerTok - Your daily dose of Hacker News" />
@@ -41,7 +48,18 @@
     <meta name="twitter:title" content="HackerTok - Your daily dose of Hacker News" />
     <meta name="twitter:description" content="An open-source, blazingly fast, progressive Hacker News client. Swipe or scroll through stories, read comments, and install as an app." />
     <meta name="twitter:image" content="https://hackertok.github.io/icons/og-image.png" />
-    
+
+    <!-- Minimal WebSite node; its supported use is Google's "site name"
+         selection (the `name` property). No per-item nodes (hash routes aren't crawlable). -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "HackerTok",
+      "url": "https://hackertok.github.io/"
+    }
+    </script>
+
     <!-- Preconnect to APIs for faster first request -->
     <!-- Algolia first: homepage uses it for initial stories -->
     <link rel="preconnect" href="https://hn.algolia.com" />
