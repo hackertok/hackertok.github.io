@@ -12,8 +12,12 @@ button {
 /* ── Design Tokens ──────────────────────────────────────────────────── */
 /* Light mode (default) — warm stone/taupe palette */
 :root {
-  /* Pins UA surfaces (scrollbars etc.) to the in-app theme: .dark tracks the
-     app theme, not the OS. Pairs with the color-scheme meta in index.html. */
+  /* Resolved-light default. Before React hydrates, <html> has no theme class
+     in the light cases (the index.html bootstrap only adds .dark), so a bare
+     `light dark` here would let a dark OS paint dark UA surfaces (scrollbars,
+     form controls) under a light-pinned app until ThemeContext runs. Defaulting
+     to light avoids that flash; html.light / html.dark below pin the scheme to
+     the JS-applied theme, and <meta name="color-scheme"> still advertises both. */
   color-scheme: light;
   --background: oklch(0.98 0.006 60);        /* warm cream */
   --foreground: oklch(0.22 0.01 60);         /* warm near-black */
@@ -50,7 +54,6 @@ button {
 
 /* Dark mode — soft dark, warm tones */
 .dark {
-  color-scheme: dark;
   --background: oklch(0.20 0.012 60);        /* soft dark with warm tint */
   --foreground: oklch(0.92 0.005 60);        /* warm light text */
   --card: oklch(0.24 0.012 60);              /* slightly lighter than bg */
@@ -62,6 +65,14 @@ button {
   --skeleton: oklch(0.30 0.012 60);          /* warm gray-700 */
   --viewed: oklch(0.62 0.01 60);             /* dimmed for read stories */
 }
+
+/* Keep the UA color-scheme in sync with the resolved theme. ThemeContext and
+   the index.html bootstrap script toggle .light / .dark on <html>; mirror that
+   so native widgets match the painted theme even when the OS scheme differs
+   from the in-app pin. html.* (0,1,1) beats the :root default regardless of
+   source order. */
+html.light { color-scheme: light; }
+html.dark { color-scheme: dark; }
 
 /* Wire CSS variables into Tailwind utility classes */
 @theme inline {
@@ -195,6 +206,64 @@ button {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Skip link (WCAG 2.4.1 Bypass Blocks): the first focusable element, kept
+   offscreen until focused so keyboard/switch users can jump past the header
+   straight to the main content. Offscreen (not display:none) so it stays in
+   the accessibility tree and reachable by Tab. */
+.skip-link {
+  position: fixed;
+  inset-inline-start: 0.5rem;
+  inset-block-start: -4rem;
+  z-index: 100;
+  /* Match the header nav pills (px-2.5 py-1) so the chip reads as part of the
+     same UI rather than an oversized bolt-on. */
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.5rem;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
+  transition: inset-block-start 0.15s ease;
+}
+
+.skip-link:focus {
+  inset-block-start: 0.5rem;
+}
+
+/* The skip link focuses <main> programmatically; suppress the global
+   :focus-visible ring so it doesn't paint a box around the whole content. */
+#main:focus {
+  outline: none;
+}
+
+/* ── Reduced motion: global baseline ──────────────────────────────────
+   Belt-and-suspenders catch-all for prefers-reduced-motion. The app already
+   ships tested per-component reduced-motion contracts further down (network
+   bar, StateView scene, PageStage cascade, skeleton overlay); those use
+   higher specificity and/or !important, so they still win where they apply.
+   This universal rule (lowest specificity) only governs incidental
+   transitions/animations that lack a dedicated rule.
+
+   We near-zero the *duration* rather than setting `animation: none` so that
+   animationend/transitionend listeners still fire — components that unmount
+   on those events keep working instead of hanging.
+
+   We deliberately leave `animation-timeline` alone: the only scroll-driven
+   animation is the user-controlled swipe scroll indicator (`body.swipe-mode
+   ::after`) — WCAG-exempt like a scrollbar, and forcing it off would pin the
+   thumb at its end keyframe instead of disabling it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Tree trunk: vertical line under › marker */

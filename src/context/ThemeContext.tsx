@@ -25,8 +25,9 @@ function resolveTheme(mode: ThemeMode): Theme {
   return mode === 'system' ? getSystemTheme() : mode;
 }
 
-// Apply the resolved theme to the document: toggle the `.dark` class (drives
-// the CSS tokens) AND update the theme-color meta so the PWA status bar follows.
+// Apply the resolved theme to <html>: swap the `light`/`dark` class (which
+// drives the design tokens and the UA color-scheme) AND update the theme-color
+// meta so the PWA status bar follows.
 function applyTheme(theme: Theme) {
   const root = window.document.documentElement;
   root.classList.remove('light', 'dark');

@@ -138,6 +138,25 @@ test.describe('Accessibility', () => {
     expect(secondIdentity).not.toEqual(firstIdentity);
   });
 
+  test('skip link is first focusable and jumps to main without routing', async ({ page, browserName }) => {
+    test.skip(browserName === 'webkit', 'Tab navigation not supported on mobile webkit');
+
+    await page.goto('/#/');
+    // Wait for first render so the React-rendered link exists; the assertions
+    // below confirm its onClick (focus #main) runs instead of the native
+    // `#main` jump, which HashRouter would treat as a 404 route.
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+
+    await page.keyboard.press('Tab');
+    const skipLink = page.getByRole('link', { name: 'Skip to main content' });
+    await expect(skipLink).toBeFocused();
+
+    await skipLink.press('Enter');
+    await expect(page.locator('main#main')).toBeFocused();
+    expect(page.url()).toContain('#/');
+    await expect(page.getByText('Lost in the feed')).toHaveCount(0);
+  });
+
   test('external links have valid URLs', async ({ page }) => {
     await page.goto('/#/');
 
