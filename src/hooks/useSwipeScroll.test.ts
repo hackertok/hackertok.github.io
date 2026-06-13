@@ -555,6 +555,26 @@ describe('useSwipeScroll', () => {
       expect(Element.prototype.animate).toHaveBeenCalled();
     });
 
+    it('short slow drag snaps back instantly without animating (reduced motion)', () => {
+      reducedMotionValue = true;
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      const container = getContainer();
+
+      dispatchTouch(container, 'touchstart', CENTER_X, CENTER_Y);
+      // Same sub-threshold + low-velocity drag as the test above, but reduced
+      // motion: the cancel must be instant (cleanSlate), with no WAAPI slide —
+      // CSS reduced-motion rules can't neutralize an element.animate() call.
+      vi.advanceTimersByTime(1000);
+      dispatchTouch(container, 'touchmove', CENTER_X - 20, CENTER_Y);
+      dispatchTouch(container, 'touchend', CENTER_X - 20, CENTER_Y);
+
+      expect(hasActive(0)).toBe(true);
+      expect(hookResult.currentIndex).toBe(0);
+      expect(Element.prototype.animate).not.toHaveBeenCalled();
+      expect(getPanel(0).style.transform).toBe('');
+    });
+
     it('boundary: swipe backward on first panel stays', () => {
       render(createElement(TestHarness), { wrapper: Wrapper });
 

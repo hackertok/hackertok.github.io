@@ -177,7 +177,7 @@ function MainContent({ children }: { children: React.ReactNode }) {
   // In swipe mode: document scrolls naturally (no height constraint needed).
   // Without h-dvh, ancestor chain grows with panel content.
   return (
-    <main className={isSwipeMode ? '' : 'pt-14 md:pt-0'}>
+    <main id="main" tabIndex={-1} className={isSwipeMode ? '' : 'pt-14 md:pt-0'}>
       {children}
     </main>
   );
@@ -213,6 +213,19 @@ function App() {
             <HashRouter>
               <LocationAwareErrorBoundary>
                 <div className="min-h-screen bg-background text-foreground">
+                  <a
+                    href="#main"
+                    className="skip-link"
+                    onClick={(e) => {
+                      // Move focus to <main> without mutating the route hash —
+                      // a bare `#main` jump would make HashRouter navigate to a
+                      // non-existent `main` route and render the 404 page.
+                      e.preventDefault();
+                      document.getElementById('main')?.focus();
+                    }}
+                  >
+                    Skip to main content
+                  </a>
                   <Header />
                   <NetworkStatusBar />
                   <MainContent>

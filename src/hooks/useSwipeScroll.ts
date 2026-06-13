@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useScrollContainer } from './useScrollContainer';
+import { prefersReducedMotion } from '../utils/prefersReducedMotion';
 
 const noop = () => undefined;
 
@@ -203,8 +204,6 @@ export function useSwipeScroll({
 
     // Initial activation
     activatePanel(currentIndexRef.current);
-
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     // --- Animation lifecycle ---
     let runningAnimations: Animation[] = [];
@@ -523,6 +522,10 @@ export function useSwipeScroll({
         return;
       }
 
+      // Read live (not cached at effect setup) so a mid-session OS toggle is
+      // honored on the very next gesture, matching the CSS media query.
+      const reducedMotion = prefersReducedMotion();
+
       flushDragFrame();
       touchActive = false;
 
@@ -636,6 +639,12 @@ export function useSwipeScroll({
           // Safety timeout in case onfinish doesn't fire
           pendingTimeouts.push(setTimeout(finishCommit, duration + 100));
         }
+      } else if (reducedMotion) {
+        // --- Cancel (reduced motion): instant snap back, no slide ---
+        // The WAAPI slide is invisible to the CSS reduced-motion rule, so the
+        // cancel must be gated in JS too (mirrors the commit path).
+        cleanSlate();
+        isDraggingRef.current = false;
       } else {
         // --- Cancel: snap back ---
         const duration = 200;

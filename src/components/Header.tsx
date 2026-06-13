@@ -21,6 +21,7 @@ import { useScrollContainer } from '../hooks/useScrollContainer';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { usePackedNav } from '../hooks/usePackedNav';
 import { clearListSessionState } from '../utils/itemCache';
+import { prefersReducedMotion } from '../utils/prefersReducedMotion';
 import {
   deriveHeaderState,
   type ContextualKey,
@@ -81,6 +82,12 @@ const NAV_GAP = 4;
 // object and read it straight off the result without a key-based lookup.
 type PackableNavItem = NavItemSpec & { width: number };
 
+// An explicit `behavior: 'smooth'` overrides CSS `scroll-behavior`, so the
+// global reduced-motion rule in index.css can't neutralize it — gate it here.
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+}
+
 export function Header() {
   const maskId = useId();
   const { scrollDirection, isAtTop } = useScrollDirection();
@@ -127,14 +134,14 @@ export function Header() {
     clearListSessionState('show');
     clearListSessionState('ask');
     if (location.pathname === '/') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      scrollToTop();
     }
   };
 
   const handleNavClick = (feed: FeedType) => {
     clearListSessionState(feed);
     if (location.pathname === `/${feed}`) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      scrollToTop();
     }
   };
 
