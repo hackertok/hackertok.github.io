@@ -488,6 +488,39 @@ describe('useSwipeScroll', () => {
       await act(async () => { /* flush */ });
     });
 
+    it('flags is-swiping for a horizontal swipe but not a vertical gesture', () => {
+      // Guards the flicker fix: `is-swiping` (→ sticky) is set ONLY for a horizontal
+      // swipe, never a vertical scroll, which must stay `fixed`.
+      render(createElement(TestHarness), { wrapper: Wrapper });
+      const container = getContainer();
+
+      swipeGesture(container, 'left', 150);
+      expect(document.body.classList.contains('is-swiping')).toBe(true);
+
+      dispatchTouch(container, 'touchstart', CENTER_X, CENTER_Y);
+      expect(document.body.classList.contains('is-swiping')).toBe(false);
+      dispatchTouch(container, 'touchmove', CENTER_X, CENTER_Y - 120);
+      dispatchTouch(container, 'touchend', CENTER_X, CENTER_Y - 120);
+      expect(document.body.classList.contains('is-swiping')).toBe(false);
+
+      act(() => { vi.runAllTimers(); });
+    });
+
+    it('keeps is-swiping set through the commit swap (blink guard)', () => {
+      // commitPanelSwap runs after touchend, so `is-swiping` must survive it (clearing
+      // at touchend repaints the swap `fixed` → blink, 86e7f98) and only clear on the
+      // next touchstart.
+      reducedMotionValue = true; // synchronous commit, so the swap definitely runs
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      swipeGesture(getContainer(), 'left', 150);
+      act(() => { vi.runAllTimers(); });
+      expect(document.body.classList.contains('is-swiping')).toBe(true);
+
+      dispatchTouch(getContainer(), 'touchstart', CENTER_X, CENTER_Y);
+      expect(document.body.classList.contains('is-swiping')).toBe(false);
+    });
+
     it('keeps outgoing panel in flow for non-zero scroll restores', async () => {
       reducedMotionValue = true;
       render(createElement(TestHarness), { wrapper: Wrapper });

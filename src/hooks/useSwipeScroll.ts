@@ -422,6 +422,10 @@ export function useSwipeScroll({
         return;
       }
 
+      // Header is `fixed` by default (flicker-free vertical scroll); clear any
+      // lingering `is-swiping` so a prior swipe can't keep it sticky into this scroll.
+      document.body.classList.remove('is-swiping');
+
       // Clean slate: cancel stale animations and residual classes
       const hadActiveAnimations = runningAnimations.length > 0;
       cleanSlate();
@@ -483,6 +487,9 @@ export function useSwipeScroll({
             isSwiping = true;
             // Hide scroll indicator immediately to prevent visible jump during swipe
             document.body.classList.remove('is-scrolling');
+            // Re-sticky the header for the swap: `fixed` blinks during the panel
+            // swap on Firefox Android, `sticky` doesn't (index.css `.is-swiping`).
+            document.body.classList.add('is-swiping');
             // Cache panel width at lock time to avoid layout reads during drag
             cachedPanelWidth = container.clientWidth || window.innerWidth;
             // Lock direction and determine target
@@ -521,6 +528,10 @@ export function useSwipeScroll({
         isDraggingRef.current = false;
         return;
       }
+
+      // Do NOT clear `is-swiping` here: commitPanelSwap runs after touchend (rAF/
+      // onfinish, or sync for reduced motion); the header must stay sticky through
+      // the swap or the blink returns (86e7f98). Next touchstart resets it to `fixed`.
 
       // Read live (not cached at effect setup) so a mid-session OS toggle is
       // honored on the very next gesture, matching the CSS media query.
@@ -763,6 +774,7 @@ export function useSwipeScroll({
       pendingTimeouts.forEach(id => clearTimeout(id));
       isSuppressingScrollIndicatorRef.current = false;
       gestureId++;
+      document.body.classList.remove('is-swiping');
       delete container.dataset.swipeEnabled;
     };
   }, [enabled, activatePanel, activatePanelAndRestoreScroll]);
