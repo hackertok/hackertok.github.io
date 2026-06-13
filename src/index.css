@@ -480,6 +480,18 @@ body.swipe-mode.is-scrolling::after {
   opacity: 1;
 }
 
+/* Header is `position: fixed` by default (see Header.tsx): Gecko's APZ flickers a
+   sticky header during fast scroll-up (bug 1585378). `fixed` only blinks during the
+   panel swap, so useSwipeScroll adds `is-swiping` (lock → commit) to flip it back to
+   sticky there. Negative margin + `left/right: auto` keep it flow-neutral, matching
+   the proven blink-fix sticky. `.app-header` avoids UserProfile's headers. */
+body.swipe-mode.is-swiping .app-header {
+  position: sticky;
+  left: auto;
+  right: auto;
+  margin-bottom: calc(-1 * var(--header-height));
+}
+
 @keyframes scroll-thumb {
   from { transform: translateY(0); }
   to { transform: translateY(calc((var(--swipe-viewport-height, 100vh) - var(--header-height) - var(--network-bar-height)) * 0.8)); }
