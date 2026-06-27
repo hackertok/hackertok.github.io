@@ -31,6 +31,11 @@ export default defineConfig({
        the same pair is also added inside each per-project block below. */
     locale: 'en-US',
     timezoneId: 'UTC',
+
+    /* The prod build registers an offline service worker. Block it by default so
+       existing specs hit the network exactly as before; the PWA spec re-enables
+       it with test.use(). */
+    serviceWorkers: 'block',
   },
   projects: [
     {
