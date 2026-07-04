@@ -153,7 +153,7 @@ describe('fetchAskStoriesForDay', () => {
     const hits = [
       makeHit(1, 'Ask HN: Who is hiring? (May 2026)', 300, ['ask_hn']),
       makeHit(2, 'Ask HN: Good question', 100, ['ask_hn']),
-      makeHit(3, 'Ask HN: Freelancer? Seeking Freelancer', 80, ['ask_hn']),
+      makeHit(3, 'Ask HN: Who wants to be hired? (May 2026)', 80, ['ask_hn']),
     ];
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,

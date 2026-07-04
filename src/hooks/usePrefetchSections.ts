@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { fetchTopStories, fetchBestStories, fetchShowStories, fetchAskStories, prefetchItemComments } from '../api/hn';
+import { fetchTopStories, fetchBestStories, fetchNewStories, fetchShowStories, fetchAskStories, prefetchItemComments } from '../api/hn';
 import { getCachedFeed, setCachedFeed } from '../utils/feedCache';
 import { setCachedItem, getCachedItem } from '../utils/itemCache';
 import { waitForPriorityFetch } from '../utils/fetchPriority';
 import type { StoryItem, FeedType } from '../types';
 
-const ALL_SECTIONS: FeedType[] = ['top', 'best', 'show', 'ask'];
+const ALL_SECTIONS: FeedType[] = ['top', 'best', 'show', 'ask', 'newest'];
 const STAGGER_DELAY = 500; // ms between requests to be API-friendly
 const CACHE_FRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
@@ -41,6 +41,10 @@ async function fetchFirstPage(type: FeedType): Promise<StoryItem[]> {
     }
     case 'ask': {
       const result = await fetchAskStories(0);
+      return result.stories;
+    }
+    case 'newest': {
+      const result = await fetchNewStories(0, 30);
       return result.stories;
     }
     default:

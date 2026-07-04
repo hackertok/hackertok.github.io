@@ -5,7 +5,7 @@
  * We use a discriminated union so TypeScript can narrow by `type`.
  */
 
-export type FeedType = 'top' | 'show' | 'ask' | 'best';
+export type FeedType = 'top' | 'show' | 'ask' | 'best' | 'newest';
 
 interface ItemBase {
   id: number;

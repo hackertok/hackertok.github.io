@@ -18,6 +18,10 @@ import {
   mockBestItem1,
   mockBestItem2,
   mockBestItem3,
+  mockNewItemIds,
+  mockNewItem1,
+  mockNewItem2,
+  mockNewItem3,
   mockDomainItem,
   mockPaginationItem1,
   mockPaginationItem2,
@@ -82,6 +86,9 @@ function buildItemsMap(): Record<number, object> {
     33001: mockBestItem1,
     33002: mockBestItem2,
     33003: mockBestItem3,
+    44001: mockNewItem1,
+    44002: mockNewItem2,
+    44003: mockNewItem3,
     99999: {
       id: 99999,
       title: mockShowHNItem1.title,
@@ -171,6 +178,7 @@ function resolveFirebasePath(
 
   if (p === 'v0/topstories') return mockTopItemIds;
   if (p === 'v0/beststories') return mockBestItemIds;
+  if (p === 'v0/newstories') return mockNewItemIds;
   if (p === 'v0/showstories') return [99999, 99998];
   if (p === 'v0/askstories') return [88888, 88887];
 

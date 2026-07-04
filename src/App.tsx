@@ -234,6 +234,7 @@ function App() {
                       <Route path="/show" element={<MobileStoryListWrapper type="show" />} />
                       <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
                       <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
+                      <Route path="/newest" element={<MobileStoryListWrapper type="newest" />} />
                       <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
                       <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
                       <Route path="/user/:id" element={<UserProfile />} />

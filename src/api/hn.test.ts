@@ -10,6 +10,7 @@ import {
   fetchAskStories,
   fetchTopStories,
   fetchBestStories,
+  fetchNewStories,
   fetchFirebaseItem,
   fetchItemOnly,
   fetchAlgoliaItem,
@@ -597,6 +598,114 @@ describe('hn API utilities', () => {
       const result2 = await fetchAskStories(result1.nextOffset);
       expect(result2.stories.length).toBe(5);
       expect(result2.hasMore).toBe(false);
+    });
+  });
+
+  describe('fetchNewStories', () => {
+    const mockNewIds = [44001, 44002, 44003];
+    const mockNewItems: Record<number, FirebaseItem> = {
+      44001: { id: 44001, title: 'A brand new Rust web framework', url: 'https://example.com/rust', by: 'newuser1', score: 5, time: Math.floor(Date.now() / 1000) - 300, descendants: 2, type: 'story' },
+      44002: { id: 44002, title: 'Show HN: My weekend hardware hack', url: 'https://example.com/hw', by: 'newuser2', score: 12, time: Math.floor(Date.now() / 1000) - 180, descendants: 4, type: 'story' },
+      44003: { id: 44003, title: 'Ask HN: How do you stay focused?', text: 'Curious', by: 'newuser3', score: 3, time: Math.floor(Date.now() / 1000) - 60, descendants: 1, type: 'story' },
+    };
+
+    beforeEach(() => {
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(mockNewIds);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => mockNewItems[Number(id)] ?? null);
+    });
+
+    it('reads the newstories ranked list', async () => {
+      await fetchNewStories(0);
+      expect(hnSdk.readRankedIds).toHaveBeenCalledWith('newstories');
+    });
+
+    it('returns normalized items', async () => {
+      const result = await fetchNewStories(0);
+
+      expect(result.stories).toBeDefined();
+      expect(result.stories.length).toBeGreaterThan(0);
+      expect(result.hasMore).toBeDefined();
+      expect(result.nextOffset).toBe(30);
+    });
+
+    it('returns items with story type', async () => {
+      const result = await fetchNewStories(0);
+
+      result.stories.forEach(item => {
+        expect(item.type).toBe('story');
+      });
+    });
+
+    it('returns items with expected properties', async () => {
+      const result = await fetchNewStories(0);
+      const item = result.stories[0];
+
+      expect(item).toHaveProperty('id');
+      expect(item).toHaveProperty('title');
+      expect(item).toHaveProperty('points');
+      expect(item).toHaveProperty('author');
+      expect(item).toHaveProperty('createdAt');
+      expect(item).toHaveProperty('commentCount');
+    });
+
+    it('returns items in reverse-chronological (ID-list) order', async () => {
+      const result = await fetchNewStories(0);
+
+      expect(result.stories.length).toBe(3);
+      expect(result.stories[0].id).toBe(44001);
+      expect(result.stories[1].id).toBe(44002);
+      expect(result.stories[2].id).toBe(44003);
+    });
+
+    it('paginates by offset', async () => {
+      const manyIds = Array.from({ length: 35 }, (_, i) => 40000 + i);
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(manyIds);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => ({
+        id: Number(id), title: `Item ${id}`, by: 'user', score: 10, time: Math.floor(Date.now() / 1000), descendants: 0, type: 'story',
+      }));
+
+      const result1 = await fetchNewStories(0);
+      expect(result1.nextOffset).toBe(30);
+      expect(result1.hasMore).toBe(true);
+
+      const result2 = await fetchNewStories(result1.nextOffset);
+      expect(result2.stories.length).toBe(5);
+      expect(result2.hasMore).toBe(false);
+    });
+
+    it('filters out job posts', async () => {
+      const idsWithJob = [44001, 44900, 44002];
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(idsWithJob);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 44900) {
+          return { id: 44900, title: 'Acme Corp (YC S26) Is Hiring Engineers', url: 'https://acme.example', by: 'acmehr', score: 1, time: Math.floor(Date.now() / 1000), descendants: 0, type: 'job' };
+        }
+        return mockNewItems[Number(id)] ?? null;
+      });
+
+      const result = await fetchNewStories(0);
+
+      expect(result.stories.map(s => s.id)).not.toContain(44900);
+      expect(result.stories.map(s => s.id)).toEqual([44001, 44002]);
+    });
+
+    it('filters out the monthly whoishiring threads', async () => {
+      const idsWithHiring = [44001, 44910, 44911, 44002];
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(idsWithHiring);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        const hiring: Record<number, FirebaseItem> = {
+          44910: { id: 44910, title: 'Ask HN: Who is hiring? (July 2026)', by: 'whoishiring', score: 100, time: Math.floor(Date.now() / 1000), descendants: 500, type: 'story' },
+          44911: { id: 44911, title: 'Ask HN: Who wants to be hired? (July 2026)', by: 'whoishiring', score: 80, time: Math.floor(Date.now() / 1000), descendants: 200, type: 'story' },
+        };
+        return hiring[Number(id)] ?? mockNewItems[Number(id)] ?? null;
+      });
+
+      const result = await fetchNewStories(0);
+      const ids = result.stories.map(s => s.id);
+
+      expect(ids).not.toContain(44910);
+      expect(ids).not.toContain(44911);
+      expect(ids).toEqual([44001, 44002]);
     });
   });
 
