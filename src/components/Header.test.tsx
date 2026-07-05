@@ -71,36 +71,41 @@ describe('Header', () => {
   // The feed-agnostic "no nav state on item page" case lives outside the
   // parameterised block — it doesn't depend on which feed we ask about,
   // only that no feed should ever light up without explicit context.
-  const FEEDS = ['best', 'show', 'ask'] as const;
-  describe.each(FEEDS)('%s feed tab', (feed) => {
-    const linkRe = new RegExp(feed, 'i');
+  const FEEDS = [
+    { key: 'best', label: 'best', route: '/best' },
+    { key: 'show', label: 'show', route: '/show' },
+    { key: 'ask', label: 'ask', route: '/ask' },
+    { key: 'newest', label: 'new', route: '/newest' },
+  ] as const;
+  describe.each(FEEDS)('$key feed tab', ({ key, label, route }) => {
+    const linkRe = new RegExp(label, 'i');
     const getLink = () => screen.getByRole('link', { name: linkRe });
 
-    it(`renders the ${feed} navigation link`, () => {
+    it(`renders the ${key} navigation link`, () => {
       render(<Header />);
       expect(getLink()).toBeInTheDocument();
     });
 
-    it(`highlights ${feed} on /${feed} route`, () => {
-      render(<Header />, { initialEntries: [`/${feed}`] });
+    it(`highlights ${key} on ${route} route`, () => {
+      render(<Header />, { initialEntries: [route] });
       expect(getLink()).toHaveAttribute('aria-current', 'page');
     });
 
-    it(`does not highlight ${feed} on home route`, () => {
+    it(`does not highlight ${key} on home route`, () => {
       render(<Header />, { initialEntries: ['/'] });
       expect(getLink()).not.toHaveAttribute('aria-current');
     });
 
-    it(`highlights ${feed} on item detail when state.from=${feed}`, () => {
+    it(`highlights ${key} on item detail when state.from=${key}`, () => {
       render(<Header />, {
         initialEntries: [
-          { pathname: '/item/12345', state: { from: feed } },
+          { pathname: '/item/12345', state: { from: key } },
         ],
       });
       expect(getLink()).toHaveAttribute('aria-current', 'page');
     });
 
-    it(`does not highlight ${feed} on item detail when state.from=top`, () => {
+    it(`does not highlight ${key} on item detail when state.from=top`, () => {
       render(<Header />, {
         initialEntries: [
           { pathname: '/item/12345', state: { from: 'top' } },
@@ -116,8 +121,8 @@ describe('Header', () => {
       // agnostic so we assert against every feed in a single render.
       render(<Header />, { initialEntries: ['/item/12345'] });
 
-      for (const feed of FEEDS) {
-        const link = screen.getByRole('link', { name: new RegExp(feed, 'i') });
+      for (const { label } of FEEDS) {
+        const link = screen.getByRole('link', { name: new RegExp(label, 'i') });
         expect(link).not.toHaveAttribute('aria-current');
       }
     });
@@ -295,18 +300,18 @@ describe('Header', () => {
     // feed would render BOTH the orange "comments" pill AND an orange
     // "Best" pill, doubling up the active treatment.
     it.each(FEEDS)(
-      'does not highlight %s feed tab in comment view, even when state.from matches',
-      (feed) => {
+      'does not highlight $key feed tab in comment view, even when state.from matches',
+      ({ key, label }) => {
         render(<Header />, {
           initialEntries: [
             {
               pathname: '/item/12345',
-              state: { from: feed, isComment: true },
+              state: { from: key, isComment: true },
             },
           ],
         });
 
-        const link = screen.getByRole('link', { name: new RegExp(feed, 'i') });
+        const link = screen.getByRole('link', { name: new RegExp(label, 'i') });
         expect(link).not.toHaveAttribute('aria-current');
       },
     );
@@ -355,9 +360,9 @@ describe('Header', () => {
     // Locks the canonical packing rule: when an active contextual pill
     // exists, it lives at index 0 of the <nav> children (so usePackedNav,
     // which always keeps items[0] visible, preserves it as the row narrows).
-    // The 3 feed tabs follow in fixed Best → Show → Ask order — we never
-    // reorder feeds based on which one is active, since that would cause
-    // jarring reflow as users move between them.
+    // The 4 feed tabs follow in fixed Best → Show → Ask → New order — we
+    // never reorder feeds based on which one is active, since that would
+    // cause jarring reflow as users move between them.
     //
     // We filter direct nav children by structural attributes (aria-hidden
     // separator, button trigger, empty text) rather than CSS classes so
@@ -379,10 +384,10 @@ describe('Header', () => {
         .map((el) => (el.textContent ?? '').trim().toLowerCase());
     };
 
-    it('renders feed tabs in canonical [best, show, ask] order on /', () => {
+    it('renders feed tabs in canonical [best, show, ask, new] order on /', () => {
       render(<Header />, { initialEntries: ['/'] });
 
-      expect(navChildLabels()).toEqual(['best', 'show', 'ask']);
+      expect(navChildLabels()).toEqual(['best', 'show', 'ask', 'new']);
     });
 
     it('keeps feed order even when one is active (e.g. /show)', () => {
@@ -391,19 +396,19 @@ describe('Header', () => {
       // front" refactor that we explicitly decided against.
       render(<Header />, { initialEntries: ['/show'] });
 
-      expect(navChildLabels()).toEqual(['best', 'show', 'ask']);
+      expect(navChildLabels()).toEqual(['best', 'show', 'ask', 'new']);
     });
 
     it('puts the active contextual pill at index 0 ahead of feed tabs', () => {
       render(<Header />, { initialEntries: ['/submitted/pg'] });
 
-      expect(navChildLabels()).toEqual(['user', 'best', 'show', 'ask']);
+      expect(navChildLabels()).toEqual(['user', 'best', 'show', 'ask', 'new']);
     });
 
     it('puts "from" at index 0 ahead of feed tabs on /from/:domain', () => {
       render(<Header />, { initialEntries: ['/from/example.com'] });
 
-      expect(navChildLabels()).toEqual(['from', 'best', 'show', 'ask']);
+      expect(navChildLabels()).toEqual(['from', 'best', 'show', 'ask', 'new']);
     });
 
     it('puts "comments" at index 0 ahead of feed tabs in comment view', () => {
@@ -413,7 +418,7 @@ describe('Header', () => {
         ],
       });
 
-      expect(navChildLabels()).toEqual(['comments', 'best', 'show', 'ask']);
+      expect(navChildLabels()).toEqual(['comments', 'best', 'show', 'ask', 'new']);
     });
   });
 

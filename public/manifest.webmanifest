@@ -69,6 +69,13 @@
       "description": "Community projects and demos",
       "url": "/#/show",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "New Stories",
+      "short_name": "New",
+      "description": "The latest stories as they're posted",
+      "url": "/#/newest",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

@@ -113,7 +113,7 @@ test.describe('User Profile - Mobile', () => {
   test('clears swipe-mode after mount on direct /user/:id load', async ({ page }) => {
     // index.html's bootstrap script optimistically adds `swipe-mode` to <html>
     // and <body> for ANY `#/...` route on mobile (the regex
-    // `^#\/(show|ask|best|item\/)?` is not end-anchored and the group is
+    // `^#\/(show|ask|best|newest|item\/)?` is not end-anchored and the group is
     // optional, so `#/user/pg` matches via the empty-group fallback). That
     // class sets `overflow: clip` on the body, which would wedge the
     // vertically scrollable profile if nothing cleared it. UserProfile's

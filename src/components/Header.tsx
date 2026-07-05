@@ -7,6 +7,7 @@ import {
   Lightbulb,
   MessageCircleQuestionMark,
   MessageSquare,
+  Rss,
   User,
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
@@ -35,6 +36,16 @@ const FEED_ICONS: Record<NavFeedType, typeof Flame> = {
   best: Flame,
   show: Lightbulb,
   ask: MessageCircleQuestionMark,
+  newest: Rss,
+};
+
+// Nav pill label per feed. Decoupled from the feed key so the `newest` route
+// renders the shorter button label "New" (CSS-capitalized from lowercase 'new').
+const FEED_LABELS: Record<NavFeedType, string> = {
+  best: 'best',
+  show: 'show',
+  ask: 'ask',
+  newest: 'new',
 };
 
 const CONTEXTUAL_ICONS: Record<ContextualKey, typeof Flame> = {
@@ -53,6 +64,7 @@ const PILL_WIDTH_NO_ICON: Record<NavKey, number> = {
   best: 56,
   show: 60,
   ask: 50,
+  newest: 52,
   comments: 96,
   user: 56,
   from: 56,
@@ -133,6 +145,7 @@ export function Header() {
     clearListSessionState('best');
     clearListSessionState('show');
     clearListSessionState('ask');
+    clearListSessionState('newest');
     if (location.pathname === '/') {
       scrollToTop();
     }
@@ -167,7 +180,7 @@ export function Header() {
         aria-current={item.isActive ? 'page' : undefined}
       >
         <Icon aria-hidden className="hidden md:inline-block size-3.5" />
-        {feed}
+        {FEED_LABELS[feed]}
       </Link>
     );
   };
@@ -220,7 +233,7 @@ export function Header() {
           onClick={() => handleNavClick(feed)}
           aria-current={item.isActive ? 'page' : undefined}
         >
-          {feed}
+          {FEED_LABELS[feed]}
         </Link>
       </DropdownMenuItem>
     );

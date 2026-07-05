@@ -105,8 +105,7 @@
       (function() {
         var isMobile = window.innerWidth < 768;
         var hash = window.location.hash || '#/';
-        // Swipe routes: /, /show, /ask, /best, /item/*
-        var isSwipeRoute = /^#\/(show|ask|best|item\/)?/.test(hash);
+        var isSwipeRoute = /^#\/(show|ask|best|newest|item\/)?/.test(hash);
         if (isMobile && isSwipeRoute) {
           document.documentElement.classList.add('swipe-mode');
           document.body.classList.add('swipe-mode');

@@ -32,6 +32,7 @@ describe('useInfiniteStories', () => {
     clearListSessionState('best');
     clearListSessionState('show');
     clearListSessionState('ask');
+    clearListSessionState('newest');
     __resetFetchCachesForTests();
     vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(rankedIds);
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => makeFirebaseItem(Number(id)));

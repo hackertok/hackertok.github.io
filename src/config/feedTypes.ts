@@ -5,4 +5,5 @@ export const FEED_TYPE_TITLES: Partial<Record<FeedType, string>> = {
   best: 'Best',
   ask: 'Ask',
   show: 'Show',
+  newest: 'New',
 };

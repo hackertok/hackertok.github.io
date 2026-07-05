@@ -1,7 +1,7 @@
 import type { LocationState, FeedType } from '../types';
 
-/** Visible feed tabs (excludes 'top'). Order: Best > Show > Ask (never reordered). */
-export const FEED_TABS = ['best', 'show', 'ask'] as const;
+/** Visible feed tabs (excludes 'top'). Order: Best > Show > Ask > New (never reordered). */
+export const FEED_TABS = ['best', 'show', 'ask', 'newest'] as const;
 export type NavFeedType = (typeof FEED_TABS)[number];
 
 /** Contextual pills: comments > user > from (priority order, mutually exclusive). */

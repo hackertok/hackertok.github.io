@@ -97,6 +97,30 @@ test.describe('Navigation', () => {
     await expect(page.getByRole('link', { name: 'show', exact: true })).not.toHaveClass(/bg-accent/);
   });
 
+  test('navigates to New section', async ({ page }) => {
+    await page.goto('/#/');
+
+    await expect(page.locator('header')).toBeVisible();
+
+    // force: true so the click hits the header link rather than an
+    // intercepting story card on mobile widths.
+    const newLink = page.getByRole('link', { name: /new/i });
+    await newLink.scrollIntoViewIfNeeded();
+    await newLink.click({ force: true });
+
+    await expect(page).toHaveURL(/\/#\/(newest|item\/)/);
+
+    await expect(page).toHaveTitle(/New.*HackerTok|HackerTok/);
+
+    // Newest-specific content (not just URL/title) — guards against a mock leak.
+    await expect(page.getByText('Just Shipped: A Tiny Static Site Generator in Rust')).toBeVisible();
+
+    await expect(page.getByRole('link', { name: 'new', exact: true })).toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'best', exact: true })).not.toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'ask', exact: true })).not.toHaveClass(/bg-accent/);
+    await expect(page.getByRole('link', { name: 'show', exact: true })).not.toHaveClass(/bg-accent/);
+  });
+
   test('navigates back to Top from other section', async ({ page }) => {
     await page.goto('/#/show');
 

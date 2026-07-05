@@ -157,7 +157,7 @@ export const mockBestItem1 = {
 export const mockBestItem2 = {
   id: 33002,
   title: 'How We Scaled to 1M Users with PostgreSQL',
-  url: 'https://techblog.example.dev/postgres-scale',
+  url: 'https://techblog.example.com/postgres-scale',
   by: 'alexgarcia',
   score: 389,
   time: now() - 7200,
@@ -173,6 +173,43 @@ export const mockBestItem3 = {
   score: 367,
   time: now() - 10800,
   descendants: 98,
+  type: 'story',
+};
+
+export const mockNewItemIds = [44001, 44002, 44003];
+
+// Newest items use distinct IDs/titles so the /newest route is observably
+// different from /top and /best (guards against a mock leak in the nav test).
+// Titles deliberately avoid the whoishiring monthly-thread phrases.
+export const mockNewItem1 = {
+  id: 44001,
+  title: 'Just Shipped: A Tiny Static Site Generator in Rust',
+  url: 'https://example.com/tiny-ssg-rust',
+  by: 'freshdev',
+  score: 8,
+  time: now() - 120,
+  descendants: 2,
+  type: 'story',
+};
+
+export const mockNewItem2 = {
+  id: 44002,
+  title: 'Show HN: I Built a CLI to Track My Reading',
+  url: 'https://example.com/reading-cli',
+  by: 'bookworm',
+  score: 15,
+  time: now() - 240,
+  descendants: 5,
+  type: 'story',
+};
+
+export const mockNewItem3 = {
+  id: 44003,
+  title: 'Ask HN: What Small Habits Improved Your Coding?',
+  by: 'curiouscoder',
+  score: 4,
+  time: now() - 360,
+  descendants: 3,
   type: 'story',
 };
 

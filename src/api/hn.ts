@@ -12,6 +12,7 @@ export class NotFoundError extends Error {
 let bestStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
 let showStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
 let askStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
+let newStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /** @internal Testing helper to reset module-level caches between tests. */
@@ -19,6 +20,7 @@ export function __resetFetchCachesForTests() {
   bestStoriesCache = { ids: null, timestamp: 0 };
   showStoriesCache = { ids: null, timestamp: 0 };
   askStoriesCache = { ids: null, timestamp: 0 };
+  newStoriesCache = { ids: null, timestamp: 0 };
 }
 
 function getDayRange(daysAgo = 0) {
@@ -140,10 +142,8 @@ export async function fetchFrontPageForDay(daysAgo = 1): Promise<StoryItem[]> {
       return false;
     }
     const title = (hit.title || '').toLowerCase();
-    if (title.includes('who is hiring') || 
-        title.includes('who wants to be hired') ||
-        title.includes('freelancer?') ||
-        title.includes('seeking freelancer')) {
+    if (title.includes('who is hiring') ||
+        title.includes('who wants to be hired')) {
       return false;
     }
     return true;
@@ -176,6 +176,45 @@ export async function fetchBestStories(offset = 0, limit = 30) {
     .filter((fb): fb is FirebaseItem => fb != null && !fb.deleted && !fb.dead && fb.type !== 'job')
     .map(fb => normalizeFirebaseToStoryItem(fb));
   
+  return {
+    stories,
+    hasMore: offset + limit < allIds.length,
+    nextOffset: offset + limit,
+  };
+}
+
+// Newest feed: reverse-chronological submissions from HN `newstories` (≤500,
+// HN's hard cap). Mirrors fetchBestStories' offset pagination but additionally
+// filters the whoishiring bot's monthly threads (they are type='story', not
+// 'job', so the job filter alone misses them). Reuses HIRING_EXCLUDE_TITLES.
+export async function fetchNewStories(offset = 0, limit = 30) {
+  const now = Date.now();
+
+  if (!newStoriesCache.ids || (now - newStoriesCache.timestamp) >= CACHE_TTL) {
+    newStoriesCache = { ids: await hnSdk.readRankedIds('newstories'), timestamp: now };
+  }
+
+  const allIds = newStoriesCache.ids ?? [];
+  const pageIds = allIds.slice(offset, offset + limit);
+
+  if (pageIds.length === 0) {
+    return { stories: [] as StoryItem[], hasMore: false, nextOffset: offset };
+  }
+
+  const fetched = await Promise.all(
+    pageIds.map((id: number) => hnSdk.readItem(id).catch(() => null))
+  );
+
+  const stories = fetched
+    .filter((fb): fb is FirebaseItem =>
+      fb != null &&
+      !fb.deleted &&
+      !fb.dead &&
+      fb.type !== 'job' &&
+      !HIRING_EXCLUDE_TITLES.some(t => (fb.title ?? '').toLowerCase().includes(t))
+    )
+    .map(fb => normalizeFirebaseToStoryItem(fb));
+
   return {
     stories,
     hasMore: offset + limit < allIds.length,
@@ -271,15 +310,13 @@ export async function fetchTaggedStoriesForDay(
   return sorted.map(normalizeAlgoliaHit);
 }
 
-const ASK_EXCLUDE_TITLES = [
+const HIRING_EXCLUDE_TITLES = [
   'who is hiring',
   'who wants to be hired',
-  'freelancer?',
-  'seeking freelancer',
 ];
 
 export function fetchAskStoriesForDay(daysAgo: number): Promise<StoryItem[]> {
-  return fetchTaggedStoriesForDay('ask_hn', daysAgo, ASK_EXCLUDE_TITLES);
+  return fetchTaggedStoriesForDay('ask_hn', daysAgo, HIRING_EXCLUDE_TITLES);
 }
 
 export function fetchShowStoriesForDay(daysAgo: number): Promise<StoryItem[]> {

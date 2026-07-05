@@ -6,7 +6,7 @@
  * Deduplication across pages via a `seenIds` set.
  */
 import { useState, useCallback, useRef } from 'react';
-import { fetchTopStories, fetchFrontPageForDay, fetchBestStories, fetchShowStories, fetchAskStories, fetchAskStoriesForDay, fetchShowStoriesForDay } from '../api/hn';
+import { fetchTopStories, fetchFrontPageForDay, fetchBestStories, fetchNewStories, fetchShowStories, fetchAskStories, fetchAskStoriesForDay, fetchShowStoriesForDay } from '../api/hn';
 import { getCachedFeed, setCachedFeed } from '../utils/feedCache';
 import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/itemCache';
 import type { StoryItem, FeedType, ListSessionState } from '../types';
@@ -168,10 +168,11 @@ export function useInfiniteStories(type: FeedType = 'top') {
             setStories(prev => [...prev, ...newStories]);
           }
         }
-      } else if (type === 'best') {
-        // Offset-based pagination via Firebase /beststories.
+      } else if (type === 'best' || type === 'newest') {
+        // Offset-based pagination via Firebase /beststories or /newstories.
         const isRevalidatingBest = hasStaleCacheRef.current && positionRef.current === 0;
-        const result = await fetchBestStories(positionRef.current, 30);
+        const fetchFn = type === 'best' ? fetchBestStories : fetchNewStories;
+        const result = await fetchFn(positionRef.current, 30);
         
         if (versionRef.current !== currentVersion) return;
         
