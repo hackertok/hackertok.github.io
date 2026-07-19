@@ -17,7 +17,16 @@
     "e2e:ui": "NODE_OPTIONS='--disable-warning=DEP0205' playwright test --ui",
     "e2e:debug": "NODE_OPTIONS='--disable-warning=DEP0205' playwright test --debug",
     "e2e:headed": "NODE_OPTIONS='--disable-warning=DEP0205' playwright test --headed",
-    "icons": "node scripts/generate-icons.js"
+    "icons": "node scripts/generate-icons.js",
+    "worker:dev": "wrangler dev --config worker/wrangler.jsonc",
+    "worker:types": "wrangler types --config worker/wrangler.jsonc worker/worker-configuration.d.ts",
+    "worker:typecheck": "tsc --project worker/tsconfig.json",
+    "worker:test": "vitest run --config worker/vitest.config.ts",
+    "worker:test:watch": "vitest --config worker/vitest.config.ts",
+    "worker:dry-run": "wrangler deploy --dry-run --config worker/wrangler.jsonc",
+    "worker:migrate:local": "wrangler d1 migrations apply PUSH_DB --local --config worker/wrangler.jsonc",
+    "worker:migrate:remote": "wrangler d1 migrations apply PUSH_DB --remote --config worker/wrangler.jsonc",
+    "worker:deploy": "wrangler deploy --config worker/wrangler.jsonc"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -30,10 +39,12 @@
     "react-dom": "^19.2.7",
     "react-intersection-observer": "^10.1.0",
     "react-router-dom": "^7.18.1",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "web-push-neo": "^0.1.2"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
+    "@cloudflare/vitest-pool-workers": "^0.18.6",
     "@eslint/js": "^10.0.1",
     "@faker-js/faker": "^10.5.0",
     "@playwright/test": "^1.61.1",
@@ -47,7 +58,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "@vitest/coverage-v8": "^4.1.10",
     "@vitest/eslint-plugin": "^1.6.23",
-    "@vitest/ui": "^4.1.4",
+    "@vitest/ui": "^4.1.10",
     "eslint": "^10.7.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
@@ -60,6 +71,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.64.0",
     "vite": "^8.1.4",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.10",
+    "wrangler": "^4.112.0"
   }
 }

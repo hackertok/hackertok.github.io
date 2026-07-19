@@ -1,0 +1,4 @@
+# Copy to worker/.dev.vars for local Worker development. Generate one matching
+# pair with the command in worker/README.md; never commit the real private JWK.
+VAPID_PUBLIC_KEY="base64url-uncompressed-p256-public-key"
+VAPID_PRIVATE_JWK='{"kty":"EC","crv":"P-256","x":"...","y":"...","d":"...","key_ops":["sign"],"ext":true}'

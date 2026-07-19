@@ -38,8 +38,11 @@ npm run dev
 
 ```bash
 npm run typecheck
+npm run worker:typecheck
 npm run lint
 npm run test:run
+npm run worker:test
+npm run worker:dry-run
 npm run build
 ```
 
@@ -62,6 +65,8 @@ npm run e2e
   styling system.
 - Avoid adding dependencies unless they solve a clear problem that the current
   stack cannot reasonably handle.
+- Keep Cloudflare changes under `worker/`, regenerate committed bindings with
+  `npm run worker:types`, and add D1 changes as forward-only migrations.
 - If you touch GitHub Actions, keep actions pinned to full commit SHAs.
 - If you render remote HTML or user-generated content, keep the existing
   sanitization guarantees intact.

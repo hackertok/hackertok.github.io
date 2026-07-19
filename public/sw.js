@@ -37,6 +37,7 @@ const MAX_RUNTIME_ENTRIES = 64;
 // hang on the browser's own ~30–60s timeout. The request is NOT abandoned at the
 // cutoff — it keeps running to refresh the shell for the next launch.
 const NETWORK_TIMEOUT_MS = 3000;
+const PUSH_ONLY_DEV = new URL(self.location.href).searchParams.has('push-dev');
 
 // Static shell precached up-front. The build's hashed JS/CSS can't be listed here
 // (names are unknown at author time) — `install` parses them from the cached shell
@@ -44,6 +45,10 @@ const NETWORK_TIMEOUT_MS = 3000;
 const PRECACHE_URLS = ['/', OFFLINE_SHELL, '/manifest.webmanifest', '/icons/icon.svg'];
 
 self.addEventListener('install', (event) => {
+  if (PUSH_ONLY_DEV) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
   event.waitUntil(
     (async () => {
       const shell = await caches.open(SHELL_CACHE);
@@ -72,12 +77,116 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  if (PUSH_ONLY_DEV) {
+    event.waitUntil(self.clients.claim());
+    return;
+  }
   // Drop caches from older versions, then take control of open clients.
   event.waitUntil(
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => !CURRENT_CACHES.has(key)).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
+  );
+});
+
+const PUSH_ICON = '/icons/icon.svg';
+const GENERIC_NOTIFICATION = {
+  title: 'HackerTok',
+  options: {
+    body: 'Story alerts are ready.',
+    icon: PUSH_ICON,
+    tag: 'hackertok-alert',
+    renotify: false,
+    data: {},
+  },
+};
+
+function validAlertPayload(value) {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    value.version === 1 &&
+    Number.isSafeInteger(value.id) &&
+    value.id > 0 &&
+    typeof value.title === 'string' &&
+    value.title.trim().length > 0 &&
+    value.title.length <= 300 &&
+    Number.isSafeInteger(value.score) &&
+    value.score > 1000
+  );
+}
+
+self.addEventListener('push', (event) => {
+  let payload;
+  try {
+    payload = event.data?.json();
+  } catch {
+    payload = undefined;
+  }
+
+  const notification = validAlertPayload(payload)
+    ? {
+        title: payload.title.trim(),
+        options: {
+          body: `${payload.score.toLocaleString('en-US')} points on Hacker News`,
+          icon: PUSH_ICON,
+          tag: `hn-${payload.id}`,
+          renotify: false,
+          data: { id: payload.id },
+        },
+      }
+    : GENERIC_NOTIFICATION;
+
+  // Web Push requires a visible notification for every received push. Even a
+  // malformed or empty payload therefore gets a safe, destination-free fallback.
+  event.waitUntil(
+    self.registration.showNotification(notification.title, notification.options),
+  );
+});
+
+async function focusOrOpenNotification(id) {
+  const validId = Number.isSafeInteger(id) && id > 0;
+  const destination = new URL(
+    validId ? `/#/item/${id}` : '/#/',
+    self.location.origin,
+  );
+  const windows = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  });
+  const sameOrigin = windows.filter((client) => {
+    try {
+      return new URL(client.url).origin === self.location.origin;
+    } catch {
+      return false;
+    }
+  });
+  const exact = sameOrigin.find((client) => client.url === destination.href);
+  if (exact) {
+    await exact.focus();
+    return;
+  }
+  const existing = sameOrigin[0];
+  if (existing) {
+    try {
+      const navigated = await existing.navigate(destination.href);
+      await (navigated ?? existing).focus();
+      return;
+    } catch {
+      /* Fall through to a new same-origin window. */
+    }
+  }
+  await self.clients.openWindow(destination.href);
+}
+
+self.addEventListener('notificationclick', (event) => {
+  event.waitUntil(
+    (async () => {
+      event.notification.close();
+      const id = event.notification.data?.id;
+      await focusOrOpenNotification(id);
+    })(),
   );
 });
 
@@ -139,6 +248,7 @@ async function navigate(event) {
 }
 
 self.addEventListener('fetch', (event) => {
+  if (PUSH_ONLY_DEV) return;
   const { request } = event;
 
   // Never touch non-GET or cross-origin (Algolia / Firebase / external links):

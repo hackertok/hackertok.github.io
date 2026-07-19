@@ -1,0 +1,97 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "hackertok-push",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-19",
+  "workers_dev": true,
+  "preview_urls": false,
+  "limits": {
+    "cpu_ms": 10
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "vars": {
+    "ALLOWED_ORIGINS": "https://hackertok.github.io,http://localhost:4173,http://localhost:5173",
+    "RELAY_HOST_ALLOWLIST": "fcm.googleapis.com,updates.push.services.mozilla.com,push.services.mozilla.com,*.notify.windows.com,*.push.apple.com",
+    "VAPID_PUBLIC_KEY": "",
+    "VAPID_KEY_ID": "v1",
+    "VAPID_SUBJECT": "https://hackertok.github.io/",
+    "RELEASE_VERSION": "development",
+    "SUBSCRIPTION_CAP": "350",
+    "STORY_THRESHOLD": "1000",
+    "DISCOVERY_WINDOW_DAYS": "30"
+  },
+  "d1_databases": [
+    {
+      "binding": "PUSH_DB",
+      "database_name": "hackertok-push",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "FANOUT_QUEUE",
+        "queue": "hackertok-push-fanout"
+      },
+      {
+        "binding": "DELIVERY_QUEUE",
+        "queue": "hackertok-push-delivery"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "hackertok-push-fanout",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 10,
+        "max_concurrency": 1
+      },
+      {
+        "queue": "hackertok-push-delivery",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 10,
+        "max_concurrency": 8
+      }
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
+  "ratelimits": [
+    {
+      "name": "PUSH_READ_RATE_LIMITER",
+      "namespace_id": "483701",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    },
+    {
+      "name": "PUSH_WRITE_RATE_LIMITER",
+      "namespace_id": "483702",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    },
+    {
+      "name": "PUSH_TEST_RATE_LIMITER",
+      "namespace_id": "483703",
+      "simple": {
+        "limit": 3,
+        "period": 60
+      }
+    }
+  ]
+}

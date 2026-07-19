@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
 import { pruneExpiredViewed } from './utils/viewedItems'
+import { preloadServiceWorkerRegistration } from './pwa/serviceWorker'
 
 // Clean up expired viewed entries on app load (runs exactly once)
 pruneExpiredViewed();
@@ -19,8 +20,6 @@ createRoot(document.getElementById('root')!).render(
 // clients.claim, so a new deploy takes over on the next load.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      /* offline support is optional — ignore registration failures */
-    });
+    preloadServiceWorkerRegistration();
   });
 }

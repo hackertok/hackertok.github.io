@@ -7,10 +7,10 @@ import vitest from '@vitest/eslint-plugin'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage', 'playwright-report']),
+  globalIgnores(['dist', 'coverage', 'playwright-report', '.wrangler', 'worker/worker-configuration.d.ts']),
   // Node.js environment for config/test infra files
   {
-    files: ['e2e/**/*.{ts,js}', 'playwright.config.ts', 'vite.config.js', 'eslint.config.js', 'postcss.config.js', 'scripts/**/*.js'],
+    files: ['e2e/**/*.{ts,js}', 'playwright.config.ts', 'vite.config.js', 'worker/vitest.config.ts', 'eslint.config.js', 'postcss.config.js', 'scripts/**/*.js'],
     languageOptions: {
       globals: globals.node,
     },

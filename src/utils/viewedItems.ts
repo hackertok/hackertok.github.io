@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { announceStoryInteraction } from './storyInteraction';
 
 /** Track viewed items in localStorage. */
 
@@ -175,19 +176,24 @@ export function markViewedWithTime(
   ttlHours = kind === 'title' ? TITLE_CLICK_TTL_HOURS : DETAIL_VIEW_TTL_HOURS,
 ): void {
   const id = Number(itemId);
+  const viewedAt = Date.now();
 
   if (kind === 'title') markViewed(id);
   addToSessionViewed(id);
 
   const map = kind === 'title' ? titleTimeMap : detailTimeMap;
-  const nextExpiry = Date.now() + ttlHours * 3_600_000;
+  const nextExpiry = viewedAt + ttlHours * 3_600_000;
   const times = map.load();
   const merged = Math.max(times[id] ?? 0, nextExpiry);
   // Skip the stringify + write when the merge changes nothing — e.g. re-viewing
   // an item whose hide window is already longer, or an idempotent re-finalize.
-  if (merged === times[id]) return;
+  if (merged === times[id]) {
+    announceStoryInteraction();
+    return;
+  }
   times[id] = merged;
   map.save();
+  announceStoryInteraction();
 }
 
 export function pruneExpiredViewed(): void {

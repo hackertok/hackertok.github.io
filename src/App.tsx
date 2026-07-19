@@ -3,7 +3,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
-import { Header, ErrorBoundary, FullScreenCommentSkeletonPanel, StateView, NetworkStatusBar } from './components';
+import { Header, ErrorBoundary, FullScreenCommentSkeletonPanel, StateView, NetworkStatusBar, PushNotificationOptIn } from './components';
 import { TooltipProvider } from './components/ui';
 import { StoryList } from './pages';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -228,6 +228,7 @@ function App() {
                   </a>
                   <Header />
                   <NetworkStatusBar />
+                  <PushNotificationOptIn />
                   <MainContent>
                     <Routes>
                       <Route path="/" element={<MobileStoryListWrapper type="top" />} />

@@ -56,16 +56,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck
+      - name: Frontend typecheck
         run: npm run typecheck
+
+      - name: Generate Worker bindings
+        run: npm run worker:types
+
+      - name: Verify generated Worker bindings are current
+        run: git diff --exit-code -- worker/worker-configuration.d.ts
+
+      - name: Worker typecheck
+        run: npm run worker:typecheck
 
       - name: Lint
         run: npm run lint
 
-      - name: Test
+      - name: Frontend tests
         run: npm run test:run
 
-      - name: Build
+      - name: Apply local D1 migrations
+        run: npm run worker:migrate:local
+
+      - name: Worker runtime tests
+        run: npm run worker:test
+
+      - name: Wrangler dry run
+        run: npm run worker:dry-run
+
+      - name: Frontend build
         run: npm run build
 
       - name: Install Playwright Browsers

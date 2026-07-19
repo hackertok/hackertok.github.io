@@ -30,6 +30,7 @@
 | 🔒 **Secure and Private**     | No ads, no tracking, secure by default                         |
 | ♾️ **Infinite Feed**          | Swipe or scroll endlessly — no job posts, no hiring threads    |
 | 📲 **Installable PWA**        | Add to home screen for a native app experience                 |
+| 🔔 **1,000+ Story Alerts**    | Optional anonymous native Web Push for exceptional HN stories  |
 | ♿ **Accessible**              | WCAG-tested with keyboard navigation and screen reader support |
 
 ## 🚀 Deployment
@@ -37,6 +38,9 @@
 The production site is published to GitHub Pages at [hackertok.github.io](https://hackertok.github.io).
 
 Deployments are release-driven rather than branch-driven. This keeps production tied to explicit versioned releases.
+Each release applies D1 migrations, deploys and smoke-tests the Cloudflare Push Worker, waits for its initial
+story scan, and then publishes the already-built GitHub Pages artifact. Worker provisioning and operations are
+documented in [worker/README.md](worker/README.md).
 
 ## 🔐 Security
 
@@ -46,11 +50,13 @@ dependency updates, security scanning, and modern open-source security best prac
 Please report security vulnerabilities privately
 through [GitHub Security Advisories](https://github.com/hackertok/hackertok.github.io/security/advisories/new), not
 public issues. The full disclosure process is documented in [SECURITY.md](SECURITY.md).
+The anonymous alert data model and retention policy are documented in [PRIVACY.md](PRIVACY.md).
 
 ## 🛠️ Tech Stack
 
 HackerTok is built with React, TypeScript, and Vite, styled with Tailwind CSS and Radix UI, and tested and automated
-with Vitest, Playwright, and GitHub Actions.
+with Vitest, Playwright, and GitHub Actions. Native story alerts use a Cloudflare Worker, D1, Queues, and
+standards-based Web Push with VAPID.
 
 ## 🤝 Contributing
 

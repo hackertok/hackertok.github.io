@@ -18,3 +18,4 @@ export { FullScreenComment, FullScreenCommentSkeleton, FullScreenCommentSkeleton
 export { CommentsSection } from './CommentsSection';
 export { StateView } from './StateView';
 export { NetworkStatusBar } from './NetworkStatusBar';
+export { PushNotificationOptIn } from './PushNotificationOptIn';
