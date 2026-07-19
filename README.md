@@ -55,8 +55,8 @@ The anonymous alert data model and retention policy are documented in [PRIVACY.m
 ## 🛠️ Tech Stack
 
 HackerTok is built with React, TypeScript, and Vite, styled with Tailwind CSS and Radix UI, and tested and automated
-with Vitest, Playwright, and GitHub Actions. Native story alerts use a Cloudflare Worker, D1, Queues, and
-standards-based Web Push with VAPID.
+with Vitest, Playwright, and GitHub Actions. Native story alerts use a Cloudflare Worker, D1, Queues, Turnstile
+admission control, and standards-based Web Push with VAPID.
 
 ## 🤝 Contributing
 

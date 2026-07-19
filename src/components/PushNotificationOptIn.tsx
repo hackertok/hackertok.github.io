@@ -1,4 +1,5 @@
 import { BellRing, X } from 'lucide-react';
+import { TURNSTILE_CONTAINER_ID } from '../api/turnstile';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { Button } from './ui';
 
@@ -19,7 +20,7 @@ export function PushNotificationOptIn() {
   return (
     <aside
       aria-label="Story notification offer"
-      className="fixed inset-x-3 bottom-3 z-[60] mx-auto flex max-w-md items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-card-foreground shadow-lg"
+      className="fixed inset-x-3 bottom-3 z-[60] mx-auto flex max-w-md flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-card-foreground shadow-lg"
       data-testid="push-notification-opt-in"
     >
       <BellRing aria-hidden className="size-4 shrink-0 text-accent" />
@@ -47,6 +48,10 @@ export function PushNotificationOptIn() {
           <X aria-hidden className="size-4" />
         </Button>
       )}
+      <div
+        id={TURNSTILE_CONTAINER_ID}
+        className="flex basis-full justify-end empty:hidden"
+      />
     </aside>
   );
 }

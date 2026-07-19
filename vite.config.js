@@ -12,6 +12,7 @@ import tailwindcss from '@tailwindcss/vite'
 // <script type="application/ld+json"> aren't governed by script-src, so skip them.
 function htmlMetaCsp(pushApiOrigin) {
   const SELF = "'self'"
+  const TURNSTILE = 'https://challenges.cloudflare.com'
   const sha256 = (content) =>
     `'sha256-${createHash('sha256').update(content, 'utf8').digest('base64')}'`
 
@@ -61,6 +62,7 @@ function htmlMetaCsp(pushApiOrigin) {
           SELF,
           'https://hn.algolia.com',
           'wss://*.firebaseio.com',
+          TURNSTILE,
         ]
         if (pushApiOrigin) connectSources.push(pushApiOrigin)
 
@@ -68,8 +70,8 @@ function htmlMetaCsp(pushApiOrigin) {
           `default-src ${SELF}`,
           `base-uri ${SELF}`,
           `object-src 'none'`,
-          `frame-src 'none'`,
-          `script-src ${SELF} ${scriptHashes.join(' ')}`,
+          `frame-src ${TURNSTILE}`,
+          `script-src ${SELF} ${TURNSTILE} ${scriptHashes.join(' ')}`,
           // unsafe-inline for styles only: React inline styles + dynamic CSS
           // vars can't be practically hashed.
           `style-src ${SELF} 'unsafe-inline'`,

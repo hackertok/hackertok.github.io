@@ -9,6 +9,7 @@ import {
   putPushSubscription,
   type PushConfig,
 } from '../api/push';
+import { requestEnrollmentTurnstile } from '../api/turnstile';
 import { getServiceWorkerRegistration } from '../pwa/serviceWorker';
 import {
   STORY_INTERACTION_EVENT,
@@ -197,6 +198,42 @@ function isDefinitivePutFailure(error: unknown): error is PushApiError {
   );
 }
 
+class AdmissionChallengeError extends Error {
+  constructor() {
+    super('admission_challenge_failed');
+    this.name = 'AdmissionChallengeError';
+  }
+}
+
+async function putWithAdmission(
+  token: string,
+  subscription: PushSubscription,
+  turnstileSiteKey: string,
+  mayAlreadyExist: boolean,
+): Promise<void> {
+  if (mayAlreadyExist) {
+    try {
+      await putPushSubscription(token, subscription);
+      return;
+    } catch (error) {
+      if (
+        !(error instanceof PushApiError) ||
+        error.code !== 'turnstile_required'
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  let turnstileToken: string;
+  try {
+    turnstileToken = await requestEnrollmentTurnstile(turnstileSiteKey);
+  } catch {
+    throw new AdmissionChallengeError();
+  }
+  await putPushSubscription(token, subscription, turnstileToken);
+}
+
 async function retireToken(token: string): Promise<void> {
   const queued = enqueuePendingDelete(token);
   let deleted = false;
@@ -378,8 +415,19 @@ export function usePushNotifications(): PushNotificationsState {
       try {
         await putPushSubscription(token, subscription);
         storageSet(RECONCILED_AT_KEY, String(Date.now()));
-      } catch {
-        if (generation === refreshGeneration.current) setStatus('sync-error');
+      } catch (error) {
+        if (generation !== refreshGeneration.current) return;
+        if (
+          error instanceof PushApiError &&
+          error.code === 'turnstile_required'
+        ) {
+          const repair = { ...next, needsRepair: true };
+          runtimeRef.current = repair;
+          setRuntime(repair);
+          setStatus('repair');
+          return;
+        }
+        setStatus('sync-error');
       }
     })().catch(() => {
       if (generation !== refreshGeneration.current) return;
@@ -484,7 +532,12 @@ export function usePushNotifications(): PushNotificationsState {
         runtimeRef.current = next;
         setRuntime(next);
         try {
-          await putPushSubscription(token, subscription);
+          await putWithAdmission(
+            token,
+            subscription,
+            current.config.turnstileSiteKey,
+            previousToken !== null,
+          );
           storageSet(RECONCILED_AT_KEY, String(Date.now()));
           setStatus('on');
         } catch (error) {
@@ -509,13 +562,29 @@ export function usePushNotifications(): PushNotificationsState {
               return;
             }
             try {
-              await putPushSubscription(token, subscription);
+              await putWithAdmission(
+                token,
+                subscription,
+                current.config.turnstileSiteKey,
+                false,
+              );
               storageSet(RECONCILED_AT_KEY, String(Date.now()));
               setStatus('on');
               return;
             } catch (replacementError) {
               enrollmentError = replacementError;
             }
+          }
+          if (enrollmentError instanceof AdmissionChallengeError) {
+            const repair = {
+              ...next,
+              subscription,
+              needsRepair: true,
+            };
+            runtimeRef.current = repair;
+            setRuntime(repair);
+            setStatus('sync-error');
+            return;
           }
           if (isDefinitivePutFailure(enrollmentError)) {
             await subscription.unsubscribe().catch(() => false);

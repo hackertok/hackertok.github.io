@@ -61,6 +61,7 @@ describe('push API helpers', () => {
       threshold: 1000,
       keyId: '',
       applicationServerKey: '',
+      turnstileSiteKey: '',
     });
   });
 });

@@ -1,8 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeBase64Url } from '../src/crypto';
-import { handleDelivery, recoverDeliveryWakes } from '../src/delivery';
-import type { Bindings } from '../src/types';
+import {
+  handleDelivery,
+  recoverDeliveryWakes,
+  sendSelfTest,
+} from '../src/delivery';
+import type { Bindings, SubscriptionRow } from '../src/types';
 
 const bindings = env as unknown as Bindings;
 
@@ -24,28 +28,44 @@ async function validSubscriptionKeys(): Promise<{ p256dh: string; auth: string }
 }
 
 async function seedDelivery(options: {
+  id?: number;
   endpoint?: string;
   attempts?: number;
   expiresAt?: number;
   vapidKeyId?: string;
+  verifiedAt?: number | null;
 } = {}): Promise<void> {
   const now = Date.now();
+  const id = options.id ?? 1;
   const keys = await validSubscriptionKeys();
   const endpoint =
-    options.endpoint ?? 'https://fcm.googleapis.com/fcm/send/delivery-test';
+    options.endpoint ?? `https://fcm.googleapis.com/fcm/send/delivery-test-${id}`;
+  const verifiedAt = Object.hasOwn(options, 'verifiedAt')
+    ? options.verifiedAt ?? null
+    : now;
   await bindings.PUSH_DB
     .prepare(
       `INSERT INTO subscriptions (
          id, token_hash, endpoint_hash, endpoint, p256dh, auth, vapid_key_id,
-         created_at, activated_at, last_reconciled_at
+         created_at, activated_at, last_reconciled_at, verified_at
        )
-       VALUES (1, 'token', 'endpoint', ?1, ?2, ?3, ?4, ?5, ?5, ?5)`,
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?8, ?9)`,
     )
-    .bind(endpoint, keys.p256dh, keys.auth, options.vapidKeyId ?? 'v1', now)
+    .bind(
+      id,
+      `token-${id}`,
+      `endpoint-${id}`,
+      endpoint,
+      keys.p256dh,
+      keys.auth,
+      options.vapidKeyId ?? 'v1',
+      now,
+      verifiedAt,
+    )
     .run();
   await bindings.PUSH_DB
     .prepare(
-      `INSERT INTO stories (
+      `INSERT OR IGNORE INTO stories (
          story_id, title, score, verification_state, event_state,
          audience_high_water_id, event_created_at, expires_at,
          created_at, updated_at
@@ -61,9 +81,10 @@ async function seedDelivery(options: {
          id, story_id, subscription_id, state, attempts, next_attempt_at,
          expires_at, created_at, updated_at
        )
-       VALUES (1, 404, 1, 'pending', ?1, ?2, ?3, ?2, ?2)`,
+       VALUES (?1, 404, ?1, 'pending', ?2, ?3, ?4, ?3, ?3)`,
     )
     .bind(
+      id,
       options.attempts ?? 0,
       now,
       options.expiresAt ?? now + 12 * 60 * 60 * 1000,
@@ -71,7 +92,7 @@ async function seedDelivery(options: {
     .run();
 }
 
-async function deliveryState(): Promise<{
+async function deliveryState(id = 1): Promise<{
   state: string;
   attempts: number;
   relay_status: number | null;
@@ -81,8 +102,9 @@ async function deliveryState(): Promise<{
     .prepare(
       `SELECT state, attempts, relay_status, result_class
          FROM deliveries
-        WHERE id = 1`,
+        WHERE id = ?1`,
     )
+    .bind(id)
     .first<{
       state: string;
       attempts: number;
@@ -112,8 +134,31 @@ beforeEach(async () => {
 });
 
 describe('native delivery', () => {
+  it('quarantines a cutover insert from an older Worker', async () => {
+    const now = Date.now();
+    const keys = await validSubscriptionKeys();
+    await bindings.PUSH_DB
+      .prepare(
+        `INSERT INTO subscriptions (
+           token_hash, endpoint_hash, endpoint, p256dh, auth, vapid_key_id,
+           created_at, activated_at, last_reconciled_at
+         )
+         VALUES ('legacy-token', 'legacy-endpoint',
+                 'https://fcm.googleapis.com/fcm/send/legacy',
+                 ?1, ?2, 'v1', ?3, ?3, ?3)`,
+      )
+      .bind(keys.p256dh, keys.auth, now)
+      .run();
+
+    const subscription = await bindings.PUSH_DB
+      .prepare('SELECT verified_at FROM subscriptions WHERE token_hash = ?1')
+      .bind('legacy-token')
+      .first<{ verified_at: number | null }>();
+    expect(subscription?.verified_at).toBe(0);
+  });
+
   it('builds an RFC 8291 encrypted request and records relay acceptance', async () => {
-    await seedDelivery();
+    await seedDelivery({ verifiedAt: null });
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(null, { status: 201 }),
     );
@@ -139,6 +184,10 @@ describe('native delivery', () => {
       relay_status: 201,
       result_class: 'accepted',
     });
+    const subscription = await bindings.PUSH_DB
+      .prepare('SELECT verified_at FROM subscriptions WHERE id = 1')
+      .first<{ verified_at: number | null }>();
+    expect(subscription?.verified_at).not.toBeNull();
   });
 
   it('scrubs a subscription when its relay endpoint is gone', async () => {
@@ -224,7 +273,7 @@ describe('native delivery', () => {
     });
   });
 
-  it('opens a circuit without deleting devices on VAPID failures', async () => {
+  it('keeps one verified VAPID failure local while awaiting correlation', async () => {
     await seedDelivery();
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(null, { status: 403 }),
@@ -234,8 +283,40 @@ describe('native delivery', () => {
     expect(await deliveryState()).toMatchObject({
       state: 'paused',
       relay_status: 403,
-      result_class: 'vapid_or_provider_auth',
+      result_class: 'relay_auth_suspect',
     });
+    const state = await bindings.PUSH_DB
+      .prepare(
+        `SELECT delivery_circuit_until, delivery_circuit_reason
+           FROM app_state
+          WHERE id = 1`,
+      )
+      .first<{
+        delivery_circuit_until: number | null;
+        delivery_circuit_reason: string | null;
+      }>();
+    expect(state).toEqual({
+      delivery_circuit_until: null,
+      delivery_circuit_reason: null,
+    });
+    const subscription = await bindings.PUSH_DB
+      .prepare('SELECT disabled_at FROM subscriptions WHERE id = 1')
+      .first<{ disabled_at: number | null }>();
+    expect(subscription?.disabled_at).toBeNull();
+  });
+
+  it('opens the auth circuit only after three verified subscriptions correlate', async () => {
+    await seedDelivery({ id: 1 });
+    await seedDelivery({ id: 2 });
+    await seedDelivery({ id: 3 });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 403 }),
+    );
+
+    await handleDelivery(bindings, 1);
+    await handleDelivery(bindings, 2);
+    await handleDelivery(bindings, 3);
+
     const state = await bindings.PUSH_DB
       .prepare(
         `SELECT delivery_circuit_until, delivery_circuit_reason
@@ -248,10 +329,197 @@ describe('native delivery', () => {
       }>();
     expect(state?.delivery_circuit_until).toBeGreaterThan(Date.now());
     expect(state?.delivery_circuit_reason).toBe('vapid_or_provider_auth');
+    expect(await deliveryState(3)).toMatchObject({
+      state: 'paused',
+      result_class: 'relay_auth_suspect',
+    });
+  });
+
+  it('isolates an unverified auth failure to that subscription', async () => {
+    await seedDelivery({ verifiedAt: null });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 403 }),
+    );
+
+    await handleDelivery(bindings, 1);
+
+    expect(await deliveryState()).toMatchObject({
+      state: 'terminal',
+      result_class: 'unverified_relay_auth_suspect',
+    });
+    const state = await bindings.PUSH_DB
+      .prepare(
+        `SELECT s.disabled_reason, a.delivery_circuit_until
+           FROM subscriptions s
+           CROSS JOIN app_state a
+          WHERE s.id = 1 AND a.id = 1`,
+      )
+      .first<{
+        disabled_reason: string | null;
+        delivery_circuit_until: number | null;
+      }>();
+    expect(state).toEqual({
+      disabled_reason: 'unverified_relay_rejected',
+      delivery_circuit_until: null,
+    });
+  });
+
+  it('keeps a legacy installation local and non-destructive until verified', async () => {
+    await seedDelivery({ verifiedAt: 0 });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 403 }),
+    );
+
+    await handleDelivery(bindings, 1);
+
+    expect(await deliveryState()).toMatchObject({
+      state: 'paused',
+      result_class: 'relay_auth_suspect',
+    });
+    const state = await bindings.PUSH_DB
+      .prepare(
+        `SELECT s.disabled_at, s.verified_at, a.delivery_circuit_until
+           FROM subscriptions s
+           CROSS JOIN app_state a
+          WHERE s.id = 1 AND a.id = 1`,
+      )
+      .first<{
+        disabled_at: number | null;
+        verified_at: number | null;
+        delivery_circuit_until: number | null;
+      }>();
+    expect(state).toEqual({
+      disabled_at: null,
+      verified_at: 0,
+      delivery_circuit_until: null,
+    });
+  });
+
+  it('does not let a stale unverified rejection erase newer verification', async () => {
+    await seedDelivery({ verifiedAt: null });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      await bindings.PUSH_DB
+        .prepare('UPDATE subscriptions SET verified_at = ?1 WHERE id = 1')
+        .bind(Date.now())
+        .run();
+      return new Response(null, { status: 403 });
+    });
+
+    const outcome = await handleDelivery(bindings, 1);
+
+    expect(outcome).toEqual({ retryAfterSeconds: 1 });
+    expect(await deliveryState()).toMatchObject({
+      state: 'retry',
+      result_class: 'subscription_rotated',
+    });
     const subscription = await bindings.PUSH_DB
-      .prepare('SELECT disabled_at FROM subscriptions WHERE id = 1')
-      .first<{ disabled_at: number | null }>();
+      .prepare('SELECT disabled_at, verified_at FROM subscriptions WHERE id = 1')
+      .first<{ disabled_at: number | null; verified_at: number | null }>();
     expect(subscription?.disabled_at).toBeNull();
+    expect(subscription?.verified_at).toBeGreaterThan(0);
+  });
+
+  it('does not refresh stale fault evidence during recovery', async () => {
+    const now = Date.now();
+    await seedDelivery({ id: 1 });
+    await seedDelivery({ id: 2 });
+    await seedDelivery({ id: 3 });
+    await bindings.PUSH_DB
+      .prepare(
+        `UPDATE deliveries
+            SET state = 'paused',
+                result_class = 'relay_auth_suspect',
+                relay_fault_at = ?1,
+                relay_fault_reconciled_at = (
+                  SELECT last_reconciled_at
+                    FROM subscriptions
+                   WHERE subscriptions.id = deliveries.subscription_id
+                ),
+                next_attempt_at = ?2,
+                updated_at = ?2
+          WHERE id IN (1, 2)`,
+      )
+      .bind(now - 10 * 60 * 1000, now)
+      .run();
+    await recoverDeliveryWakes(bindings);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 403 }),
+    );
+
+    await handleDelivery(bindings, 3);
+
+    const state = await bindings.PUSH_DB
+      .prepare('SELECT delivery_circuit_until FROM app_state WHERE id = 1')
+      .first<{ delivery_circuit_until: number | null }>();
+    expect(state?.delivery_circuit_until).toBeNull();
+  });
+
+  it('bounds repeated verified relay suspects by the attempt budget', async () => {
+    await seedDelivery({ attempts: 5 });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 403 }),
+    );
+
+    await handleDelivery(bindings, 1);
+
+    expect(await deliveryState()).toMatchObject({
+      state: 'terminal',
+      attempts: 6,
+      result_class: 'retry_exhausted',
+    });
+  });
+
+  it('never opens the global circuit from a public self-test', async () => {
+    await seedDelivery();
+    const subscription = await bindings.PUSH_DB
+      .prepare('SELECT * FROM subscriptions WHERE id = 1')
+      .first<SubscriptionRow>();
+    if (!subscription) throw new Error('missing subscription');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(null, { status: 403 }),
+    );
+
+    await expect(sendSelfTest(bindings, subscription)).rejects.toMatchObject({
+      status: 503,
+      code: 'relay_unavailable',
+    });
+    const state = await bindings.PUSH_DB
+      .prepare(
+        `SELECT delivery_circuit_until, delivery_circuit_reason
+           FROM app_state
+          WHERE id = 1`,
+      )
+      .first<{
+        delivery_circuit_until: number | null;
+        delivery_circuit_reason: string | null;
+      }>();
+    expect(state).toEqual({
+      delivery_circuit_until: null,
+      delivery_circuit_reason: null,
+    });
+
+    const locallyInvalid = {
+      ...subscription,
+      endpoint: 'https://attacker.example/push',
+    };
+    await expect(sendSelfTest(bindings, locallyInvalid)).rejects.toMatchObject({
+      status: 503,
+      code: 'sender_unavailable',
+    });
+    const unchanged = await bindings.PUSH_DB
+      .prepare(
+        `SELECT delivery_circuit_until, delivery_circuit_reason
+           FROM app_state
+          WHERE id = 1`,
+      )
+      .first<{
+        delivery_circuit_until: number | null;
+        delivery_circuit_reason: string | null;
+      }>();
+    expect(unchanged).toEqual({
+      delivery_circuit_until: null,
+      delivery_circuit_reason: null,
+    });
   });
 
   it('pauses locally-invalid relay endpoints without making a request', async () => {
@@ -357,7 +625,7 @@ describe('native delivery', () => {
     expect(await deliveryState()).toMatchObject({
       state: 'paused',
       relay_status: 302,
-      result_class: 'sender_or_payload_fault',
+      result_class: 'relay_sender_suspect',
     });
   });
 

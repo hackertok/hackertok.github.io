@@ -14,7 +14,8 @@ export async function appState(db: D1Database): Promise<AppStateRow> {
               bootstrap_total_pages, detector_lease_token,
               detector_lease_expires_at, delivery_circuit_until,
               delivery_circuit_reason, queue_publishing_paused,
-              active_subscription_count, last_successful_scan_at, cleanup_cursor
+              active_subscription_count, retained_subscription_count,
+              last_successful_scan_at, cleanup_cursor
          FROM app_state
         WHERE id = 1`,
     )
@@ -60,7 +61,15 @@ export async function putSubscription(
     const updated = await env.PUSH_DB
       .prepare(
         `UPDATE subscriptions
-            SET endpoint_hash = ?1,
+            SET verified_at = CASE
+                  WHEN endpoint_hash = ?1
+                   AND p256dh = ?3
+                   AND auth = ?4
+                   AND vapid_key_id = ?5
+                    THEN verified_at
+                  ELSE NULL
+                END,
+                endpoint_hash = ?1,
                 endpoint = ?2,
                 p256dh = ?3,
                 auth = ?4,
@@ -100,9 +109,9 @@ export async function putSubscription(
       .prepare(
         `INSERT INTO subscriptions (
            token_hash, endpoint_hash, endpoint, p256dh, auth, vapid_key_id,
-           created_at, activated_at, last_reconciled_at, expires_at
+           created_at, activated_at, last_reconciled_at, verified_at, expires_at
          )
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?7, ?8
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?7, NULL, ?8
           WHERE (
             SELECT active_subscription_count
               FROM app_state
@@ -197,6 +206,7 @@ export async function disableSubscriptionByToken(
   tokenHash: string,
   reason: string,
   now: number,
+  retainedRowCap: number,
 ): Promise<void> {
   await env.PUSH_DB
     .prepare(
@@ -205,12 +215,24 @@ export async function disableSubscriptionByToken(
          created_at, activated_at, last_reconciled_at, expires_at,
          disabled_at, disabled_reason, tombstone_until
        )
-       VALUES (?1, NULL, NULL, NULL, NULL, ?2, ?3, ?3, ?3, NULL, ?3, ?4, ?5)
+       SELECT ?1, NULL, NULL, NULL, NULL, ?2, ?3, ?3, ?3, NULL, ?3, ?4, ?5
+        WHERE (
+          SELECT retained_subscription_count
+            FROM app_state
+           WHERE id = 1
+        ) < ?6
+           OR EXISTS (
+             SELECT 1
+               FROM subscriptions
+              WHERE token_hash = ?1
+                AND disabled_at IS NULL
+           )
        ON CONFLICT(token_hash) DO UPDATE SET
          endpoint_hash = NULL,
          endpoint = NULL,
          p256dh = NULL,
          auth = NULL,
+         verified_at = NULL,
          disabled_at = COALESCE(subscriptions.disabled_at, excluded.disabled_at),
          disabled_reason = COALESCE(
            subscriptions.disabled_reason,
@@ -219,7 +241,8 @@ export async function disableSubscriptionByToken(
          tombstone_until = MAX(
            COALESCE(subscriptions.tombstone_until, 0),
            excluded.tombstone_until
-         )`,
+         )
+       WHERE subscriptions.disabled_at IS NULL`,
     )
     .bind(
       tokenHash,
@@ -227,6 +250,7 @@ export async function disableSubscriptionByToken(
       now,
       reason,
       now + TOMBSTONE_RETENTION_MS,
+      retainedRowCap,
     )
     .run();
 }
@@ -239,6 +263,7 @@ export async function disableSubscriptionById(
   expectedEndpointHash?: string,
   expectedVapidKeyId?: string,
   expectedReconciledAt?: number,
+  expectedVerifiedAt?: number | null,
 ): Promise<boolean> {
   const result = await db
     .prepare(
@@ -247,13 +272,15 @@ export async function disableSubscriptionById(
               endpoint = NULL,
               p256dh = NULL,
               auth = NULL,
+              verified_at = NULL,
               disabled_at = COALESCE(disabled_at, ?1),
               disabled_reason = COALESCE(disabled_reason, ?2),
               tombstone_until = MAX(COALESCE(tombstone_until, 0), ?3)
         WHERE id = ?4
           AND (?5 IS NULL OR endpoint_hash = ?5)
           AND (?6 IS NULL OR vapid_key_id = ?6)
-          AND (?7 IS NULL OR last_reconciled_at = ?7)`,
+          AND (?7 IS NULL OR last_reconciled_at = ?7)
+          AND (?8 = 0 OR verified_at IS ?9)`,
     )
     .bind(
       now,
@@ -263,7 +290,43 @@ export async function disableSubscriptionById(
       expectedEndpointHash ?? null,
       expectedVapidKeyId ?? null,
       expectedReconciledAt ?? null,
+      expectedVerifiedAt === undefined ? 0 : 1,
+      expectedVerifiedAt ?? null,
     )
     .run();
   return result.meta.changes > 0;
+}
+
+export function subscriptionVerificationStatement(
+  db: D1Database,
+  subscription: SubscriptionRow,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE subscriptions
+          SET verified_at = ?1
+        WHERE id = ?2
+          AND disabled_at IS NULL
+          AND (verified_at IS NULL OR verified_at = 0)
+          AND endpoint_hash = ?3
+          AND vapid_key_id = ?4
+          AND last_reconciled_at = ?5`,
+    )
+    .bind(
+      now,
+      subscription.id,
+      subscription.endpoint_hash,
+      subscription.vapid_key_id,
+      subscription.last_reconciled_at,
+    );
+}
+
+export async function markSubscriptionVerified(
+  db: D1Database,
+  subscription: SubscriptionRow,
+  now: number,
+): Promise<void> {
+  if ((subscription.verified_at ?? 0) > 0) return;
+  await subscriptionVerificationStatement(db, subscription, now).run();
 }

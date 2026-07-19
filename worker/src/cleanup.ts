@@ -17,6 +17,7 @@ export async function runCleanup(env: Bindings): Promise<void> {
               endpoint = NULL,
               p256dh = NULL,
               auth = NULL,
+              verified_at = NULL,
               disabled_at = COALESCE(disabled_at, ?1),
               disabled_reason = COALESCE(disabled_reason, 'subscription_expired'),
               tombstone_until = MAX(

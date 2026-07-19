@@ -87,6 +87,7 @@ jobs:
       CLOUDFLARE_D1_DATABASE_ID: ${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
       PUSH_API_URL: ${{ vars.PUSH_API_URL }}
       VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+      TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
     steps:
       - name: Checkout release
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -104,7 +105,7 @@ jobs:
 
       - name: Validate deployment configuration
         run: |
-          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_D1_DATABASE_ID PUSH_API_URL VAPID_PUBLIC_KEY; do
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_D1_DATABASE_ID PUSH_API_URL VAPID_PUBLIC_KEY TURNSTILE_SITE_KEY; do
             if [ -z "${!name}" ]; then
               echo "::error::$name is not configured"
               exit 1
@@ -112,11 +113,21 @@ jobs:
           done
           node --input-type=module -e "
             const url = new URL(process.env.PUSH_API_URL);
+            const testSiteKeys = new Set([
+              '1x00000000000000000000AA',
+              '2x00000000000000000000AB',
+              '1x00000000000000000000BB',
+              '2x00000000000000000000BB',
+              '3x00000000000000000000FF',
+            ]);
             if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
               throw new Error('PUSH_API_URL must contain only an HTTPS origin');
             }
             if (url.protocol !== 'https:') {
               throw new Error('PUSH_API_URL must use HTTPS');
+            }
+            if (testSiteKeys.has(process.env.TURNSTILE_SITE_KEY)) {
+              throw new Error('TURNSTILE_SITE_KEY must not be a Cloudflare test key');
             }
             console.log('PUSH_API_URL=' + url.origin);
           " >> "$GITHUB_ENV"
@@ -130,6 +141,7 @@ jobs:
             const config = JSON.parse(fs.readFileSync(path, 'utf8'));
             config.d1_databases[0].database_id = process.env.CLOUDFLARE_D1_DATABASE_ID;
             config.vars.VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
+            config.vars.TURNSTILE_SITE_KEY = process.env.TURNSTILE_SITE_KEY;
             config.vars.ALLOWED_ORIGINS = 'https://hackertok.github.io';
             config.vars.RELEASE_VERSION = process.env.RELEASE_VERSION;
             fs.writeFileSync(path, JSON.stringify(config, null, 2) + '\n');
@@ -194,7 +206,8 @@ jobs:
               typeof config.keyId !== 'string' ||
               config.keyId.length === 0 ||
               typeof config.applicationServerKey !== 'string' ||
-              config.applicationServerKey.length < 80
+              config.applicationServerKey.length < 80 ||
+              config.turnstileSiteKey !== process.env.TURNSTILE_SITE_KEY
             ) {
               throw new Error('Invalid push configuration response');
             }

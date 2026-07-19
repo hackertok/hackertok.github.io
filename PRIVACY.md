@@ -12,7 +12,8 @@ installation record containing:
 - The browser-provided `p256dh` public key and authentication secret required to
   encrypt Web Push messages.
 - A one-way hash of a random bearer token stored by that browser.
-- A one-way hash of the endpoint, the VAPID key ID, and lifecycle timestamps.
+- A one-way hash of the endpoint, the VAPID key ID, and lifecycle timestamps,
+  including whether that endpoint has completed an accepted relay delivery.
 - Internal story, fan-out, delivery, retry, and coarse relay-status records.
 
 HackerTok does not ask for or store your name, email address, Hacker News
@@ -31,6 +32,18 @@ encrypted for the browser subscription.
 Cloudflare runs the Worker, D1 database, and Queues used by this feature.
 GitHub Pages hosts the HackerTok frontend.
 
+## Anonymous enrollment verification
+
+When you first enable alerts, HackerTok loads Cloudflare Turnstile and sends its
+short-lived response token to the Worker for server-side validation. Cloudflare
+processes the browser and network signals needed to assess that request under
+its own privacy terms. Most visitors see no additional control; a managed
+verification interaction may appear when Cloudflare requires one.
+
+The Turnstile response is single-use, expires after five minutes, and is not
+stored in HackerTok's D1 database. Reconciliation of an already known random
+bearer token does not run another Turnstile challenge.
+
 ## Retention and deletion
 
 - Opt-out, permission revocation observed on a later visit, subscription
@@ -48,7 +61,9 @@ GitHub Pages hosts the HackerTok frontend.
 ## Controls
 
 Version 1 uses one transient, explicit opt-in action. It never opens a native
-notification prompt on page load or after an unrelated click.
+notification prompt on page load or after an unrelated click. Turnstile runs
+only as part of that action and stays hidden unless managed verification needs
+an interaction.
 
 Browser or operating-system notification settings are the initial opt-out
 surface. When you later open HackerTok, it reconciles permission and

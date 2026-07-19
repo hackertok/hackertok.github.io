@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleApi } from '../src/api';
 import { encodeBase64Url } from '../src/crypto';
+import { disableSubscriptionByToken } from '../src/subscriptions';
 import type { Bindings } from '../src/types';
 
 const runtimeBindings = env as unknown as Bindings;
@@ -27,6 +28,7 @@ function subscription(seed: number): {
   endpoint: string;
   expirationTime: null;
   keys: { p256dh: string; auth: string };
+  turnstileToken: string;
 } {
   return {
     endpoint: `https://fcm.googleapis.com/fcm/send/test-${seed}`,
@@ -37,6 +39,7 @@ function subscription(seed: number): {
         Uint8Array.from({ length: 16 }, (_, index) => seed + index),
       ),
     },
+    turnstileToken: `test-turnstile-${seed}`,
   };
 }
 
@@ -66,6 +69,24 @@ async function activate(): Promise<void> {
 }
 
 beforeEach(async () => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = input instanceof Request
+      ? input.url
+      : input instanceof URL
+        ? input.href
+        : input;
+    if (
+      url ===
+      'https://challenges.cloudflare.com/turnstile/v0/siteverify'
+    ) {
+      return Response.json({
+        success: true,
+        action: 'push-enrollment',
+        hostname: 'hackertok.github.io',
+      });
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  });
   await bindings.PUSH_DB.batch([
     bindings.PUSH_DB.prepare('DELETE FROM deliveries'),
     bindings.PUSH_DB.prepare('DELETE FROM stories'),
@@ -165,13 +186,40 @@ describe('push API', () => {
   it('keeps config disabled until bootstrap completes', async () => {
     const response = await handleApi(request('/v1/push/config'), bindings);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ enabled: false, threshold: 1000 });
+    await expect(response.json()).resolves.toMatchObject({
+      enabled: false,
+      threshold: 1000,
+      turnstileSiteKey: bindings.TURNSTILE_SITE_KEY,
+    });
+  });
+
+  it('rejects Cloudflare test credentials without the local-only override', async () => {
+    await activate();
+    const production = new Proxy(bindings, {
+      get(target, property, receiver) {
+        if (property === 'RELEASE_VERSION') return 'production-release';
+        if (property === 'ALLOW_TURNSTILE_TEST_KEYS') return undefined;
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+
+    const ready = await handleApi(
+      new Request('https://push.example/health/ready'),
+      production,
+    );
+    expect(ready.status).toBe(503);
+    const config = await handleApi(request('/v1/push/config'), production);
+    await expect(config.json()).resolves.toMatchObject({
+      enabled: false,
+      turnstileSiteKey: '',
+    });
   });
 
   it('creates, reconciles, and tombstones an anonymous subscription', async () => {
     await activate();
     const bearer = token(10);
     const body = JSON.stringify(subscription(10));
+    const siteverify = vi.mocked(globalThis.fetch);
     const first = await handleApi(
       request('/v1/push/subscription', {
         method: 'PUT',
@@ -184,9 +232,18 @@ describe('push API', () => {
       bindings,
     );
     expect(first.status).toBe(201);
+    expect(siteverify).toHaveBeenCalledOnce();
     const firstRow = await bindings.PUSH_DB
-      .prepare('SELECT id FROM subscriptions')
-      .first<{ id: number }>();
+      .prepare('SELECT id, verified_at FROM subscriptions')
+      .first<{ id: number; verified_at: number | null }>();
+    expect(firstRow?.verified_at).toBeNull();
+    await bindings.PUSH_DB
+      .prepare('UPDATE subscriptions SET verified_at = ?1')
+      .bind(Date.now())
+      .run();
+    siteverify.mockClear();
+    const reconciled: Partial<ReturnType<typeof subscription>> = subscription(11);
+    delete reconciled.turnstileToken;
 
     const second = await handleApi(
       request('/v1/push/subscription', {
@@ -195,22 +252,30 @@ describe('push API', () => {
           authorization: `Bearer ${bearer}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify(subscription(11)),
+        body: JSON.stringify(reconciled),
       }),
       bindings,
     );
     expect(second.status).toBe(204);
+    expect(siteverify).not.toHaveBeenCalled();
 
     const count = await bindings.PUSH_DB
       .prepare(
-        `SELECT COUNT(*) AS count, MAX(id) AS id, MAX(endpoint) AS endpoint
+        `SELECT COUNT(*) AS count, MAX(id) AS id, MAX(endpoint) AS endpoint,
+                MAX(verified_at) AS verified_at
            FROM subscriptions`,
       )
-      .first<{ count: number; id: number; endpoint: string }>();
+      .first<{
+        count: number;
+        id: number;
+        endpoint: string;
+        verified_at: number | null;
+      }>();
     expect(count).toEqual({
       count: 1,
       id: firstRow?.id,
       endpoint: 'https://fcm.googleapis.com/fcm/send/test-11',
+      verified_at: null,
     });
 
     const removed = await handleApi(
@@ -235,6 +300,58 @@ describe('push API', () => {
       }>();
     expect(row).toMatchObject({ endpoint: null, p256dh: null, auth: null });
     expect(row?.disabled_at).not.toBeNull();
+  });
+
+  it('requires and validates Turnstile only for a new token', async () => {
+    await activate();
+    const input: Partial<ReturnType<typeof subscription>> = subscription(14);
+    delete input.turnstileToken;
+    const siteverify = vi.mocked(globalThis.fetch);
+    siteverify.mockClear();
+
+    await expect(
+      handleApi(
+        request('/v1/push/subscription', {
+          method: 'PUT',
+          headers: {
+            authorization: `Bearer ${token(14)}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(input),
+        }),
+        bindings,
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'turnstile_required',
+    });
+    expect(siteverify).not.toHaveBeenCalled();
+
+    siteverify.mockResolvedValueOnce(Response.json({
+      success: false,
+      action: 'push-enrollment',
+      hostname: 'hackertok.github.io',
+    }));
+    await expect(
+      handleApi(
+        request('/v1/push/subscription', {
+          method: 'PUT',
+          headers: {
+            authorization: `Bearer ${token(14)}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(subscription(14)),
+        }),
+        bindings,
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'turnstile_rejected',
+    });
+    const row = await bindings.PUSH_DB
+      .prepare('SELECT id FROM subscriptions')
+      .first<{ id: number }>();
+    expect(row).toBeNull();
   });
 
   it('tombstones an early opt-out so a delayed PUT cannot resurrect it', async () => {
@@ -296,6 +413,7 @@ describe('push API', () => {
     const relay = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(null, { status: 201 }),
     );
+    relay.mockClear();
 
     const response = await handleApi(
       request('/v1/push/self-test', {
@@ -459,6 +577,72 @@ describe('push API', () => {
         )
         .first<{ count: number }>(),
     ).resolves.toMatchObject({ count: 0 });
+  });
+
+  it('bounds attacker-created opt-out tombstones without blocking admission', async () => {
+    await activate();
+    const limited = new Proxy(bindings, {
+      get(target, property, receiver) {
+        return property === 'SUBSCRIPTION_CAP'
+          ? '1'
+          : Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+    for (const seed of [60, 61, 62, 63]) {
+      await handleApi(
+        request('/v1/push/subscription', {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${token(seed)}` },
+        }),
+        limited,
+      );
+    }
+
+    const retained = await bindings.PUSH_DB
+      .prepare(
+        `SELECT COUNT(*) AS count,
+                (
+                  SELECT retained_subscription_count
+                    FROM app_state
+                   WHERE id = 1
+                ) AS retained_count
+           FROM subscriptions`,
+      )
+      .first<{ count: number; retained_count: number }>();
+    expect(retained).toEqual({ count: 3, retained_count: 3 });
+    const firstTombstone = await bindings.PUSH_DB
+      .prepare(
+        'SELECT token_hash, tombstone_until FROM subscriptions ORDER BY id LIMIT 1',
+      )
+      .first<{ token_hash: string; tombstone_until: number }>();
+    if (!firstTombstone) throw new Error('missing tombstone');
+    await disableSubscriptionByToken(
+      limited,
+      firstTombstone.token_hash,
+      'user_opt_out',
+      Date.now() + 24 * 60 * 60 * 1000,
+      3,
+    );
+    const replayed = await bindings.PUSH_DB
+      .prepare(
+        'SELECT tombstone_until FROM subscriptions WHERE token_hash = ?1',
+      )
+      .bind(firstTombstone.token_hash)
+      .first<{ tombstone_until: number }>();
+    expect(replayed?.tombstone_until).toBe(firstTombstone.tombstone_until);
+    await expect(
+      handleApi(
+        request('/v1/push/subscription', {
+          method: 'PUT',
+          headers: {
+            authorization: `Bearer ${token(64)}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(subscription(64)),
+        }),
+        limited,
+      ),
+    ).resolves.toMatchObject({ status: 201 });
   });
 
   it('rejects a streamed request body beyond 8 KB', async () => {

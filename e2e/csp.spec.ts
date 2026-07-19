@@ -48,6 +48,15 @@ test.describe('Content-Security-Policy', () => {
     // connect-src for wss://. Deleting wss:// would ship green yet break production.
     expect(content).toContain('https://hn.algolia.com');
     expect(content).toContain('wss://*.firebaseio.com');
+    expect(content).toContain(
+      'frame-src https://challenges.cloudflare.com',
+    );
+    expect(content).toMatch(
+      /script-src 'self' https:\/\/challenges\.cloudflare\.com/u,
+    );
+    expect(content).toMatch(
+      /connect-src [^;]*https:\/\/challenges\.cloudflare\.com/u,
+    );
   });
 
   test('raises no violations on load (Algolia-backed homepage)', async ({ page }) => {

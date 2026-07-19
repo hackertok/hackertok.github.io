@@ -1,5 +1,7 @@
 export type Bindings = Env & {
   VAPID_PRIVATE_JWK: string;
+  TURNSTILE_SECRET_KEY: string;
+  ALLOW_TURNSTILE_TEST_KEYS?: string;
 };
 
 export interface PushSubscriptionInput {
@@ -22,6 +24,7 @@ export interface SubscriptionRow {
   created_at: number;
   activated_at: number;
   last_reconciled_at: number;
+  verified_at: number | null;
   expires_at: number | null;
   disabled_at: number | null;
   disabled_reason: string | null;
@@ -40,6 +43,7 @@ export interface AppStateRow {
   delivery_circuit_reason: string | null;
   queue_publishing_paused: 0 | 1;
   active_subscription_count: number;
+  retained_subscription_count: number;
   last_successful_scan_at: number | null;
   cleanup_cursor: number;
 }
@@ -78,6 +82,8 @@ export interface DeliveryRow {
   lease_expires_at: number | null;
   relay_status: number | null;
   result_class: string | null;
+  relay_fault_at: number | null;
+  relay_fault_reconciled_at: number | null;
   accepted_at: number | null;
   terminal_at: number | null;
   expires_at: number;

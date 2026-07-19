@@ -2,3 +2,9 @@
 # pair with the command in worker/README.md; never commit the real private JWK.
 VAPID_PUBLIC_KEY="base64url-uncompressed-p256-public-key"
 VAPID_PRIVATE_JWK='{"kty":"EC","crv":"P-256","x":"...","y":"...","d":"...","key_ops":["sign"],"ext":true}'
+
+# Cloudflare's published always-pass test pair. Use a hostname-restricted
+# production widget and Worker secret outside local development.
+TURNSTILE_SITE_KEY="1x00000000000000000000AA"
+TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
+ALLOW_TURNSTILE_TEST_KEYS="1"

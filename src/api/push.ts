@@ -3,6 +3,7 @@ export interface PushConfig {
   threshold: number;
   keyId: string;
   applicationServerKey: string;
+  turnstileSiteKey: string;
 }
 
 export interface SerializedPushSubscription {
@@ -61,6 +62,7 @@ export async function fetchPushConfig(signal?: AbortSignal): Promise<PushConfig>
       threshold: 1000,
       keyId: '',
       applicationServerKey: '',
+      turnstileSiteKey: '',
     };
   }
   const response = await fetch(apiUrl('/v1/push/config'), {
@@ -82,7 +84,10 @@ export async function fetchPushConfig(signal?: AbortSignal): Promise<PushConfig>
     value.keyId.length === 0 ||
     value.keyId.length > 64 ||
     typeof value.applicationServerKey !== 'string' ||
-    value.applicationServerKey.length > 256
+    value.applicationServerKey.length > 256 ||
+    typeof value.turnstileSiteKey !== 'string' ||
+    value.turnstileSiteKey.length > 256 ||
+    (value.enabled && value.turnstileSiteKey.length === 0)
   ) {
     throw new PushApiError(502, 'invalid_config');
   }
@@ -140,6 +145,7 @@ export function serializeSubscription(
 export async function putPushSubscription(
   token: string,
   subscription: PushSubscription,
+  turnstileToken?: string,
   signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(apiUrl('/v1/push/subscription'), {
@@ -149,7 +155,10 @@ export async function putPushSubscription(
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',
     },
-    body: JSON.stringify(serializeSubscription(subscription)),
+    body: JSON.stringify({
+      ...serializeSubscription(subscription),
+      ...(turnstileToken ? { turnstileToken } : {}),
+    }),
     cache: 'no-store',
     credentials: 'omit',
     referrerPolicy: 'no-referrer',

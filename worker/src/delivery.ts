@@ -7,7 +7,11 @@ import {
 } from './constants';
 import { decodeBase64Url, randomId } from './crypto';
 import { HttpError } from './http';
-import { disableSubscriptionById } from './subscriptions';
+import {
+  disableSubscriptionById,
+  markSubscriptionVerified,
+  subscriptionVerificationStatement,
+} from './subscriptions';
 import type {
   AlertPayload,
   Bindings,
@@ -25,6 +29,8 @@ const PUSH_TIMEOUT_MS = 10_000;
 const STALE_WAKE_MS = 10 * 60 * 1000;
 const AUTH_CIRCUIT_MS = 60 * 60 * 1000;
 const SENDER_CIRCUIT_MS = 6 * 60 * 60 * 1000;
+const RELAY_FAULT_CORRELATION_MS = 5 * 60 * 1000;
+const RELAY_FAULT_SUBSCRIPTION_THRESHOLD = 3;
 const RETRY_DELAYS_SECONDS = [30, 120, 600, 1800, 3600] as const;
 
 export interface DeliveryOutcome {
@@ -187,6 +193,8 @@ async function terminalize(
         SET state = 'terminal',
             relay_status = ?1,
             result_class = ?2,
+            relay_fault_at = NULL,
+            relay_fault_reconciled_at = NULL,
             terminal_at = ?3,
             lease_token = NULL,
             lease_expires_at = NULL,
@@ -202,22 +210,33 @@ async function accepted(
   leaseToken: string,
   now: number,
   status: number,
+  subscription: SubscriptionRow,
 ): Promise<void> {
-  await fencedUpdate(
-    db,
-    deliveryId,
-    leaseToken,
-    `UPDATE deliveries
-        SET state = 'accepted',
-            relay_status = ?1,
-            result_class = 'accepted',
-            accepted_at = ?2,
-            lease_token = NULL,
-            lease_expires_at = NULL,
-            wake_at = NULL,
-            updated_at = ?2`,
-    [status, now],
-  );
+  const deliveryStatement = db
+    .prepare(
+      `UPDATE deliveries
+          SET state = 'accepted',
+              relay_status = ?1,
+              result_class = 'accepted',
+              relay_fault_at = NULL,
+              relay_fault_reconciled_at = NULL,
+              accepted_at = ?2,
+              lease_token = NULL,
+              lease_expires_at = NULL,
+              wake_at = NULL,
+              updated_at = ?2
+        WHERE id = ?3
+          AND lease_token = ?4`,
+    )
+    .bind(status, now, deliveryId, leaseToken);
+  if ((subscription.verified_at ?? 0) > 0) {
+    await deliveryStatement.run();
+    return;
+  }
+  await db.batch([
+    subscriptionVerificationStatement(db, subscription, now),
+    deliveryStatement,
+  ]);
 }
 
 async function scheduleRetry(
@@ -262,6 +281,8 @@ async function scheduleRetry(
             wake_at = ?2,
             relay_status = ?3,
             result_class = ?4,
+            relay_fault_at = NULL,
+            relay_fault_reconciled_at = NULL,
             lease_token = NULL,
             lease_expires_at = NULL,
             updated_at = ?2`,
@@ -278,6 +299,8 @@ async function pauseDelivery(
   status: number | null,
   resultClass: string,
   resumeAt: number,
+  faultObservedAt: number | null = null,
+  faultReconciledAt: number | null = null,
 ): Promise<void> {
   await fencedUpdate(
     db,
@@ -288,12 +311,145 @@ async function pauseDelivery(
             next_attempt_at = ?1,
             relay_status = ?2,
             result_class = ?3,
+            relay_fault_at = ?5,
+            relay_fault_reconciled_at = ?6,
             lease_token = NULL,
             lease_expires_at = NULL,
             wake_at = NULL,
             updated_at = ?4`,
-    [resumeAt, status, resultClass, now],
+    [resumeAt, status, resultClass, now, faultObservedAt, faultReconciledAt],
   );
+}
+
+async function rejectUnverifiedSubscription(
+  env: Bindings,
+  delivery: DeliveryRow,
+  leaseToken: string,
+  subscription: SubscriptionRow,
+  now: number,
+  status: number,
+  resultClass: string,
+): Promise<DeliveryOutcome | null> {
+  if (subscription.verified_at !== null) return null;
+  const disabled = await disableSubscriptionById(
+    env.PUSH_DB,
+    subscription.id,
+    'unverified_relay_rejected',
+    now,
+    subscription.endpoint_hash ?? undefined,
+    subscription.vapid_key_id,
+    subscription.last_reconciled_at,
+    subscription.verified_at,
+  );
+  if (!disabled) {
+    return scheduleRetry(
+      env.PUSH_DB,
+      delivery,
+      leaseToken,
+      now,
+      status,
+      'subscription_rotated',
+      1,
+    );
+  }
+  await terminalize(
+    env.PUSH_DB,
+    delivery.id,
+    leaseToken,
+    now,
+    status,
+    resultClass,
+  );
+  return {};
+}
+
+async function correlateVerifiedRelayFault(
+  env: Bindings,
+  delivery: DeliveryRow,
+  leaseToken: string,
+  subscription: SubscriptionRow,
+  now: number,
+  status: number,
+  resultClass: string,
+  circuitReason: string,
+  circuitDuration: number,
+): Promise<DeliveryOutcome> {
+  const rejected = await rejectUnverifiedSubscription(
+    env,
+    delivery,
+    leaseToken,
+    subscription,
+    now,
+    status,
+    `unverified_${resultClass}`,
+  );
+  if (rejected) return rejected;
+
+  if (delivery.attempts >= MAX_DELIVERY_ATTEMPTS) {
+    await terminalize(
+      env.PUSH_DB,
+      delivery.id,
+      leaseToken,
+      now,
+      status,
+      'retry_exhausted',
+    );
+    return {};
+  }
+  const fallback =
+    RETRY_DELAYS_SECONDS[
+      Math.min(delivery.attempts - 1, RETRY_DELAYS_SECONDS.length - 1)
+    ] ?? 3600;
+  const delaySeconds = Math.max(
+    RELAY_FAULT_CORRELATION_MS / 1000,
+    fallback,
+  );
+  const resumeAt = now + delaySeconds * 1000;
+  if (resumeAt >= delivery.expires_at) {
+    await terminalize(
+      env.PUSH_DB,
+      delivery.id,
+      leaseToken,
+      now,
+      status,
+      'expired',
+    );
+    return {};
+  }
+  await pauseDelivery(
+    env.PUSH_DB,
+    delivery.id,
+    leaseToken,
+    now,
+    status,
+    resultClass,
+    resumeAt,
+    now,
+    subscription.last_reconciled_at,
+  );
+  const signal = await env.PUSH_DB
+    .prepare(
+      `SELECT COUNT(DISTINCT deliveries.subscription_id) AS count
+         FROM deliveries
+         JOIN subscriptions
+           ON subscriptions.id = deliveries.subscription_id
+        WHERE deliveries.result_class = ?1
+          AND deliveries.relay_fault_at >= ?2
+          AND deliveries.relay_fault_reconciled_at =
+              subscriptions.last_reconciled_at
+          AND subscriptions.verified_at > 0`,
+    )
+    .bind(resultClass, now - RELAY_FAULT_CORRELATION_MS)
+    .first<{ count: number }>();
+  if ((signal?.count ?? 0) >= RELAY_FAULT_SUBSCRIPTION_THRESHOLD) {
+    await openCircuit(
+      env.PUSH_DB,
+      now + circuitDuration,
+      circuitReason,
+      now,
+    );
+  }
+  return {};
 }
 
 async function currentDeliveryGate(
@@ -398,6 +554,7 @@ export async function handleDelivery(
       subscription.endpoint_hash ?? undefined,
       subscription.vapid_key_id,
       subscription.last_reconciled_at,
+      subscription.verified_at,
     );
     if (!disabled) {
       return scheduleRetry(
@@ -447,6 +604,7 @@ export async function handleDelivery(
         subscription.endpoint_hash ?? undefined,
         subscription.vapid_key_id,
         subscription.last_reconciled_at,
+        subscription.verified_at,
       );
       if (!disabled) {
         return scheduleRetry(
@@ -495,7 +653,14 @@ export async function handleDelivery(
 
   const status = response.status;
   if (status >= 200 && status < 300) {
-    await accepted(env.PUSH_DB, delivery.id, leaseToken, now, status);
+    await accepted(
+      env.PUSH_DB,
+      delivery.id,
+      leaseToken,
+      now,
+      status,
+      subscription,
+    );
     return {};
   }
   if (status === 404 || status === 410) {
@@ -507,6 +672,7 @@ export async function handleDelivery(
       subscription.endpoint_hash ?? undefined,
       subscription.vapid_key_id,
       subscription.last_reconciled_at,
+      subscription.verified_at,
     );
     if (!disabled) {
       return scheduleRetry(
@@ -541,34 +707,42 @@ export async function handleDelivery(
     );
   }
   if (status === 401 || status === 403) {
-    const resumeAt = now + AUTH_CIRCUIT_MS;
-    await openCircuit(env.PUSH_DB, resumeAt, 'vapid_or_provider_auth', now);
-    await pauseDelivery(
-      env.PUSH_DB,
-      delivery.id,
+    return correlateVerifiedRelayFault(
+      env,
+      delivery,
       leaseToken,
+      subscription,
       now,
       status,
+      'relay_auth_suspect',
       'vapid_or_provider_auth',
-      resumeAt,
+      AUTH_CIRCUIT_MS,
     );
-    return {};
   }
   if (status === 400 || status === 413 || (status >= 300 && status < 400)) {
-    const resumeAt = now + SENDER_CIRCUIT_MS;
-    await openCircuit(env.PUSH_DB, resumeAt, 'sender_or_payload_fault', now);
-    await pauseDelivery(
-      env.PUSH_DB,
-      delivery.id,
+    return correlateVerifiedRelayFault(
+      env,
+      delivery,
       leaseToken,
+      subscription,
       now,
       status,
+      'relay_sender_suspect',
       'sender_or_payload_fault',
-      resumeAt,
+      SENDER_CIRCUIT_MS,
     );
-    return {};
   }
 
+  const rejected = await rejectUnverifiedSubscription(
+    env,
+    delivery,
+    leaseToken,
+    subscription,
+    now,
+    status,
+    'unverified_relay_terminal',
+  );
+  if (rejected) return rejected;
   await terminalize(
     env.PUSH_DB,
     delivery.id,
@@ -594,6 +768,7 @@ export async function sendSelfTest(
       subscription.endpoint_hash ?? undefined,
       subscription.vapid_key_id,
       subscription.last_reconciled_at,
+      subscription.verified_at,
     );
     if (!disabled) throw new HttpError(503, 'relay_unavailable', 1);
     throw new HttpError(410, 'subscription_gone');
@@ -607,6 +782,7 @@ export async function sendSelfTest(
       subscription.endpoint_hash ?? undefined,
       subscription.vapid_key_id,
       subscription.last_reconciled_at,
+      subscription.verified_at,
     );
     if (!disabled) throw new HttpError(503, 'relay_unavailable', 1);
     throw new HttpError(410, 'subscription_gone');
@@ -634,23 +810,21 @@ export async function sendSelfTest(
         subscription.endpoint_hash ?? undefined,
         subscription.vapid_key_id,
         subscription.last_reconciled_at,
+        subscription.verified_at,
       );
       if (!disabled) throw new HttpError(503, 'relay_unavailable', 1);
       throw new HttpError(410, 'subscription_gone');
     }
     if (error instanceof SenderFault) {
-      await openCircuit(
-        env.PUSH_DB,
-        now + SENDER_CIRCUIT_MS,
-        'sender_or_payload_fault',
-        now,
-      );
       throw new HttpError(503, 'sender_unavailable', 3600);
     }
     throw new HttpError(503, 'relay_unavailable', 60);
   }
 
-  if (response.status >= 200 && response.status < 300) return;
+  if (response.status >= 200 && response.status < 300) {
+    await markSubscriptionVerified(env.PUSH_DB, subscription, now);
+    return;
+  }
   if (response.status === 404 || response.status === 410) {
     const disabled = await disableSubscriptionById(
       env.PUSH_DB,
@@ -660,31 +834,66 @@ export async function sendSelfTest(
       subscription.endpoint_hash ?? undefined,
       subscription.vapid_key_id,
       subscription.last_reconciled_at,
+      subscription.verified_at,
     );
     if (!disabled) throw new HttpError(503, 'relay_unavailable', 1);
     throw new HttpError(410, 'subscription_gone');
   }
   if (response.status === 401 || response.status === 403) {
-    await openCircuit(
-      env.PUSH_DB,
-      now + AUTH_CIRCUIT_MS,
-      'vapid_or_provider_auth',
-      now,
-    );
-    throw new HttpError(503, 'sender_unavailable', 3600);
+    if (subscription.verified_at === null) {
+      const disabled = await disableSubscriptionById(
+        env.PUSH_DB,
+        subscription.id,
+        'unverified_relay_rejected',
+        now,
+        subscription.endpoint_hash ?? undefined,
+        subscription.vapid_key_id,
+        subscription.last_reconciled_at,
+        subscription.verified_at,
+      );
+      if (!disabled) throw new HttpError(503, 'relay_unavailable', 1);
+      throw new HttpError(410, 'subscription_gone');
+    }
+    throw new HttpError(503, 'relay_unavailable', 300);
   }
   if (
     response.status === 400 ||
     response.status === 413 ||
     (response.status >= 300 && response.status < 400)
   ) {
-    await openCircuit(
+    if (subscription.verified_at === null) {
+      const disabled = await disableSubscriptionById(
+        env.PUSH_DB,
+        subscription.id,
+        'unverified_relay_rejected',
+        now,
+        subscription.endpoint_hash ?? undefined,
+        subscription.vapid_key_id,
+        subscription.last_reconciled_at,
+        subscription.verified_at,
+      );
+      if (!disabled) throw new HttpError(503, 'relay_unavailable', 1);
+      throw new HttpError(410, 'subscription_gone');
+    }
+    throw new HttpError(503, 'relay_unavailable', 300);
+  }
+  if (
+    response.status >= 400 &&
+    response.status < 500 &&
+    subscription.verified_at === null
+  ) {
+    const disabled = await disableSubscriptionById(
       env.PUSH_DB,
-      now + SENDER_CIRCUIT_MS,
-      'sender_or_payload_fault',
+      subscription.id,
+      'unverified_relay_rejected',
       now,
+      subscription.endpoint_hash ?? undefined,
+      subscription.vapid_key_id,
+      subscription.last_reconciled_at,
+      subscription.verified_at,
     );
-    throw new HttpError(503, 'sender_unavailable', 3600);
+    if (!disabled) throw new HttpError(503, 'relay_unavailable', 1);
+    throw new HttpError(410, 'subscription_gone');
   }
   throw new HttpError(
     503,
@@ -704,6 +913,8 @@ export async function recoverDeliveryWakes(
         `UPDATE deliveries
             SET state = 'terminal',
                 result_class = 'expired',
+                relay_fault_at = NULL,
+                relay_fault_reconciled_at = NULL,
                 terminal_at = ?1,
                 lease_token = NULL,
                 lease_expires_at = NULL,

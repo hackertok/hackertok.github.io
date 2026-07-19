@@ -16,6 +16,12 @@ import {
   putSubscription,
   subscriptionByTokenHash,
 } from './subscriptions';
+import {
+  enrollmentTurnstileToken,
+  turnstileConfigured,
+  turnstileSiteKey,
+  verifyEnrollmentTurnstile,
+} from './turnstile';
 import type { Bindings } from './types';
 import {
   readJsonBody,
@@ -53,9 +59,11 @@ async function configResponse(request: Request, env: Bindings): Promise<Response
       env.VAPID_PRIVATE_JWK,
       env.VAPID_PUBLIC_KEY,
     )) !== null;
+  const admissionConfigured = turnstileConfigured(env);
   const enabled =
     state.phase === 'ACTIVE' &&
     senderConfigured &&
+    admissionConfigured &&
     state.active_subscription_count < subscriptionCap(env);
 
   return jsonResponse(
@@ -64,6 +72,7 @@ async function configResponse(request: Request, env: Bindings): Promise<Response
       threshold: storyThreshold(env),
       keyId: env.VAPID_KEY_ID,
       applicationServerKey: senderConfigured ? env.VAPID_PUBLIC_KEY : '',
+      turnstileSiteKey: admissionConfigured ? turnstileSiteKey(env) : '',
     },
     200,
     origin,
@@ -90,8 +99,17 @@ async function putResponse(request: Request, env: Bindings): Promise<Response> {
   ) {
     throw new HttpError(503, 'not_ready', 300);
   }
-
-  const subscription = await validateSubscription(await readJsonBody(request), env);
+  const input = await readJsonBody(request);
+  const existing = await subscriptionByTokenHash(env.PUSH_DB, tokenHash);
+  if (!existing) {
+    if (!turnstileConfigured(env)) throw new HttpError(503, 'not_ready', 300);
+    await verifyEnrollmentTurnstile(
+      env,
+      enrollmentTurnstileToken(input),
+      origin,
+    );
+  }
+  const subscription = await validateSubscription(input, env);
   const endpointHash = await sha256Base64Url(subscription.endpoint);
   const result = await putSubscription(
     env,
@@ -113,7 +131,13 @@ async function deleteResponse(request: Request, env: Bindings): Promise<Response
     `token:${tokenHash}`,
   ]);
   await requireEmptyBody(request);
-  await disableSubscriptionByToken(env, tokenHash, 'user_opt_out', Date.now());
+  await disableSubscriptionByToken(
+    env,
+    tokenHash,
+    'user_opt_out',
+    Date.now(),
+    subscriptionCap(env) * 3,
+  );
   return emptyResponse(204, origin);
 }
 
@@ -148,7 +172,11 @@ async function readiness(request: Request, env: Bindings): Promise<Response> {
         env.VAPID_PUBLIC_KEY,
       )) !== null;
     return emptyResponse(
-      state.phase === 'ACTIVE' && senderConfigured ? 204 : 503,
+      state.phase === 'ACTIVE' &&
+        senderConfigured &&
+        turnstileConfigured(env)
+        ? 204
+        : 503,
       undefined,
       { 'x-hackertok-release': env.RELEASE_VERSION },
     );
