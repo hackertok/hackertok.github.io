@@ -5,28 +5,34 @@ import {
   deletePushSubscription,
   fetchPushConfig,
   isPushApiConfigured,
+  pushApiOrigin,
   PushApiError,
   putPushSubscription,
   type PushConfig,
 } from '../api/push';
 import { requestEnrollmentTurnstile } from '../api/turnstile';
-import { getServiceWorkerRegistration } from '../pwa/serviceWorker';
 import {
-  STORY_INTERACTION_EVENT,
-} from '../utils/storyInteraction';
+  announcePushStateChange,
+  migrateLegacyPushState,
+  pushSubscriptionFingerprint,
+  readPushState,
+  subscribeToPushStateChanges,
+  updatePushState,
+  withPushLifecycleLock,
+  type DurablePushState,
+  type PushRepairReason,
+} from '../pwa/pushState';
+import { getServiceWorkerRegistration } from '../pwa/serviceWorker';
+import { STORY_INTERACTION_EVENT } from '../utils/storyInteraction';
 import {
   VIEWED_DETAIL_TIMES_KEY,
   VIEWED_KEY,
   VIEWED_TITLE_TIMES_KEY,
 } from '../utils/viewedItems';
 
-const TOKEN_KEY = 'push:token';
 const OFFER_HANDLED_KEY = 'push:offer-handled';
-const RECONCILED_AT_KEY = 'push:reconciled-at';
-const PENDING_DELETE_KEY = 'push:pending-delete';
 const RECONCILE_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const STORAGE_PROBE_KEY = 'push:storage-probe';
-let pendingDeleteFlush: Promise<void> | null = null;
+const API_TIMEOUT_MS = 10_000;
 
 export type PushNotificationStatus =
   | 'checking'
@@ -66,79 +72,12 @@ function storageGet(key: string): string | null {
   }
 }
 
-function storageSet(key: string, value: string): boolean {
+function storageSet(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
-    return localStorage.getItem(key) === value;
   } catch {
-    return false;
+    /* The lifecycle record is stored transactionally in IndexedDB. */
   }
-}
-
-function storageRemove(key: string): void {
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    /* Push remains best-effort if storage is unavailable. */
-  }
-}
-
-function storageRemoveIfValue(key: string, expected: string): void {
-  if (storageGet(key) === expected) storageRemove(key);
-}
-
-function canPersistPushState(): boolean {
-  try {
-    const previous = localStorage.getItem(STORAGE_PROBE_KEY);
-    localStorage.setItem(STORAGE_PROBE_KEY, '1');
-    const stored = localStorage.getItem(STORAGE_PROBE_KEY) === '1';
-    if (previous === null) localStorage.removeItem(STORAGE_PROBE_KEY);
-    else localStorage.setItem(STORAGE_PROBE_KEY, previous);
-    return stored;
-  } catch {
-    return false;
-  }
-}
-
-function pendingDeleteTokens(): string[] {
-  const stored = storageGet(PENDING_DELETE_KEY);
-  if (!stored) return [];
-  try {
-    const value = JSON.parse(stored) as unknown;
-    if (Array.isArray(value)) {
-      return [...new Set(value.filter(
-        (token): token is string =>
-          typeof token === 'string' && token.length > 0 && token.length <= 128,
-      ))];
-    }
-  } catch {
-    /* A single-token marker from an earlier release is intentionally plain text. */
-  }
-  return stored.length <= 128 ? [stored] : [];
-}
-
-function writePendingDeleteTokens(tokens: readonly string[]): void {
-  const unique = [...new Set(tokens)];
-  if (unique.length === 0) {
-    storageRemove(PENDING_DELETE_KEY);
-  } else if (unique.length === 1) {
-    storageSet(PENDING_DELETE_KEY, unique[0] ?? '');
-  } else {
-    storageSet(PENDING_DELETE_KEY, JSON.stringify(unique));
-  }
-}
-
-function enqueuePendingDelete(token: string): boolean {
-  const tokens = pendingDeleteTokens();
-  if (!tokens.includes(token)) tokens.push(token);
-  writePendingDeleteTokens(tokens);
-  return pendingDeleteTokens().includes(token);
-}
-
-function removePendingDelete(token: string): void {
-  writePendingDeleteTokens(
-    pendingDeleteTokens().filter((candidate) => candidate !== token),
-  );
 }
 
 function hasStoryInteraction(): boolean {
@@ -168,8 +107,8 @@ function isSupported(): boolean {
     'serviceWorker' in navigator &&
     'PushManager' in window &&
     'Notification' in window &&
-    !isIosBrowserTab() &&
-    canPersistPushState()
+    'indexedDB' in window &&
+    !isIosBrowserTab()
   );
 }
 
@@ -190,10 +129,13 @@ function markOfferHandled(): void {
   storageSet(OFFER_HANDLED_KEY, '1');
 }
 
+function requestSignal(): AbortSignal {
+  return AbortSignal.timeout(API_TIMEOUT_MS);
+}
+
 function isDefinitivePutFailure(error: unknown): error is PushApiError {
   return error instanceof PushApiError && (
     error.code === 'capacity_full' ||
-    error.code === 'subscription_conflict' ||
     [400, 401, 403, 404, 409, 410, 413, 415, 422].includes(error.status)
   );
 }
@@ -213,7 +155,7 @@ async function putWithAdmission(
 ): Promise<void> {
   if (mayAlreadyExist) {
     try {
-      await putPushSubscription(token, subscription);
+      await putPushSubscription(token, subscription, undefined, requestSignal());
       return;
     } catch (error) {
       if (
@@ -231,44 +173,141 @@ async function putWithAdmission(
   } catch {
     throw new AdmissionChallengeError();
   }
-  await putPushSubscription(token, subscription, turnstileToken);
+  await putPushSubscription(
+    token,
+    subscription,
+    turnstileToken,
+    requestSignal(),
+  );
+}
+
+async function persistConfig(config: PushConfig): Promise<void> {
+  const apiOrigin = pushApiOrigin();
+  if (!apiOrigin || !config.applicationServerKey) {
+    throw new Error('push_config_unavailable');
+  }
+  await updatePushState((state) => {
+    state.keyId = config.keyId;
+    state.applicationServerKey = config.applicationServerKey;
+    state.apiOrigin = apiOrigin;
+  });
+}
+
+async function saveReconciled(
+  token: string,
+  subscription: PushSubscription,
+  config: PushConfig,
+): Promise<void> {
+  const fingerprint = await pushSubscriptionFingerprint(subscription, config.keyId);
+  await updatePushState((state) => {
+    if (state.token && state.token !== token) {
+      throw new Error('push_state_changed');
+    }
+    state.token = token;
+    state.reconciledFingerprint = fingerprint;
+    state.reconciledAt = Date.now();
+    state.repairReason = null;
+    state.reconcilePending = false;
+    state.keyId = config.keyId;
+    state.applicationServerKey = config.applicationServerKey;
+    state.apiOrigin = pushApiOrigin();
+  });
+  announcePushStateChange();
+}
+
+async function markRepair(
+  reason: PushRepairReason,
+  expectedToken?: string | null,
+): Promise<DurablePushState> {
+  let changed = false;
+  const state = await updatePushState((draft) => {
+    if (expectedToken !== undefined && draft.token !== expectedToken) return;
+    if (
+      draft.repairReason === reason &&
+      draft.reconcilePending &&
+      draft.reconciledAt === 0
+    ) {
+      return;
+    }
+    draft.repairReason = reason;
+    draft.reconcilePending = true;
+    draft.reconciledAt = 0;
+    changed = true;
+  });
+  if (changed) announcePushStateChange();
+  return state;
+}
+
+async function markReconcilePending(expectedToken: string): Promise<void> {
+  let changed = false;
+  await updatePushState((state) => {
+    if (state.token !== expectedToken) return;
+    if (state.reconcilePending) return;
+    state.reconcilePending = true;
+    changed = true;
+  });
+  if (changed) announcePushStateChange();
+}
+
+async function flushPendingDeletes(): Promise<void> {
+  if (!navigator.onLine) return;
+  const snapshot = await readPushState();
+  for (const token of snapshot.pendingDeleteTokens) {
+    try {
+      await deletePushSubscription(token, requestSignal());
+      await updatePushState((state) => {
+        state.pendingDeleteTokens = state.pendingDeleteTokens.filter(
+          (candidate) => candidate !== token,
+        );
+      });
+      announcePushStateChange();
+    } catch {
+      /* The durable queue is retried by a later lifecycle refresh. */
+    }
+  }
 }
 
 async function retireToken(token: string): Promise<void> {
-  const queued = enqueuePendingDelete(token);
-  let deleted = false;
-  if (queued) {
-    await flushPendingDelete();
-    deleted = !pendingDeleteTokens().includes(token);
-  } else if (navigator.onLine) {
-    try {
-      await deletePushSubscription(token);
-      deleted = true;
-    } catch {
-      /* Keep the current token so a later lifecycle refresh can retry. */
+  let queued = false;
+  await updatePushState((state) => {
+    if (
+      state.token !== token &&
+      !state.pendingDeleteTokens.includes(token)
+    ) {
+      return;
     }
-  }
-  if (deleted || pendingDeleteTokens().includes(token)) {
-    storageRemoveIfValue(TOKEN_KEY, token);
-    if (storageGet(TOKEN_KEY) === null) storageRemove(RECONCILED_AT_KEY);
-  }
+    if (!state.pendingDeleteTokens.includes(token)) {
+      state.pendingDeleteTokens.push(token);
+    }
+    if (state.token === token) {
+      state.token = null;
+      state.reconciledFingerprint = null;
+      state.reconciledAt = 0;
+      state.repairReason = null;
+      state.reconcilePending = false;
+    }
+    queued = true;
+  });
+  if (!queued) return;
+  announcePushStateChange();
+  await flushPendingDeletes();
 }
 
-async function flushPendingDelete(): Promise<void> {
-  if (!navigator.onLine) return;
-  pendingDeleteFlush ??= (async () => {
-    for (const token of pendingDeleteTokens()) {
-      try {
-        await deletePushSubscription(token);
-        removePendingDelete(token);
-      } catch {
-        /* Keep this token queued for the next lifecycle refresh. */
-      }
-    }
-  })().finally(() => {
-    pendingDeleteFlush = null;
+async function setEnrollmentToken(
+  token: string,
+  config: PushConfig,
+): Promise<void> {
+  await updatePushState((state) => {
+    state.token = token;
+    state.reconciledFingerprint = null;
+    state.reconciledAt = 0;
+    state.repairReason = null;
+    state.reconcilePending = true;
+    state.keyId = config.keyId;
+    state.applicationServerKey = config.applicationServerKey;
+    state.apiOrigin = pushApiOrigin();
   });
-  await pendingDeleteFlush;
+  announcePushStateChange();
 }
 
 export function usePushNotifications(): PushNotificationsState {
@@ -283,6 +322,22 @@ export function usePushNotifications(): PushNotificationsState {
   const enrollmentInFlight = useRef(false);
   const refreshPending = useRef(false);
 
+  const applyRuntime = useCallback((
+    next: PushRuntime | null,
+    nextStatus: PushNotificationStatus,
+    generation?: number,
+  ) => {
+    if (
+      generation !== undefined &&
+      generation !== refreshGeneration.current
+    ) {
+      return;
+    }
+    runtimeRef.current = next;
+    setRuntime(next);
+    setStatus(nextStatus);
+  }, []);
+
   const refresh = useCallback(() => {
     if (enrollmentInFlight.current) {
       refreshPending.current = true;
@@ -290,33 +345,11 @@ export function usePushNotifications(): PushNotificationsState {
     }
     const generation = ++refreshGeneration.current;
     if (!isSupported()) {
-      setRuntime(null);
-      runtimeRef.current = null;
-      setStatus(isPushApiConfigured() ? 'unsupported' : 'not-ready');
-      return;
-    }
-    if (Notification.permission === 'denied') {
-      setStatus('checking');
-      void (async () => {
-        const token = storageGet(TOKEN_KEY);
-        const registration = await getServiceWorkerRegistration().catch(
-          () => null,
-        );
-        const subscription = registration
-          ? await registration.pushManager.getSubscription().catch(() => null)
-          : null;
-        if (subscription) {
-          await subscription.unsubscribe().catch(() => false);
-        }
-        if (token) await retireToken(token);
-        await flushPendingDelete();
-        if (generation !== refreshGeneration.current) return;
-        runtimeRef.current = null;
-        setRuntime(null);
-        markOfferHandled();
-        setOfferHandled(true);
-        setStatus('denied');
-      })();
+      applyRuntime(
+        null,
+        isPushApiConfigured() ? 'unsupported' : 'not-ready',
+        generation,
+      );
       return;
     }
 
@@ -324,50 +357,48 @@ export function usePushNotifications(): PushNotificationsState {
       if (!navigator.onLine) return 'offline';
       return current === 'on' ? current : 'checking';
     });
-    void (async () => {
+
+    void withPushLifecycleLock(async () => {
+      let state = await migrateLegacyPushState();
       const registration = await getServiceWorkerRegistration();
-      const subscription = await registration.pushManager.getSubscription();
-      if (generation !== refreshGeneration.current) return;
-      const token = storageGet(TOKEN_KEY);
+      let subscription = await registration.pushManager.getSubscription();
 
       if (Notification.permission === 'denied') {
         if (subscription) {
           await subscription.unsubscribe().catch(() => false);
         }
-        if (token) await retireToken(token);
-        await flushPendingDelete();
-        runtimeRef.current = null;
-        setRuntime(null);
+        if (state.token) await retireToken(state.token);
+        await flushPendingDeletes();
         markOfferHandled();
         setOfferHandled(true);
-        setStatus('denied');
+        applyRuntime(null, 'denied', generation);
         return;
       }
 
-      if (!subscription && token) await retireToken(token);
       if (!navigator.onLine) {
-        runtimeRef.current = null;
-        setRuntime(null);
-        setStatus('offline');
+        applyRuntime(null, 'offline', generation);
         return;
       }
 
-      await flushPendingDelete();
-      const config = await fetchPushConfig();
-      if (generation !== refreshGeneration.current) return;
+      await flushPendingDeletes();
+      const config = await fetchPushConfig(requestSignal());
       if (hasStoryInteraction()) setEngaged(true);
       if (!config.applicationServerKey) {
-        runtimeRef.current = null;
-        setRuntime(null);
-        setStatus('not-ready');
+        applyRuntime(null, 'not-ready', generation);
         return;
       }
+      await persistConfig(config);
       const expectedKey = applicationServerKey(config.applicationServerKey);
+      subscription = await registration.pushManager.getSubscription();
+      state = await readPushState();
 
       if (!subscription) {
+        const hadToken = state.token !== null;
+        if (state.token) await retireToken(state.token);
         const needsRepair =
           Notification.permission === 'granted' &&
-          (token !== null || config.enabled);
+          (hadToken || state.repairReason !== null || config.enabled);
+        if (needsRepair) await markRepair('subscription_missing', null);
         const next: PushRuntime = {
           config,
           applicationServerKey: expectedKey,
@@ -375,65 +406,109 @@ export function usePushNotifications(): PushNotificationsState {
           subscription: null,
           needsRepair,
         };
-        runtimeRef.current = next;
-        setRuntime(next);
-        setStatus(
-          next.needsRepair ? 'repair' : config.enabled ? 'off' : 'not-ready',
+        applyRuntime(
+          next,
+          needsRepair ? 'repair' : config.enabled ? 'off' : 'not-ready',
+          generation,
         );
         return;
       }
 
-      const needsRepair = !token || !keyMatches(subscription, expectedKey);
-      let currentSubscription: PushSubscription | null = subscription;
-      if (needsRepair) {
-        const unsubscribed = await subscription.unsubscribe().catch(() => false);
-        if (generation !== refreshGeneration.current) return;
-        if (unsubscribed) currentSubscription = null;
+      if (!keyMatches(subscription, expectedKey)) {
+        await markRepair('rotation_failed', state.token);
+        const next: PushRuntime = {
+          config,
+          applicationServerKey: expectedKey,
+          registration,
+          subscription,
+          needsRepair: true,
+        };
+        applyRuntime(next, 'repair', generation);
+        return;
       }
+
+      if (!state.token) {
+        await markRepair('subscription_missing', null);
+        const next: PushRuntime = {
+          config,
+          applicationServerKey: expectedKey,
+          registration,
+          subscription,
+          needsRepair: true,
+        };
+        applyRuntime(next, 'repair', generation);
+        return;
+      }
+
       const next: PushRuntime = {
         config,
         applicationServerKey: expectedKey,
         registration,
-        subscription: currentSubscription,
-        needsRepair,
+        subscription,
+        needsRepair: state.repairReason !== null,
       };
-      runtimeRef.current = next;
-      setRuntime(next);
-      if (needsRepair) {
-        setStatus('repair');
+      if (state.repairReason !== null) {
+        applyRuntime(next, 'repair', generation);
+        return;
+      }
+      const fingerprint = await pushSubscriptionFingerprint(
+        subscription,
+        config.keyId,
+      );
+      const needsReconcile =
+        state.reconcilePending ||
+        state.repairReason !== null ||
+        state.reconciledFingerprint !== fingerprint ||
+        Date.now() - state.reconciledAt >= RECONCILE_INTERVAL_MS;
+      if (!needsReconcile) {
+        applyRuntime(next, 'on', generation);
         return;
       }
 
-      setStatus('on');
-      const reconciledAt = Number(storageGet(RECONCILED_AT_KEY) ?? 0);
-      if (
-        Number.isFinite(reconciledAt) &&
-        Date.now() - reconciledAt < RECONCILE_INTERVAL_MS
-      ) {
-        return;
-      }
+      applyRuntime(next, 'on', generation);
+      const token = state.token;
       try {
-        await putPushSubscription(token, subscription);
-        storageSet(RECONCILED_AT_KEY, String(Date.now()));
+        await putPushSubscription(
+          token,
+          subscription,
+          undefined,
+          requestSignal(),
+        );
+        await saveReconciled(token, subscription, config);
       } catch (error) {
-        if (generation !== refreshGeneration.current) return;
         if (
           error instanceof PushApiError &&
-          error.code === 'turnstile_required'
+          (
+            error.code === 'token_retired' ||
+            error.code === 'endpoint_conflict' ||
+            error.code === 'turnstile_required'
+          )
         ) {
-          const repair = { ...next, needsRepair: true };
-          runtimeRef.current = repair;
-          setRuntime(repair);
-          setStatus('repair');
+          const reason: PushRepairReason =
+            error.code === 'endpoint_conflict'
+              ? 'endpoint_conflict'
+              : error.code === 'token_retired'
+                ? 'token_retired'
+                : 'subscription_missing';
+          await markRepair(reason, token);
+          applyRuntime({ ...next, needsRepair: true }, 'repair', generation);
           return;
         }
-        setStatus('sync-error');
+        await markReconcilePending(token);
+        applyRuntime(
+          next,
+          navigator.onLine ? 'sync-error' : 'offline',
+          generation,
+        );
       }
-    })().catch(() => {
-      if (generation !== refreshGeneration.current) return;
-      setStatus(navigator.onLine ? 'sync-error' : 'offline');
+    }).catch(() => {
+      applyRuntime(
+        runtimeRef.current,
+        navigator.onLine ? 'sync-error' : 'offline',
+        generation,
+      );
     });
-  }, []);
+  }, [applyRuntime]);
 
   useEffect(() => {
     refresh();
@@ -441,6 +516,7 @@ export function usePushNotifications(): PushNotificationsState {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') refresh();
     };
+    const unsubscribeState = subscribeToPushStateChanges(onRefresh);
     window.addEventListener('focus', onRefresh);
     window.addEventListener('pageshow', onRefresh);
     window.addEventListener('online', onRefresh);
@@ -448,6 +524,7 @@ export function usePushNotifications(): PushNotificationsState {
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       refreshGeneration.current += 1;
+      unsubscribeState();
       window.removeEventListener('focus', onRefresh);
       window.removeEventListener('pageshow', onRefresh);
       window.removeEventListener('online', onRefresh);
@@ -481,144 +558,231 @@ export function usePushNotifications(): PushNotificationsState {
 
     enrollmentInFlight.current = true;
     setStatus('enabling');
-    const subscribe = async (): Promise<PushSubscription> => {
-      const existing = current.subscription;
-      if (existing && !current.needsRepair) return existing;
-      if (existing) await existing.unsubscribe();
-      return current.registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: current.applicationServerKey,
-      });
-    };
 
-    let enrollment: Promise<PushSubscription | null>;
-    if (Notification.permission === 'granted') {
-      enrollment = subscribe();
-    } else if (Notification.permission === 'default') {
-      enrollment = Notification.requestPermission().then((permission) => {
-        markOfferHandled();
-        setOfferHandled(true);
-        return permission === 'granted' ? subscribe() : null;
-      });
+    let permissionRequest: Promise<NotificationPermission>;
+    if (Notification.permission === 'default') {
+      // This must remain synchronous with the click; awaiting the cross-tab lock
+      // first would consume the browser's transient user activation.
+      permissionRequest = Notification.requestPermission();
     } else {
-      enrollment = Promise.resolve(null);
+      permissionRequest = Promise.resolve(Notification.permission);
     }
 
-    void enrollment
-      .then(async (subscription) => {
+    void permissionRequest
+      .then(async (permission) => {
         markOfferHandled();
         setOfferHandled(true);
-        if (!subscription) {
-          setStatus(Notification.permission === 'denied' ? 'denied' : 'off');
+        if (permission !== 'granted') {
+          setStatus(permission === 'denied' ? 'denied' : 'off');
           return;
         }
 
-        const previousToken = storageGet(TOKEN_KEY);
-        let token = previousToken ?? createPushToken();
-        if (!storageSet(TOKEN_KEY, token)) {
-          await subscription.unsubscribe().catch(() => false);
-          const repair = {
-            ...current,
-            subscription: null,
-            needsRepair: true,
-          };
-          runtimeRef.current = repair;
-          setRuntime(repair);
-          setStatus('sync-error');
-          return;
-        }
-        storageRemove(RECONCILED_AT_KEY);
-        const next = { ...current, subscription, needsRepair: false };
-        runtimeRef.current = next;
-        setRuntime(next);
-        try {
-          await putWithAdmission(
-            token,
-            subscription,
-            current.config.turnstileSiteKey,
-            previousToken !== null,
-          );
-          storageSet(RECONCILED_AT_KEY, String(Date.now()));
-          setStatus('on');
-        } catch (error) {
-          let enrollmentError = error;
-          if (
-            previousToken &&
-            enrollmentError instanceof PushApiError &&
-            enrollmentError.code === 'subscription_conflict'
-          ) {
-            await retireToken(previousToken);
-            token = createPushToken();
-            if (!storageSet(TOKEN_KEY, token)) {
-              await subscription.unsubscribe().catch(() => false);
-              const repair = {
-                ...next,
-                subscription: null,
-                needsRepair: true,
-              };
-              runtimeRef.current = repair;
-              setRuntime(repair);
-              setStatus('sync-error');
-              return;
-            }
-            try {
-              await putWithAdmission(
-                token,
-                subscription,
-                current.config.turnstileSiteKey,
-                false,
-              );
-              storageSet(RECONCILED_AT_KEY, String(Date.now()));
-              setStatus('on');
-              return;
-            } catch (replacementError) {
-              enrollmentError = replacementError;
-            }
-          }
-          if (enrollmentError instanceof AdmissionChallengeError) {
-            const repair = {
-              ...next,
+        await withPushLifecycleLock(async () => {
+          await migrateLegacyPushState();
+          await flushPendingDeletes();
+          const config = await fetchPushConfig(requestSignal());
+          if (!config.applicationServerKey) throw new Error('push_not_ready');
+          await persistConfig(config);
+          const expectedKey = applicationServerKey(config.applicationServerKey);
+          const registration = await getServiceWorkerRegistration();
+          let subscription = await registration.pushManager.getSubscription();
+          const state = await readPushState();
+
+          if (subscription && keyMatches(subscription, expectedKey) && state.token) {
+            const fingerprint = await pushSubscriptionFingerprint(
               subscription,
-              needsRepair: true,
-            };
-            runtimeRef.current = repair;
-            setRuntime(repair);
-            setStatus('sync-error');
-            return;
-          }
-          if (isDefinitivePutFailure(enrollmentError)) {
-            await subscription.unsubscribe().catch(() => false);
-            await retireToken(token);
-            const repair = {
-              ...next,
-              subscription: null,
-              needsRepair: true,
-            };
-            runtimeRef.current = repair;
-            setRuntime(repair);
-            setStatus(
-              enrollmentError.code === 'capacity_full'
-                ? 'capacity-full'
-                : 'sync-error',
+              config.keyId,
             );
-            return;
+            if (
+              state.repairReason === null &&
+              !state.reconcilePending &&
+              state.reconciledFingerprint === fingerprint
+            ) {
+              const next: PushRuntime = {
+                config,
+                applicationServerKey: expectedKey,
+                registration,
+                subscription,
+                needsRepair: false,
+              };
+              applyRuntime(next, 'on');
+              return;
+            }
           }
-          // The PUT may have committed before the response was lost. Keep the
-          // token/subscription and reconcile idempotently on the next lifecycle event.
+
+          let createdSubscription = false;
+          const mustReplaceSubscription = Boolean(
+            subscription && (
+              !keyMatches(subscription, expectedKey) ||
+              state.repairReason === 'endpoint_conflict' ||
+              !state.token
+            ),
+          );
+          const resubscribedForConflict =
+            mustReplaceSubscription &&
+            state.repairReason === 'endpoint_conflict';
+          if (subscription && mustReplaceSubscription) {
+            const unsubscribed = await subscription.unsubscribe();
+            if (!unsubscribed) throw new Error('push_unsubscribe_failed');
+            subscription = null;
+            createdSubscription = true;
+          }
+          if (!subscription) {
+            subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: expectedKey,
+            });
+            createdSubscription = true;
+          }
+
+          const previousToken = state.token;
+          let token =
+            !previousToken || state.repairReason === 'token_retired' ||
+              state.repairReason === 'endpoint_conflict'
+              ? createPushToken()
+              : previousToken;
+          if (previousToken && previousToken !== token) {
+            await retireToken(previousToken);
+          }
+          await setEnrollmentToken(token, config);
+          const next: PushRuntime = {
+            config,
+            applicationServerKey: expectedKey,
+            registration,
+            subscription,
+            needsRepair: false,
+          };
+          applyRuntime(next, 'enabling');
+
+          const submit = async (mayAlreadyExist: boolean) => {
+            await putWithAdmission(
+              token,
+              subscription!,
+              config.turnstileSiteKey,
+              mayAlreadyExist,
+            );
+            await saveReconciled(token, subscription!, config);
+          };
+
+          try {
+            await submit(previousToken === token);
+            applyRuntime(next, 'on');
+            return;
+          } catch (initialError) {
+            let enrollmentError: unknown = initialError;
+
+            if (
+              enrollmentError instanceof PushApiError &&
+              enrollmentError.code === 'token_retired' &&
+              previousToken === token
+            ) {
+              await retireToken(token);
+              token = createPushToken();
+              await setEnrollmentToken(token, config);
+              try {
+                await submit(false);
+                applyRuntime(next, 'on');
+                return;
+              } catch (replacementError) {
+                enrollmentError = replacementError;
+              }
+            }
+
+            if (
+              enrollmentError instanceof PushApiError &&
+              enrollmentError.code === 'endpoint_conflict' &&
+              !resubscribedForConflict
+            ) {
+              const latest = await readPushState();
+              if (latest.token && latest.token !== token) {
+                token = latest.token;
+                try {
+                  await submit(true);
+                  applyRuntime(next, 'on');
+                  return;
+                } catch (winnerError) {
+                  enrollmentError = winnerError;
+                }
+              } else {
+                const unsubscribed = await subscription.unsubscribe();
+                if (unsubscribed) {
+                  subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: expectedKey,
+                  });
+                  createdSubscription = true;
+                  await retireToken(token);
+                  token = createPushToken();
+                  await setEnrollmentToken(token, config);
+                  try {
+                    await submit(false);
+                    const recovered = { ...next, subscription };
+                    applyRuntime(recovered, 'on');
+                    return;
+                  } catch (replacementError) {
+                    enrollmentError = replacementError;
+                  }
+                }
+              }
+            }
+
+            if (enrollmentError instanceof AdmissionChallengeError) {
+              await markRepair('subscription_missing', token);
+              applyRuntime(
+                { ...next, subscription, needsRepair: true },
+                'sync-error',
+              );
+              return;
+            }
+
+            if (
+              enrollmentError instanceof PushApiError &&
+              (
+                enrollmentError.code === 'token_retired' ||
+                enrollmentError.code === 'endpoint_conflict'
+              )
+            ) {
+              await markRepair(enrollmentError.code, token);
+              applyRuntime(
+                { ...next, subscription, needsRepair: true },
+                'repair',
+              );
+              return;
+            }
+
+            if (isDefinitivePutFailure(enrollmentError)) {
+              if (createdSubscription) {
+                await subscription.unsubscribe().catch(() => false);
+              }
+              await retireToken(token);
+              await markRepair('subscription_missing', null);
+              applyRuntime(
+                { ...next, subscription: null, needsRepair: true },
+                enrollmentError.code === 'capacity_full'
+                  ? 'capacity-full'
+                  : 'sync-error',
+              );
+              return;
+            }
+
+            await markReconcilePending(token);
+            applyRuntime(next, 'sync-error');
+          }
+        });
+      })
+      .catch(async () => {
+        const latest = runtimeRef.current;
+        try {
+          const state = await readPushState();
+          await markRepair('rotation_failed', state.token);
+        } catch {
+          /* IndexedDB failures are reported as an unsupported installation. */
+        }
+        if (latest && Notification.permission === 'granted') {
+          applyRuntime({ ...latest, needsRepair: true }, 'sync-error');
+        } else {
           setStatus('sync-error');
         }
-      })
-      .catch(() => {
-        const latest = runtimeRef.current;
-        if (latest && Notification.permission === 'granted') {
-          const repair = {
-            ...latest,
-            needsRepair: true,
-          };
-          runtimeRef.current = repair;
-          setRuntime(repair);
-        }
-        setStatus('sync-error');
       })
       .finally(() => {
         enrollmentInFlight.current = false;
@@ -627,7 +791,7 @@ export function usePushNotifications(): PushNotificationsState {
           refresh();
         }
       });
-  }, [refresh, status]);
+  }, [applyRuntime, refresh, status]);
 
   const shouldOffer = useMemo(() => {
     if (!runtime || !navigator.onLine) return false;

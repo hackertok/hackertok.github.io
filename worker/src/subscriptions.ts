@@ -52,7 +52,7 @@ export async function putSubscription(
     .bind(endpointHash, tokenHash)
     .first<{ id: number }>();
 
-  if (endpointOwner) throw new HttpError(409, 'subscription_conflict');
+  if (endpointOwner) throw new HttpError(409, 'endpoint_conflict');
 
   const reconcileExisting = async (id: number): Promise<{
     id: number;
@@ -92,14 +92,14 @@ export async function putSubscription(
       )
       .run();
     if (updated.meta.changes !== 1) {
-      throw new HttpError(409, 'subscription_conflict');
+      throw new HttpError(409, 'token_retired');
     }
     return { id, created: false };
   };
 
   if (existing) {
     if (existing.disabled_at !== null) {
-      throw new HttpError(409, 'subscription_conflict');
+      throw new HttpError(409, 'token_retired');
     }
     return reconcileExisting(existing.id);
   }
@@ -142,7 +142,7 @@ export async function putSubscription(
         .bind(tokenHash)
         .first<{ id: number; disabled_at: number | null }>();
       if (raced?.disabled_at === null) return reconcileExisting(raced.id);
-      if (raced) throw new HttpError(409, 'subscription_conflict');
+      if (raced) throw new HttpError(409, 'token_retired');
       throw new HttpError(503, 'capacity_full', 3600);
     }
     return { id: inserted.id, created: true };
@@ -157,7 +157,7 @@ export async function putSubscription(
       .bind(tokenHash)
       .first<{ id: number; disabled_at: number | null }>();
     if (raced?.disabled_at === null) return reconcileExisting(raced.id);
-    if (raced) throw new HttpError(409, 'subscription_conflict');
+    if (raced) throw new HttpError(409, 'token_retired');
     const conflictingEndpoint = await env.PUSH_DB
       .prepare(
         `SELECT id
@@ -169,7 +169,7 @@ export async function putSubscription(
       .bind(endpointHash, tokenHash)
       .first<{ id: number }>();
     if (conflictingEndpoint) {
-      throw new HttpError(409, 'subscription_conflict');
+      throw new HttpError(409, 'endpoint_conflict');
     }
     throw error;
   }

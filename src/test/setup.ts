@@ -1,10 +1,12 @@
 /// <reference types="node" />
+import 'fake-indexeddb/auto';
 import { afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { server } from '../mocks/server';
 import { cancelAllPrefetches } from '../hooks/usePrefetchItem';
 import { clearViewed } from '../utils/viewedItems';
+import { deletePushStateDatabaseForTests } from '../pwa/pushState';
 
 // Create a proper localStorage mock (Node 23 has a broken localStorage)
 // Uses a Proxy to properly handle Object.keys() returning only stored keys
@@ -154,13 +156,14 @@ beforeAll(() => {
 });
 
 // Reset handlers and clean up after each test
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   server.resetHandlers();
   cancelAllPrefetches();
   clearViewed();
   localStorage.clear();
   sessionStorage.clear();
+  await deletePushStateDatabaseForTests();
 });
 
 // Close MSW server after all tests

@@ -202,7 +202,9 @@ navigation only; they do not replace real relay interoperability checks.
 - `PUT /v1/push/subscription`: idempotently creates or reconciles the caller's
   subscription. Requires exact-origin CORS, JSON, and a random 32-byte bearer
   token. A previously unknown token also requires a fresh, single-use
-  Turnstile token validated by the Worker; an existing token does not.
+  Turnstile token validated by the Worker; an existing token does not. A `409`
+  distinguishes a retired/tombstoned token (`token_retired`) from an endpoint
+  currently owned by another installation token (`endpoint_conflict`).
 - `DELETE /v1/push/subscription`: token-only idempotent opt-out.
 - `POST /v1/push/self-test`: heavily rate-limited fixed-message delivery for
   operator/device QA. It cannot send caller-supplied notification content.
@@ -214,6 +216,32 @@ not authentication; possession of the random token is the authorization
 boundary for an existing installation, while Turnstile is the initial
 anonymous-admission control. Apple relay hosts are admitted through the documented
 `*.push.apple.com` suffix.
+
+## Browser subscription lifecycle
+
+The frontend stores the bearer token, reconciled subscription fingerprint,
+VAPID key ID, API origin, pending deletions, and repair marker as one
+transactional IndexedDB record shared with the service worker. The fingerprint
+covers the endpoint, browser encryption keys, expiration, and VAPID key ID, so
+same-key browser rotation bypasses the normal 24-hour reconciliation interval.
+Legacy `localStorage` lifecycle values are migrated once; only the transient
+offer preference remains there.
+
+Pages and the service worker serialize lifecycle work with the origin-scoped Web
+Locks API. Permission is requested synchronously from the opt-in click before
+waiting for that lock, preserving transient user activation. Tabs announce
+committed state changes with `BroadcastChannel` and re-read IndexedDB under the
+lock. A refresh-time conflict never blindly unsubscribes the origin-wide browser
+subscription: `token_retired` and `endpoint_conflict` become explicit repair
+states, and token or endpoint replacement occurs only in the locked,
+gesture-driven repair path.
+
+Where the browser emits `pushsubscriptionchange`, the service worker immediately
+reconciles the rotated subscription with the existing token. Transient/offline
+failures set a durable `reconcilePending` marker for the next page lifecycle;
+conflicts set the corresponding repair marker. Focus, page-show, visibility,
+online, and broadcast events remain recovery paths because browsers do not
+guarantee delivery of every subscription-change event.
 
 ## Bootstrap and alert semantics
 

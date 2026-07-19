@@ -37,6 +37,15 @@ export function isPushApiConfigured(): boolean {
   return configuredApiUrl.length > 0;
 }
 
+export function pushApiOrigin(): string | null {
+  if (!configuredApiUrl) return null;
+  try {
+    return new URL(configuredApiUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
 function apiUrl(path: string): string {
   if (!configuredApiUrl) throw new PushApiError(503, 'not_configured');
   return new URL(path, configuredApiUrl).href;

@@ -36,6 +36,15 @@ This project employs the following security practices:
 - A strict Content-Security-Policy delivered via `<meta http-equiv>`; inline scripts are allowed by SHA-256 hash rather than `'unsafe-inline'`, and external script/frame/connect access is limited to the Hacker News APIs, validated Web Push API origin, and Cloudflare Turnstile
 - A separately deployed Cloudflare Worker with response security headers, exact-origin CORS, no credentialed CORS, 8 KB request limits, token/IP rate limiting, server-validated Turnstile admission, and a maintained HTTPS browser-relay allowlist
 - Anonymous per-installation bearer tokens are stored only as hashes in D1; relay endpoints and subscription keys are encrypted at rest by D1 and scrubbed on opt-out or terminal relay expiry
+- The browser-side raw bearer token and reconciled subscription fingerprint live
+  in one transactional IndexedDB record shared by pages and the service worker.
+  Origin-scoped Web Locks serialize subscription changes across tabs; the
+  permission prompt is invoked before lock acquisition to retain user activation.
+- Browser endpoint/key rotation bypasses the periodic reconciliation interval.
+  Refresh-time `token_retired` and `endpoint_conflict` responses require a
+  locked, user-initiated repair and never cause a tab to blindly unsubscribe the
+  origin-wide subscription. `pushsubscriptionchange` performs only authenticated
+  reconciliation and durably queues transient failures for a later page visit.
 - The VAPID private JWK is a Cloudflare Secret and must never be placed in GitHub variables, source files, logs, artifacts, or frontend builds
 - The Turnstile secret key is also a Cloudflare Secret. Only its public, hostname-restricted site key is returned to the frontend.
 - Deployed configuration omits the local-only test override, so Workers reject Cloudflare's published always-pass Turnstile credentials.

@@ -302,6 +302,43 @@ describe('push API', () => {
     expect(row?.disabled_at).not.toBeNull();
   });
 
+  it('distinguishes an endpoint owned by another installation token', async () => {
+    await activate();
+    const first = subscription(15);
+    const created = await handleApi(
+      request('/v1/push/subscription', {
+        method: 'PUT',
+        headers: {
+          authorization: `Bearer ${token(15)}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(first),
+      }),
+      bindings,
+    );
+    expect(created.status).toBe(201);
+
+    await expect(
+      handleApi(
+        request('/v1/push/subscription', {
+          method: 'PUT',
+          headers: {
+            authorization: `Bearer ${token(16)}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...subscription(16),
+            endpoint: first.endpoint,
+          }),
+        }),
+        bindings,
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'endpoint_conflict',
+    });
+  });
+
   it('requires and validates Turnstile only for a new token', async () => {
     await activate();
     const input: Partial<ReturnType<typeof subscription>> = subscription(14);
@@ -380,7 +417,7 @@ describe('push API', () => {
       ),
     ).rejects.toMatchObject({
       status: 409,
-      code: 'subscription_conflict',
+      code: 'token_retired',
     });
     await expect(
       bindings.PUSH_DB

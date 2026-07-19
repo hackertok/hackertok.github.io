@@ -3,6 +3,7 @@ import {
   applicationServerKey,
   createPushToken,
   fetchPushConfig,
+  pushApiOrigin,
   serializeSubscription,
 } from './push';
 
@@ -56,6 +57,7 @@ describe('push API helpers', () => {
   });
 
   it('stays disabled when a preview build omits the API origin', async () => {
+    expect(pushApiOrigin()).toBeNull();
     await expect(fetchPushConfig()).resolves.toEqual({
       enabled: false,
       threshold: 1000,

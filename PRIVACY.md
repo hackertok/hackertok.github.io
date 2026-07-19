@@ -71,10 +71,13 @@ subscription state and sends a token-only deletion request where needed.
 HackerTok intentionally defers a unified notifications/theme settings menu to a
 future version.
 
-Local HackerTok preferences and the random bearer token are stored in browser
-storage. Clearing site data removes those local values; the browser push
-subscription or notification permission may also need to be removed in browser
-settings.
+The random bearer token, subscription fingerprint, pending deletion markers,
+and push configuration are stored together in browser IndexedDB so pages and
+the service worker can reconcile browser endpoint rotation safely. Tabs use
+same-origin browser coordination only; it does not send additional data to a
+third party. Other local HackerTok preferences remain in browser storage.
+Clearing site data removes these local values; the browser push subscription or
+notification permission may also need to be removed in browser settings.
 
 ## Logging
 

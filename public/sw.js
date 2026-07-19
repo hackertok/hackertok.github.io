@@ -9,8 +9,8 @@
  * Hand-rolled rather than vite-plugin-pwa / Workbox: Vite already content-hashes
  * assets (new build = new URL = cache miss = fresh fetch), making Workbox's
  * revisioned precache manifest redundant, and nothing cross-origin is cached, so
- * its runtime strategies are non-goals. What remains is ~100 auditable,
- * zero-dependency lines. Registration is a bundled import (main.tsx), so the
+ * its runtime strategies are non-goals. What remains is auditable,
+ * zero-dependency code. Registration is a bundled import (main.tsx), so the
  * hash-based CSP stays clean; `worker-src 'self'` (vite.config.js) authorizes it.
  *
  * Two caches: an install-time SHELL precache and a bounded RUNTIME cache for
@@ -38,6 +38,14 @@ const MAX_RUNTIME_ENTRIES = 64;
 // cutoff — it keeps running to refresh the shell for the next launch.
 const NETWORK_TIMEOUT_MS = 3000;
 const PUSH_ONLY_DEV = new URL(self.location.href).searchParams.has('push-dev');
+const PUSH_STATE_DB_NAME = 'hackertok-push-state';
+const PUSH_STATE_STORE = 'state';
+const PUSH_STATE_KEY = 'current';
+const PUSH_LIFECYCLE_LOCK = 'hackertok:push-lifecycle';
+const PUSH_STATE_CHANNEL = 'hackertok:push-state';
+const PUSH_API_TIMEOUT_MS = 10_000;
+const PUSH_CONTEXT_ID = `service-worker:${crypto.randomUUID()}`;
+const PUSH_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 // Static shell precached up-front. The build's hashed JS/CSS can't be listed here
 // (names are unknown at author time) — `install` parses them from the cached shell
@@ -187,6 +195,326 @@ self.addEventListener('notificationclick', (event) => {
       const id = event.notification.data?.id;
       await focusOrOpenNotification(id);
     })(),
+  );
+});
+
+function openPushStateDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(PUSH_STATE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(PUSH_STATE_STORE)) {
+        request.result.createObjectStore(PUSH_STATE_STORE);
+      }
+    };
+    request.onsuccess = () => {
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
+    request.onerror = () => reject(request.error || new Error('indexeddb_open_failed'));
+    request.onblocked = () => reject(new Error('indexeddb_blocked'));
+  });
+}
+
+async function readPushState() {
+  const db = await openPushStateDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = db.transaction(PUSH_STATE_STORE, 'readonly');
+      const request = transaction.objectStore(PUSH_STATE_STORE).get(PUSH_STATE_KEY);
+      let state = null;
+      request.onsuccess = () => {
+        state = request.result || null;
+      };
+      request.onerror = () => reject(request.error || new Error('indexeddb_read_failed'));
+      transaction.oncomplete = () => resolve(state);
+      transaction.onerror = () => reject(transaction.error || new Error('indexeddb_read_failed'));
+      transaction.onabort = () => reject(transaction.error || new Error('indexeddb_read_aborted'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function updatePushState(mutate) {
+  const db = await openPushStateDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = db.transaction(PUSH_STATE_STORE, 'readwrite');
+      const store = transaction.objectStore(PUSH_STATE_STORE);
+      const request = store.get(PUSH_STATE_KEY);
+      let updated = null;
+      request.onsuccess = () => {
+        try {
+          const current = request.result && typeof request.result === 'object'
+            ? request.result
+            : {
+                version: 1,
+                token: null,
+                reconciledFingerprint: null,
+                reconciledAt: 0,
+                pendingDeleteTokens: [],
+                keyId: null,
+                applicationServerKey: null,
+                apiOrigin: null,
+                repairReason: null,
+                reconcilePending: false,
+                legacyMigrated: false,
+                revision: 0,
+              };
+          updated = {
+            ...current,
+            pendingDeleteTokens: Array.isArray(current.pendingDeleteTokens)
+              ? [...current.pendingDeleteTokens]
+              : [],
+          };
+          mutate(updated);
+          updated.version = 1;
+          updated.revision =
+            Number.isSafeInteger(current.revision) && current.revision >= 0
+              ? current.revision + 1
+              : 1;
+          store.put(updated, PUSH_STATE_KEY);
+        } catch (error) {
+          transaction.abort();
+          reject(error);
+        }
+      };
+      request.onerror = () => reject(request.error || new Error('indexeddb_read_failed'));
+      transaction.oncomplete = () => {
+        if (updated) resolve(updated);
+        else reject(new Error('indexeddb_write_incomplete'));
+      };
+      transaction.onerror = () => reject(transaction.error || new Error('indexeddb_write_failed'));
+      transaction.onabort = () => reject(transaction.error || new Error('indexeddb_write_aborted'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+function validPushApiOrigin(value) {
+  if (typeof value !== 'string' || value.length > 512) return null;
+  try {
+    const url = new URL(value);
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) {
+      return null;
+    }
+    if (
+      url.username ||
+      url.password ||
+      url.pathname !== '/' ||
+      url.search ||
+      url.hash
+    ) {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function decodeApplicationServerKey(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 256) {
+    throw new Error('invalid_application_server_key');
+  }
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  const binary = atob(padded);
+  const key = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  if (key.byteLength !== 65 || key[0] !== 4) {
+    throw new Error('invalid_application_server_key');
+  }
+  return key;
+}
+
+function base64Url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+async function subscriptionFingerprint(subscription, keyId) {
+  const json = subscription.toJSON();
+  if (
+    typeof keyId !== 'string' ||
+    !json.endpoint ||
+    !json.keys?.p256dh ||
+    !json.keys.auth
+  ) {
+    throw new Error('invalid_subscription_fingerprint');
+  }
+  const canonical = JSON.stringify([
+    keyId,
+    json.endpoint,
+    subscription.expirationTime,
+    json.keys.p256dh,
+    json.keys.auth,
+  ]);
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(canonical),
+  );
+  return base64Url(new Uint8Array(digest));
+}
+
+async function announcePushStateChange() {
+  const message = {
+    type: 'push-state-changed',
+    source: PUSH_CONTEXT_ID,
+  };
+  if ('BroadcastChannel' in self) {
+    try {
+      const channel = new BroadcastChannel(PUSH_STATE_CHANNEL);
+      channel.postMessage(message);
+      channel.close();
+      return;
+    } catch {
+      /* Fall back to controlled windows below. */
+    }
+  }
+  const windows = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  });
+  for (const client of windows) client.postMessage(message);
+}
+
+function withPushLifecycleLock(task) {
+  if (self.navigator?.locks) {
+    return self.navigator.locks.request(PUSH_LIFECYCLE_LOCK, task);
+  }
+  return task();
+}
+
+async function recordRotationFailure(reason, expectedToken) {
+  let changed = false;
+  await updatePushState((state) => {
+    if (expectedToken !== undefined && state.token !== expectedToken) return;
+    if (
+      state.repairReason === reason &&
+      state.reconcilePending &&
+      state.reconciledAt === 0
+    ) {
+      return;
+    }
+    state.repairReason = reason;
+    state.reconcilePending = true;
+    state.reconciledAt = 0;
+    changed = true;
+  });
+  if (changed) await announcePushStateChange();
+}
+
+async function queueRotationReconciliation(expectedToken) {
+  let changed = false;
+  await updatePushState((state) => {
+    if (state.token !== expectedToken || state.reconcilePending) return;
+    state.reconcilePending = true;
+    changed = true;
+  });
+  if (changed) await announcePushStateChange();
+}
+
+async function reconcileRotatedSubscription(event) {
+  const state = await readPushState();
+  const apiOrigin = validPushApiOrigin(state?.apiOrigin);
+  const token =
+    typeof state?.token === 'string' && PUSH_TOKEN_PATTERN.test(state.token)
+      ? state.token
+      : null;
+  const keyId =
+    typeof state?.keyId === 'string' && state.keyId.length <= 64
+      ? state.keyId
+      : null;
+  if (!apiOrigin || !token || !keyId) {
+    await recordRotationFailure('rotation_failed');
+    return;
+  }
+
+  let subscription =
+    event.newSubscription ||
+    await self.registration.pushManager.getSubscription();
+  if (!subscription) {
+    try {
+      subscription = await self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: decodeApplicationServerKey(
+          state.applicationServerKey,
+        ),
+      });
+    } catch {
+      await recordRotationFailure('subscription_missing', token);
+      return;
+    }
+  }
+
+  let fingerprint;
+  try {
+    fingerprint = await subscriptionFingerprint(subscription, keyId);
+    const response = await fetch(`${apiOrigin}/v1/push/subscription`, {
+      method: 'PUT',
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(subscription.toJSON()),
+      cache: 'no-store',
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+      signal: AbortSignal.timeout(PUSH_API_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      let code = 'push_sync_failed';
+      try {
+        const body = await response.json();
+        if (typeof body?.code === 'string') code = body.code;
+      } catch {
+        /* The status still determines whether page repair is required. */
+      }
+      if (code === 'token_retired') {
+        await recordRotationFailure('token_retired', token);
+        return;
+      }
+      if (code === 'endpoint_conflict') {
+        await recordRotationFailure('endpoint_conflict', token);
+        return;
+      }
+      if (code === 'turnstile_required') {
+        await recordRotationFailure('subscription_missing', token);
+        return;
+      }
+      if ([400, 401, 403, 404, 409, 410, 413, 415, 422].includes(response.status)) {
+        await recordRotationFailure('rotation_failed', token);
+        return;
+      }
+      throw new Error('push_sync_transient');
+    }
+  } catch {
+    await queueRotationReconciliation(token);
+    return;
+  }
+
+  let changed = false;
+  await updatePushState((latest) => {
+    if (latest.token !== token) return;
+    latest.reconciledFingerprint = fingerprint;
+    latest.reconciledAt = Date.now();
+    latest.repairReason = null;
+    latest.reconcilePending = false;
+    changed = true;
+  });
+  if (changed) await announcePushStateChange();
+}
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    withPushLifecycleLock(() => reconcileRotatedSubscription(event)),
   );
 });
 
