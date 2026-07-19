@@ -1,6 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MAX_BOOTSTRAP_VERIFICATION_ATTEMPTS } from '../src/constants';
+import {
+  D1_FREE_QUERY_LIMIT,
+  DETECTOR_D1_QUERY_HEADROOM,
+  DETECTOR_D1_QUERY_UPPER_BOUND,
+  MAX_BOOTSTRAP_VERIFICATION_ATTEMPTS,
+  MAX_FIREBASE_CHECKS_PER_RUN,
+} from '../src/constants';
 import { runDetector } from '../src/detector';
 import type { Bindings } from '../src/types';
 
@@ -215,6 +221,35 @@ describe('detector', () => {
     ]);
   });
 
+  it('bulk inserts discovery results and bounds verification query headroom', async () => {
+    const ids = Array.from(
+      { length: MAX_FIREBASE_CHECKS_PER_RUN + 15 },
+      (_, index) => 3000 + index,
+    );
+    const scores = Object.fromEntries(
+      ids.map((id) => [id, 1200]),
+    ) as Record<number, number>;
+    mockSources(ids, scores);
+
+    await runDetector(bindings);
+
+    const counts = await bindings.PUSH_DB
+      .prepare(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN verification_attempts = 1 THEN 1 ELSE 0 END) AS verified
+           FROM stories
+          WHERE story_id >= 3000`,
+      )
+      .first<{ total: number; verified: number }>();
+    expect(counts).toEqual({
+      total: ids.length,
+      verified: MAX_FIREBASE_CHECKS_PER_RUN,
+    });
+    expect(DETECTOR_D1_QUERY_UPPER_BOUND).toBeLessThanOrEqual(
+      D1_FREE_QUERY_LIMIT - DETECTOR_D1_QUERY_HEADROOM,
+    );
+  });
+
   it('keeps score 1000 recheckable and creates one event at 1001', async () => {
     mockSources([202], { 202: 1000 });
     await runDetector(bindings);
@@ -275,7 +310,10 @@ describe('detector', () => {
       )
       .bind(Date.now())
       .run();
-    const failingIds = Array.from({ length: 35 }, (_, index) => index + 1);
+    const failingIds = Array.from(
+      { length: MAX_FIREBASE_CHECKS_PER_RUN },
+      (_, index) => index + 1,
+    );
     mockSources([...failingIds, 999], { 999: 1200 });
 
     await runDetector(bindings);

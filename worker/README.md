@@ -1,7 +1,7 @@
 # HackerTok Push Worker
 
 This Worker provides HackerTok's anonymous per-installation Web Push alerts. It
-discovers Hacker News stories in a rolling 30-day window, verifies their live
+discovers Hacker News stories in a rolling seven-day window, verifies their live
 Firebase score, and creates one lifetime alert when the score becomes strictly
 greater than 1,000.
 
@@ -11,8 +11,9 @@ be released together.
 
 ## Architecture
 
-- A five-minute Cron Trigger runs bootstrap, detection, recovery, and bounded
-  cleanup.
+- Detection, Queue-wake recovery, and bounded cleanup each run every five
+  minutes on separate offsets, so their D1 query budgets cannot accumulate in
+  one Worker invocation.
 - D1 is the authoritative ledger for subscriptions, story events, fan-out
   progress, and deliveries.
 - `hackertok-push-fanout` pages the event audience in groups of 50.
@@ -191,7 +192,7 @@ boundary. Apple relay hosts are admitted through the documented
 
 ## Bootstrap and alert semantics
 
-On first deployment, the Worker freezes a 30-day range, enumerates Algolia
+On first deployment, the Worker freezes a seven-day range, enumerates Algolia
 candidates, and verifies them with the official Firebase API. Existing
 qualifying stories are seeded without alerts. Enrollment remains disabled and
 readiness remains `503` until this scan completes. A candidate that still
@@ -200,10 +201,15 @@ historical deferred item, so a permanently unavailable item cannot block
 activation and can never produce a historical alert.
 
 After activation, every five minutes the Worker rescans the complete rolling
-window. An event requires a matching positive HN ID, `type: "story"`, a bounded
-nonempty title, no dead/deleted marker, and a live integer score greater than
-1,000. A score of exactly 1,000 and transient API failures remain recheckable.
-HN ID uniqueness makes the event lifetime-deduplicated.
+window. Candidate discovery is bulk-upserted in one D1 statement and at most ten
+Firebase results are persisted per detector invocation. The conservative upper
+bound is 31 of the Free plan's 50 D1 queries, leaving at least 19 queries of
+headroom. An event requires a matching positive HN ID, `type: "story"`, a
+bounded nonempty title, no dead/deleted marker, and a live integer score greater
+than 1,000. A score of exactly 1,000 and transient API failures remain
+recheckable. HN ID uniqueness makes the event lifetime-deduplicated.
+An undetected outage lasting longer than seven days can age stories out of the
+discovery window, so the scan-freshness alert below remains a required control.
 
 ## Delivery and recovery
 

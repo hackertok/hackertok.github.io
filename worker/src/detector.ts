@@ -113,36 +113,46 @@ async function insertCandidates(
   phase: 'BOOTSTRAPPING' | 'ACTIVE',
   leaseToken: string,
 ): Promise<void> {
-  for (let offset = 0; offset < candidates.length; offset += 50) {
-    const chunk = candidates.slice(offset, offset + 50);
-    if (!chunk.length) continue;
-    await db.batch(
-      chunk.map(({ id, createdAt }) =>
-        db
-          .prepare(
-            `INSERT INTO stories (
-               story_id, hn_created_at, verification_state, next_check_at,
-               created_at, updated_at
-             )
-             SELECT ?1, ?2, 'candidate', ?3, ?3, ?3
-              WHERE EXISTS (
-                SELECT 1
-                  FROM app_state
-                 WHERE id = 1
-                   AND phase = ?4
-                   AND detector_lease_token = ?5
-              )
-             ON CONFLICT(story_id) DO UPDATE SET
-               hn_created_at = COALESCE(stories.hn_created_at, excluded.hn_created_at),
-               updated_at = CASE
-                 WHEN stories.verification_state = 'candidate' THEN excluded.updated_at
-                 ELSE stories.updated_at
-               END`,
-          )
-          .bind(id, createdAt, now, phase, leaseToken),
-      ),
-    );
-  }
+  if (!candidates.length) return;
+  const encoded = JSON.stringify(candidates);
+  await db
+    .prepare(
+      `WITH parsed AS (
+         SELECT CAST(json_extract(value, '$.id') AS INTEGER) AS story_id,
+                CASE
+                  WHEN json_type(value, '$.createdAt') = 'null' THEN NULL
+                  ELSE CAST(json_extract(value, '$.createdAt') AS INTEGER)
+                END AS hn_created_at
+           FROM json_each(?1)
+       ),
+       incoming AS (
+         SELECT story_id, MAX(hn_created_at) AS hn_created_at
+           FROM parsed
+          WHERE story_id > 0
+          GROUP BY story_id
+       )
+       INSERT INTO stories (
+         story_id, hn_created_at, verification_state, next_check_at,
+         created_at, updated_at
+       )
+       SELECT story_id, hn_created_at, 'candidate', ?2, ?2, ?2
+         FROM incoming
+        WHERE EXISTS (
+          SELECT 1
+            FROM app_state
+           WHERE id = 1
+             AND phase = ?3
+             AND detector_lease_token = ?4
+        )
+       ON CONFLICT(story_id) DO UPDATE SET
+         hn_created_at = COALESCE(stories.hn_created_at, excluded.hn_created_at),
+         updated_at = CASE
+           WHEN stories.verification_state = 'candidate' THEN excluded.updated_at
+           ELSE stories.updated_at
+         END`,
+    )
+    .bind(encoded, now, phase, leaseToken)
+    .run();
 }
 
 async function verifyFirebaseStory(

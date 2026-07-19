@@ -25,7 +25,7 @@
     "RELEASE_VERSION": "development",
     "SUBSCRIPTION_CAP": "350",
     "STORY_THRESHOLD": "1000",
-    "DISCOVERY_WINDOW_DAYS": "30"
+    "DISCOVERY_WINDOW_DAYS": "7"
   },
   "d1_databases": [
     {
@@ -65,7 +65,9 @@
   },
   "triggers": {
     "crons": [
-      "*/5 * * * *"
+      "*/5 * * * *",
+      "2-59/5 * * * *",
+      "4-59/5 * * * *"
     ]
   },
   "ratelimits": [

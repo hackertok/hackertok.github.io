@@ -1,6 +1,12 @@
 import { env } from 'cloudflare:workers';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DELIVERY_QUEUE_NAME, FANOUT_QUEUE_NAME } from '../src/constants';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  CLEANUP_CRON,
+  DELIVERY_QUEUE_NAME,
+  DETECTOR_CRON,
+  FANOUT_QUEUE_NAME,
+  RECOVERY_CRON,
+} from '../src/constants';
 import worker from '../src/index';
 import type { Bindings, WorkerQueueMessage } from '../src/types';
 
@@ -23,6 +29,23 @@ function batch(queue: string, messages: ReturnType<typeof message>[]) {
   } as unknown as MessageBatch<WorkerQueueMessage>;
 }
 
+async function runScheduled(cron: string): Promise<void> {
+  const pending: Promise<unknown>[] = [];
+  const context = {
+    waitUntil(promise: Promise<unknown>) {
+      pending.push(promise);
+    },
+    passThroughOnException: vi.fn(),
+  } as unknown as ExecutionContext;
+  const controller = {
+    cron,
+    scheduledTime: Date.now(),
+    noRetry: vi.fn(),
+  } as unknown as ScheduledController;
+  await worker.scheduled?.(controller, bindings, context);
+  await Promise.all(pending);
+}
+
 beforeEach(async () => {
   await bindings.PUSH_DB.batch([
     bindings.PUSH_DB.prepare('DELETE FROM deliveries'),
@@ -36,6 +59,64 @@ beforeEach(async () => {
         WHERE id = 1`,
     ),
   ]);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('exported scheduled handler', () => {
+  it('isolates detector, recovery, and cleanup D1 workloads by cron', async () => {
+    await bindings.PUSH_DB
+      .prepare(
+        `UPDATE app_state
+            SET phase = 'ACTIVE',
+                updated_at = ?1
+          WHERE id = 1`,
+      )
+      .bind(Date.now())
+      .run();
+    const source = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      Response.json({ hits: [], page: 0, nbPages: 0 }),
+    );
+
+    await runScheduled(DETECTOR_CRON);
+    expect(source).toHaveBeenCalledOnce();
+
+    const now = Date.now();
+    await bindings.PUSH_DB
+      .prepare(
+        `INSERT INTO subscriptions (
+           token_hash, endpoint_hash, endpoint, p256dh, auth, vapid_key_id,
+           created_at, activated_at, last_reconciled_at, expires_at
+         )
+         VALUES ('scheduled-token', 'scheduled-endpoint',
+                 'https://fcm.googleapis.com/fcm/send/scheduled',
+                 'p256dh', 'auth', 'v1', ?1, ?1, ?1, ?2)`,
+      )
+      .bind(now, now - 1)
+      .run();
+
+    await runScheduled(RECOVERY_CRON);
+    let subscription = await bindings.PUSH_DB
+      .prepare(
+        `SELECT disabled_at
+           FROM subscriptions
+          WHERE token_hash = 'scheduled-token'`,
+      )
+      .first<{ disabled_at: number | null }>();
+    expect(subscription?.disabled_at).toBeNull();
+
+    await runScheduled(CLEANUP_CRON);
+    subscription = await bindings.PUSH_DB
+      .prepare(
+        `SELECT disabled_at
+           FROM subscriptions
+          WHERE token_hash = 'scheduled-token'`,
+      )
+      .first<{ disabled_at: number | null }>();
+    expect(subscription?.disabled_at).not.toBeNull();
+  });
 });
 
 describe('exported queue handler', () => {

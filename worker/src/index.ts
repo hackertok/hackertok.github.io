@@ -1,8 +1,11 @@
 import { handleApi } from './api';
 import { runCleanup } from './cleanup';
 import {
+  CLEANUP_CRON,
   DELIVERY_QUEUE_NAME,
+  DETECTOR_CRON,
   FANOUT_QUEUE_NAME,
+  RECOVERY_CRON,
   allowedOrigins,
 } from './constants';
 import { runDetector } from './detector';
@@ -41,13 +44,28 @@ function isDeliveryMessage(value: unknown): value is DeliveryMessage {
   );
 }
 
-async function scheduledTask(env: Bindings): Promise<void> {
-  const tasks: { name: string; run: () => Promise<void> }[] = [
-    { name: 'recover_fanout', run: () => recoverFanoutWakes(env) },
-    { name: 'recover_delivery', run: () => recoverDeliveryWakes(env) },
-    { name: 'cleanup', run: () => runCleanup(env) },
-    { name: 'detector', run: () => runDetector(env) },
-  ];
+async function scheduledTask(env: Bindings, cron: string): Promise<void> {
+  let tasks: { name: string; run: () => Promise<void> }[];
+  switch (cron) {
+    case DETECTOR_CRON:
+      tasks = [{ name: 'detector', run: () => runDetector(env) }];
+      break;
+    case RECOVERY_CRON:
+      tasks = [
+        { name: 'recover_fanout', run: () => recoverFanoutWakes(env) },
+        { name: 'recover_delivery', run: () => recoverDeliveryWakes(env) },
+      ];
+      break;
+    case CLEANUP_CRON:
+      tasks = [{ name: 'cleanup', run: () => runCleanup(env) }];
+      break;
+    default:
+      tasks = [];
+  }
+  if (!tasks.length) {
+    console.warn(JSON.stringify({ event: 'unknown_scheduled_cron', cron }));
+    return;
+  }
   for (const task of tasks) {
     try {
       await task.run();
@@ -66,8 +84,8 @@ const worker = {
     }
   },
 
-  async scheduled(_controller, env, ctx): Promise<void> {
-    ctx.waitUntil(scheduledTask(env));
+  async scheduled(controller, env, ctx): Promise<void> {
+    ctx.waitUntil(scheduledTask(env, controller.cron));
   },
 
   async queue(batch, env): Promise<void> {
