@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { isKnownAuthor } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
 import { OpWrap } from './AuthorByline';

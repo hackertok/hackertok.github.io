@@ -1,18 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useNavigationType, NavigationType } from 'react-router-dom';
-import type * as ReactRouterDom from 'react-router-dom';
+import { useNavigationType, NavigationType } from 'react-router';
+import type * as ReactRouter from 'react-router';
 import { useScrollRestore } from './useScrollRestore';
 import {
   writeScrollPosition,
   readScrollPosition,
 } from '../utils/scrollRestore';
 
-// Mock react-router-dom's useNavigationType so tests don't need a Router
+// Mock react-router's useNavigationType so tests don't need a Router
 // context. Tests that don't set the value explicitly get NavigationType.Pop
 // (the "browser back / reload / initial load" default the hook restores on).
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual<typeof ReactRouterDom>('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual<typeof ReactRouter>('react-router');
   return { ...actual, useNavigationType: vi.fn(() => actual.NavigationType.Pop) };
 });
 

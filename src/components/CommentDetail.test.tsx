@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { render } from '../test/test-utils';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router';
 import { CommentDetail } from './CommentDetail';
 
 function renderCommentDetail(commentId: number | string, initialData?: { author: string; text: string; createdAt: number }) {

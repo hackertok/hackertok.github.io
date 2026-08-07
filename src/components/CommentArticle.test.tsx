@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router';
 import { render } from '../test/test-utils';
 import { CommentArticle } from './CommentArticle';
 

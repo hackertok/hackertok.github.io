@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { ChevronUp, Clock, Globe, MessageSquare } from 'lucide-react';
 import { getHostname } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';

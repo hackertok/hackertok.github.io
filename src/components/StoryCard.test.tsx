@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router';
 import { render } from '../test/test-utils';
 import { StoryCard } from './StoryCard';
 import { clearViewed, markViewedWithTime, clearViewedTimes, clearSessionViewed, VIEWED_DETAIL_TIMES_KEY, VIEWED_SESSION_KEY } from '../utils/viewedItems';

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 import { Award, Calendar, FileText } from 'lucide-react';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';

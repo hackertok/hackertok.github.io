@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { screen } from '@testing-library/react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router';
 import { render } from './test/test-utils';
 import { MobileItemDetailWrapper } from './App';
 import { saveSwipePosition } from './utils/swipePosition';
