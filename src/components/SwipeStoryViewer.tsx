@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 import { useSwipeScroll } from '../hooks/useSwipeScroll';
 import { usePrefetchItems } from '../hooks/usePrefetchItem';

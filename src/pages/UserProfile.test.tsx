@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { render } from '../test/test-utils';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router';
 import { UserProfile } from './UserProfile';
 import { __resetUserProfileCacheForTests } from '../hooks/useUserProfile';
 import { ScrollContainerProvider } from '../context/ScrollContainerContext';

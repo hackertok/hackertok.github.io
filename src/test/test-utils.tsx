@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { render, type RenderOptions } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { ThemeProvider } from '../context/ThemeContext';
 import { NetworkStatusProvider } from '../context/NetworkStatusContext';
 import { TooltipProvider } from '../components/ui';

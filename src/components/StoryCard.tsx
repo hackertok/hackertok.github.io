@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useMemo, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useInView } from 'react-intersection-observer';
 import { ChevronUp, Clock, Globe, MessageSquare } from 'lucide-react';
 import { getHostname } from '../api/hn';

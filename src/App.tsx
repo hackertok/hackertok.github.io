@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, useParams, useLocation, useNavigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, useParams, useLocation, useNavigate } from 'react-router';
 import { useState, useEffect, type ReactNode } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';

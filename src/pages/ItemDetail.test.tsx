@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { render } from '../test/test-utils';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router';
 import { ItemDetail } from './ItemDetail';
 import { clearViewed, markViewed, isViewed } from '../utils/viewedItems';
 import { http, HttpResponse } from 'msw';

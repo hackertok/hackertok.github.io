@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef } from 'react';
-import { useNavigationType, NavigationType } from 'react-router-dom';
+import { useNavigationType, NavigationType } from 'react-router';
 import { readScrollPosition, writeScrollPosition } from '../utils/scrollRestore';
 
 /**

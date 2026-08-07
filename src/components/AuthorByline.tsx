@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { User } from 'lucide-react';
 import { isKnownAuthor } from '../api/hn';
 import { metaPillClass } from '../lib/classes';

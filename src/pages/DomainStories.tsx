@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { InfiniteStoryListPage, StateView } from '../components';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useScrollRestore } from '../hooks/useScrollRestore';
