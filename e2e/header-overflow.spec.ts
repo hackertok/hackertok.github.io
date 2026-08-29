@@ -129,6 +129,40 @@ test.describe('Header overflow — More dropdown', () => {
   });
 });
 
+// The packer fills the row in canonical order, so the one slot a 320px bar
+// has went to Best whichever feed you opened — the active pill was reachable
+// only by opening the menu it had been packed into. Header pins the active
+// item now; this is that fix meeting a real ResizeObserver.
+test.describe('Header overflow — the active feed keeps its pill', () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  // Label, not route key: New lives at /newest and renders as "new".
+  for (const { route, label } of [
+    { route: '/show', label: 'show' },
+    { route: '/ask', label: 'ask' },
+    { route: '/newest', label: 'new' },
+  ]) {
+    test(`${label} is in the bar, not the menu`, async ({ page }) => {
+      await page.goto(`/#${route}`);
+
+      // The trigger only renders once the packer has measured, so waiting on
+      // it also proves the row overflowed — without that, a bar wide enough
+      // for every tab would pass this test without exercising anything.
+      await expect(page.getByRole('button', { name: 'More tabs' })).toBeVisible();
+
+      const pill = page
+        .getByRole('navigation', { name: 'Sections' })
+        .getByRole('link', { name: label });
+      await expect(pill).toBeVisible();
+      await expect(pill).toHaveAttribute('aria-current', 'page');
+    });
+  }
+});
+
 test.describe('Theme toggle — accessible label', () => {
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);

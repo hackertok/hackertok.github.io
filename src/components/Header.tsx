@@ -20,7 +20,7 @@ import {
 import { useScrollDirection } from '../hooks/useScrollDirection';
 import { useScrollContainer } from '../hooks/useScrollContainer';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { usePackedNav } from '../hooks/usePackedNav';
+import { usePackedNav, type PackableItem } from '../hooks/usePackedNav';
 import { clearListSessionState } from '../utils/itemCache';
 import { prefersReducedMotion } from '../utils/prefersReducedMotion';
 import {
@@ -89,10 +89,10 @@ const OVERFLOW_BUDGET = SEPARATOR_SLOT + MORE_PILL_WIDTH;
 // when computing whether the next item still fits.
 const NAV_GAP = 4;
 
-// Per-render packable nav-item shape — `usePackedNav` is generic over the
-// minimum `{ width }` shape, so we attach the full NavItemSpec on the same
-// object and read it straight off the result without a key-based lookup.
-type PackableNavItem = NavItemSpec & { width: number };
+// Per-render packable nav-item shape — `usePackedNav` is generic over its
+// minimum shape, so we attach the full NavItemSpec on the same object and
+// read it straight off the result without a key-based lookup.
+type PackableNavItem = NavItemSpec & PackableItem;
 
 // An explicit `behavior: 'smooth'` overrides CSS `scroll-behavior`, so the
 // global reduced-motion rule in index.css can't neutralize it — gate it here.
@@ -115,11 +115,14 @@ export function Header() {
   );
 
   // Attach width estimates. ICON_EXTRA only at md+ (icons hidden on mobile).
+  // Pinning the active tab keeps it in the bar on a narrow row: canonical
+  // order would otherwise spend the only slot on Best whatever feed you open.
   const packableItems: PackableNavItem[] = useMemo(
     () =>
       navItems.map((it) => ({
         ...it,
         width: PILL_WIDTH_NO_ICON[it.key] + (isMobile ? 0 : ICON_EXTRA),
+        pinned: it.isActive,
       })),
     [navItems, isMobile],
   );

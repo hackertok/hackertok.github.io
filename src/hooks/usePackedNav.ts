@@ -3,6 +3,12 @@ import { useLayoutEffect, useMemo, useState, type RefObject } from 'react';
 /** Item with an estimated rendered width (px). */
 export interface PackableItem {
   width: number;
+  /**
+   * Claims a slot before the left-to-right pass; only the first such item
+   * does. The active tab sets this — a row that overflows the pill for the
+   * page you are on reads as the wrong page.
+   */
+  pinned?: boolean;
 }
 
 export interface PackedNav<T extends PackableItem> {
@@ -25,7 +31,8 @@ const UNMEASURED = Number.POSITIVE_INFINITY;
 
 /**
  * Greedy left-to-right nav packing. Hides trailing items into overflow
- * when the container shrinks. Generic over `T extends PackableItem`.
+ * when the container shrinks, keeping a `pinned` item regardless of where
+ * it sits. Generic over `T extends PackableItem`.
  *
  * On first render / jsdom, container width = Infinity (all items visible).
  */
@@ -99,27 +106,36 @@ export function usePackedNav<T extends PackableItem>(
 
     // Overflow case — reserve space for the trigger and pack greedily.
     const budget = containerWidth - options.overflowWidth;
-    const visible: T[] = [];
+    const taken = new Set<number>();
     let used = 0;
 
-    for (let i = 0; i < items.length; i++) {
-      const next = used + (i > 0 ? options.gap : 0) + items[i].width;
-      if (next <= budget) {
-        visible.push(items[i]);
-        used = next;
-      } else {
-        // Stop on first non-fitting item. We don't try later items even
-        // if they're smaller — a "best Show then skip Ask then take More"
-        // pattern would shuffle items unpredictably as the viewport
-        // changes. Strict left-to-right greedy keeps order stable.
-        break;
-      }
+    // Claimed ahead of the pass, so the last slot in a narrow row goes to
+    // the pinned item rather than to whatever sorts first. Skipped when it
+    // cannot fit alone — nothing is worth overflowing the row.
+    const pinned = items.findIndex((it) => it.pinned);
+    if (pinned !== -1 && items[pinned].width <= budget) {
+      taken.add(pinned);
+      used = items[pinned].width;
     }
 
+    for (let i = 0; i < items.length; i++) {
+      if (taken.has(i)) continue;
+      const next = used + (taken.size > 0 ? options.gap : 0) + items[i].width;
+      // Stop on first non-fitting item. We don't try later items even
+      // if they're smaller — a "best Show then skip Ask then take More"
+      // pattern would shuffle items unpredictably as the viewport
+      // changes. Strict left-to-right greedy keeps order stable.
+      if (next > budget) break;
+      taken.add(i);
+      used = next;
+    }
+
+    // Filtered rather than sliced: the pinned item can sit past the run
+    // that fits, and both lists must stay in the caller's order.
     return {
-      visible,
-      hidden: items.slice(visible.length),
-      showOverflow: true,
+      visible: items.filter((_, i) => taken.has(i)),
+      hidden: items.filter((_, i) => !taken.has(i)),
+      showOverflow: taken.size < items.length,
     };
   }, [items, containerWidth, options.gap, options.overflowWidth]);
 }
