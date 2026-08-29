@@ -1,8 +1,25 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useScrollContainer } from './useScrollContainer';
 import { prefersReducedMotion } from '../utils/prefersReducedMotion';
+import {
+  MAX_DRAG_SAMPLES,
+  releaseVelocityFrom,
+  type DragSample,
+} from '../utils/releaseVelocity';
 
 const noop = () => undefined;
+
+/**
+ * Settle curve for a committed swipe: starts at 1.5× its average speed
+ * (`y1 / x1`) and arrives with zero slope, so the panel decelerates into rest.
+ * `linear()` would say this better but isn't old enough to assume, and an
+ * easing the engine can't parse makes `Element.animate()` throw.
+ */
+const COMMIT_EASE_POINTS = [0.2, 0.3, 0.45, 1] as const;
+const COMMIT_EASE = `cubic-bezier(${COMMIT_EASE_POINTS.join(', ')})`;
+
+/** Derived, not restated: retuning the curve must move the budget with it. */
+const COMMIT_EASE_INITIAL_SLOPE = COMMIT_EASE_POINTS[1] / COMMIT_EASE_POINTS[0];
 
 interface UseSwipeScrollOptions {
   itemCount: number;
@@ -322,6 +339,7 @@ export function useSwipeScroll({
     let startTime = 0;
     let startScrollY = 0;
     let lastClampedDelta = 0;
+    const dragSamples: DragSample[] = [];
     let directionLocked = false;
     let isSwiping = false;
     let touchActive = false;
@@ -442,6 +460,7 @@ export function useSwipeScroll({
       startTime = Date.now();
       startScrollY = window.scrollY;
       lastClampedDelta = 0;
+      dragSamples.length = 0;
       directionLocked = false;
       isSwiping = false;
       touchActive = true;
@@ -485,6 +504,11 @@ export function useSwipeScroll({
             }
 
             isSwiping = true;
+            // Prose stays selectable (index.css) and live selection handles
+            // swallow the drag. Passive listeners can't preventDefault, but can
+            // still collapse the selection.
+            const selection = window.getSelection();
+            if (selection && !selection.isCollapsed) selection.removeAllRanges();
             // Hide scroll indicator immediately to prevent visible jump during swipe
             document.body.classList.remove('is-scrolling');
             // Re-sticky the header for the swap: `fixed` blinks during the panel
@@ -515,6 +539,9 @@ export function useSwipeScroll({
           ? Math.min(0, deltaX)
           : Math.max(0, deltaX);
         lastClampedDelta = clampedDelta;
+        // Sampled here, not in the rAF frame below, which coalesces moves.
+        dragSamples.push({ x: clampedDelta, t: Date.now() });
+        if (dragSamples.length > MAX_DRAG_SAMPLES) dragSamples.shift();
 
         pendingDragDelta = clampedDelta;
         if (dragFrameId === 0) {
@@ -543,12 +570,16 @@ export function useSwipeScroll({
       const oldIndex = currentIndexRef.current;
       const activePanel = container.children[oldIndex] as HTMLElement | undefined;
 
-      const elapsed = Date.now() - startTime;
-      const velocity = Math.abs(lastClampedDelta) / elapsed; // px/ms
+      const releaseTime = Date.now();
+      const elapsed = releaseTime - startTime;
+      // Committing reads the whole gesture: hauling a panel most of the way
+      // across earns the swap however the finger let go. Only the settle speed
+      // below cares about the ending.
+      const averageVelocity = Math.abs(lastClampedDelta) / elapsed; // px/ms
       const panelWidth = cachedPanelWidth || container.clientWidth || window.innerWidth;
 
       const shouldCommit = hasTarget &&
-        (Math.abs(lastClampedDelta) > panelWidth * 0.25 || velocity > 0.3);
+        (Math.abs(lastClampedDelta) > panelWidth * 0.25 || averageVelocity > 0.3);
 
       if (shouldCommit) {
         // --- Commit: fly off + scale up ---
@@ -562,15 +593,19 @@ export function useSwipeScroll({
           cleanSlate();
           commitPanelSwap(targetPanel, activePanel, targetIndex);
         } else {
-          // Velocity-matched duration: animation continues at finger speed.
-          // Slight 1.2× boost gives a "pop" feel on release (iOS-like).
-          // Floor velocity ensures slow drags still snap crisply.
+          // Budgeted against the curve's *initial* speed rather than its
+          // average, so the first frame matches targetVelocity instead of
+          // overshooting the finger. The 1.2× boost is release "pop"; the floor
+          // keeps slow drags and parked fingers from crawling.
+          const releaseVelocity = releaseVelocityFrom(dragSamples, releaseTime) ?? averageVelocity;
           const remainingDistance = panelWidth - Math.abs(lastClampedDelta);
-          const targetVelocity = Math.max(velocity * 1.2, panelWidth / 250);
-          const duration = Math.round(Math.max(50, Math.min(250, remainingDistance / targetVelocity)));
+          const targetVelocity = Math.max(releaseVelocity * 1.2, panelWidth / 250);
+          const duration = Math.round(
+            Math.max(50, Math.min(300, (remainingDistance * COMMIT_EASE_INITIAL_SLOPE) / targetVelocity)),
+          );
           const animOptions: KeyframeAnimationOptions = {
             duration,
-            easing: 'linear',
+            easing: COMMIT_EASE,
           };
 
           const anims: Animation[] = [];

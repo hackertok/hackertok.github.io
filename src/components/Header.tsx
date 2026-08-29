@@ -163,7 +163,7 @@ export function Header() {
     `inline-flex items-center gap-1.5 capitalize px-2.5 py-1 rounded-lg text-sm font-medium ${
       isActive
         ? 'bg-accent text-accent-foreground shadow-pill-glow'
-        : 'text-muted-foreground hover:text-foreground hover:bg-muted transition-colors'
+        : 'text-muted-foreground hover:text-foreground hover:bg-muted active:text-foreground active:bg-muted transition-colors'
     }`;
 
   // Plain Link (not NavLink): item.isActive covers state-driven matches
@@ -210,7 +210,7 @@ export function Header() {
       return (
         <DropdownMenuItem
           key={item.key}
-          className="bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground capitalize"
+          className="bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground active:bg-accent active:text-accent-foreground capitalize"
           aria-current="page"
         >
           {item.key}
@@ -224,7 +224,7 @@ export function Header() {
         asChild
         className={
           item.isActive
-            ? 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground'
+            ? 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground active:bg-accent active:text-accent-foreground'
             : undefined
         }
       >
@@ -261,7 +261,7 @@ export function Header() {
           <Link
             to="/"
             onClick={handleLogoClick}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2 hover:opacity-80 active:opacity-80 transition-opacity"
           >
             <span className="sr-only">HackerTok</span>
             <span aria-hidden="true" className="flex items-center gap-2">
@@ -304,7 +304,7 @@ export function Header() {
                     <button
                       type="button"
                       aria-label="More tabs"
-                      className="inline-flex items-center gap-2 capitalize px-2.5 py-1 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      className="inline-flex items-center gap-2 capitalize px-2.5 py-1 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted active:text-foreground active:bg-muted transition-colors"
                     >
                       more
                       <ChevronDown aria-hidden className="size-3.5" />

@@ -144,7 +144,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
     return null;
   });
 
-  const wrapperBaseClass = 'py-3 first:pt-0 rounded-lg hover:bg-muted/30 -mx-3 px-3';
+  const wrapperBaseClass = 'py-3 first:pt-0 rounded-lg hover:bg-muted/30 active:bg-muted/30 -mx-3 px-3';
   const animClass =
     animationSlot?.kind === 'stage' ? ' stagger-fade'
     : animationSlot?.kind === 'append' ? ' append-fade'
@@ -162,7 +162,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
             <a
               href={safeUrl}
               rel="noreferrer"
-              className={`hover:text-accent transition-colors ${
+              className={`hover:text-accent active:text-accent transition-colors ${
                 viewed
                   ? 'text-viewed'
                   : 'text-foreground'
@@ -176,7 +176,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
               to={`/item/${story.id}`}
               state={linkState}
               onClick={handleTitleClick}
-              className={`hover:text-accent transition-colors ${
+              className={`hover:text-accent active:text-accent transition-colors ${
                 viewed
                   ? 'text-viewed'
                   : 'text-foreground'

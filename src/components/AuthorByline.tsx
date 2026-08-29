@@ -62,7 +62,7 @@ export function AuthorByline({
         <Link
           to={`/user/${author}`}
           onClick={onClick}
-          className="inline-flex items-center gap-1.5 text-foreground hover:text-accent transition-colors"
+          className="inline-flex items-center gap-1.5 text-foreground hover:text-accent active:text-accent transition-colors"
         >
           <User aria-hidden className="size-3.5" />
           {author}

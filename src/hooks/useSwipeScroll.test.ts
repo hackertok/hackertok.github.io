@@ -431,6 +431,48 @@ describe('useSwipeScroll', () => {
       expect(hookResult.currentIndex).toBe(1);
     });
 
+    it('settles a flick faster than a uniform drag that covered the same distance', () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+      const container = getContainer();
+
+      const settleDuration = () => {
+        const options = vi.mocked(Element.prototype.animate).mock.calls[0]?.[1];
+        return typeof options === 'object' ? (options.duration as number) : undefined;
+      };
+
+      // 150px spread evenly over 500ms: no flick to continue, so the floor
+      // decides the settle.
+      dispatchTouch(container, 'touchstart', CENTER_X, CENTER_Y);
+      for (let step = 1; step <= 5; step++) {
+        act(() => { vi.advanceTimersByTime(100); });
+        dispatchTouch(container, 'touchmove', CENTER_X - step * 30, CENTER_Y);
+      }
+      dispatchTouch(container, 'touchend', CENTER_X - 150, CENTER_Y);
+      const uniformDrag = settleDuration();
+
+      act(() => { vi.runAllTimers(); });
+      vi.mocked(Element.prototype.animate).mockClear();
+
+      // The same 150px, but 130 of it inside the last 80ms.
+      dispatchTouch(container, 'touchstart', CENTER_X, CENTER_Y);
+      act(() => { vi.advanceTimersByTime(200); });
+      dispatchTouch(container, 'touchmove', CENTER_X - 20, CENTER_Y);
+      act(() => { vi.advanceTimersByTime(40); });
+      dispatchTouch(container, 'touchmove', CENTER_X - 80, CENTER_Y);
+      act(() => { vi.advanceTimersByTime(40); });
+      dispatchTouch(container, 'touchmove', CENTER_X - 150, CENTER_Y);
+      dispatchTouch(container, 'touchend', CENTER_X - 150, CENTER_Y);
+      const flick = settleDuration();
+
+      expect(uniformDrag).toBeGreaterThan(0);
+      expect(flick).toBeGreaterThan(0);
+      // Identical distance left to travel, so only the speed it was handed can
+      // shorten the flick's settle. Averaged over the gesture, both are equal.
+      expect(flick!).toBeLessThan(uniformDrag!);
+
+      act(() => { vi.runAllTimers(); });
+    });
+
     it('preserves per-panel scroll position across swipes (reduced motion)', async () => {
       reducedMotionValue = true;
       render(createElement(TestHarness), { wrapper: Wrapper });

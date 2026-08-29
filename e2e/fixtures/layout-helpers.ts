@@ -35,6 +35,48 @@ export async function setOfflineAndWaitForBar(page: Page, context: BrowserContex
 }
 
 /**
+ * Assert that a chrome height token describes the element it claims to measure.
+ *
+ * `getComputedStyle` returns the literal `calc(…)` text for a custom property,
+ * so a probe element hands the expression back to the engine to be measured.
+ */
+export async function expectChromeTokenToMatch(
+  page: Page,
+  token: string,
+  selector: string,
+  { tolerance = 0.5 }: { tolerance?: number } = {},
+) {
+  // Poll: every engine can report a header mid-reflow for a frame or two after
+  // the root font size changes. A token that genuinely disagrees never converges.
+  await expect
+    .poll(
+      async () => {
+        const { declared, rendered } = await page.evaluate(
+          ({ token, selector }) => {
+            const probe = document.createElement('div');
+            probe.style.cssText =
+              `position:absolute;top:0;left:0;width:1px;visibility:hidden;height:var(${token})`;
+            document.body.appendChild(probe);
+            const declared = probe.getBoundingClientRect().height;
+            probe.remove();
+
+            const el = document.querySelector(selector);
+            return { declared, rendered: el?.getBoundingClientRect().height ?? -1 };
+          },
+          { token, selector },
+        );
+
+        if (rendered <= 0) return `${selector} is not rendered`;
+        return Math.abs(declared - rendered) <= tolerance
+          ? 'match'
+          : `${token} resolves to ${declared}px but ${selector} renders ${rendered}px`;
+      },
+      { message: `${token} should describe ${selector}` },
+    )
+    .toBe('match');
+}
+
+/**
  * Assert that a block is centered in the usable viewport between the fixed
  * header and the optional fixed bottom bar.
  */

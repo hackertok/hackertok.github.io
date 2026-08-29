@@ -62,7 +62,9 @@ function DropdownMenuItem({
       className={cn(
         // Mirrors nav-pill hover pattern from the header.
         "relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm font-medium capitalize outline-none transition-colors",
-        "hover:bg-muted hover:text-foreground focus:bg-muted focus:text-foreground",
+        // `active:` because Radix guards its highlight with `pointerType === 'mouse'`,
+        // so a touch press reaches neither `hover:` nor `focus:`.
+        "hover:bg-muted hover:text-foreground focus:bg-muted focus:text-foreground active:bg-muted active:text-foreground",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className
       )}

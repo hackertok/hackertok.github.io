@@ -193,21 +193,29 @@ test.describe('Network Status Bar - Mobile content spacing', () => {
     const afterMetrics = await page.evaluate(() => {
       const heading = document.querySelector('h1');
       const header = document.querySelector('header');
+      const bar = document.querySelector('.network-status-bar');
       const panel = document.querySelector('[data-testid="swipe-panel"].active') ?? document.querySelector('[data-testid="swipe-panel"]');
-      if (!(heading instanceof HTMLElement) || !(header instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      if (!(heading instanceof HTMLElement) || !(header instanceof HTMLElement)
+        || !(bar instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
         return null;
       }
 
+      const panelStyle = getComputedStyle(panel);
       return {
         gap: heading.getBoundingClientRect().top - header.getBoundingClientRect().bottom,
-        paddingTop: getComputedStyle(panel).paddingTop,
-        paddingBottom: getComputedStyle(panel).paddingBottom,
+        paddingTop: parseFloat(panelStyle.paddingTop),
+        paddingBottom: parseFloat(panelStyle.paddingBottom),
+        headerHeight: header.getBoundingClientRect().height,
+        barHeight: bar.getBoundingClientRect().height,
       };
     });
 
     expect(afterMetrics).not.toBeNull();
-    expect(afterMetrics?.paddingTop).toBe('53px');
-    expect(afterMetrics?.paddingBottom).toBe('32px');
+    // Measured, not named in pixels: both paddings come from tokens that move
+    // with the header's padding and the reader's font size, so a literal here
+    // holds at one breakpoint only — and blames the bar for a header change.
+    expect(afterMetrics!.paddingTop).toBeCloseTo(afterMetrics!.headerHeight, 0);
+    expect(afterMetrics!.paddingBottom).toBeCloseTo(afterMetrics!.barHeight, 0);
     expect(Math.abs((afterMetrics?.gap ?? 0) - (beforeGap ?? 0))).toBeLessThanOrEqual(2);
   });
 });

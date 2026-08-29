@@ -287,7 +287,8 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   // Combined loading state for backward compatibility
   const loading = itemLoading && commentsLoading;
 
-  // Pull-to-refresh handler.
+  // Refetch behind the error states' retry action. No gesture reaches this: the
+  // root contains its overscroll, so there is no pull-to-refresh.
   const refresh = useCallback(async () => {
     setError(null);
     setIsNotFound(false);
