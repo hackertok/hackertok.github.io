@@ -41,7 +41,7 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
           <a
             href={safeUrl}
             rel="noreferrer"
-            className="hover:text-accent transition-colors"
+            className="hover:text-accent active:text-accent transition-colors"
             onClick={() => markViewedWithTime(item.id, 'title')}
           >
             {item.title}

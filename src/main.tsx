@@ -3,9 +3,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
 import { pruneExpiredViewed } from './utils/viewedItems'
+import { enableTouchActiveStates } from './utils/touchActiveStates'
 
 // Clean up expired viewed entries on app load (runs exactly once)
 pruneExpiredViewed();
+
+enableTouchActiveStates();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

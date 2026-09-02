@@ -17,9 +17,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-accent-hover",
+        default: "bg-primary text-primary-foreground hover:bg-accent-hover active:bg-accent-hover",
         ghost:
-          "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50",
+          "hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground dark:hover:bg-muted/50 dark:active:bg-muted/50",
       },
       size: {
         sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",

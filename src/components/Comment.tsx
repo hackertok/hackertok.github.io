@@ -61,7 +61,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
           <OpWrap>
             <Link
               to={`/user/${comment.author}`}
-              className="text-foreground hover:text-accent transition-colors"
+              className="text-foreground hover:text-accent active:text-accent transition-colors"
             >
               {comment.author}
             </Link>
@@ -69,7 +69,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
         ) : isKnownAuthor(comment.author) ? (
           <Link
             to={`/user/${comment.author}`}
-            className="text-foreground hover:text-accent transition-colors"
+            className="text-foreground hover:text-accent active:text-accent transition-colors"
           >
             {comment.author}
           </Link>
@@ -109,7 +109,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
               {/* Replies expander — negative margin compensates padding for tree alignment. */}
               <button
                 onClick={expandReplies}
-                className="inline-flex items-center gap-1.5 px-2 py-1 -mx-2 -my-1 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className="inline-flex items-center gap-1.5 px-2 py-1 -mx-2 -my-1 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted active:text-foreground transition-colors"
                 aria-expanded={false}
               >
                 <span className="inline-block rotate-90 text-accent/80 text-base leading-none" aria-hidden="true">›</span>

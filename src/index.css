@@ -34,9 +34,11 @@ button {
   --viewed: oklch(0.55 0.01 60);             /* dimmed for read stories */
   --tok-color: oklch(0.623 0 0);             /* gray (#878787) */
   --pill-glow: 0 2px 8px oklch(0.673 0.195 44 / 0.3);
-  /* MUST match the real rendered header height — fixed swipe panels and the
-     scroll indicator position off this literal and don't self-correct if it drifts. */
-  --header-height: 53px;
+  /* .app-header's rendered height: 2.25rem control row + Header.tsx padding +
+     1px border. Fixed panels and the scroll indicator position off it, so a
+     value that under-reports paints the header over content. `rem` keeps that
+     true when the reader raises their font size; layout-tokens.spec.ts guards it. */
+  --header-height: calc(3.25rem + 1px);
   --network-bar-height: 0px;
 
   /* shadcn/ui token aliases — added in :root ONLY, not duplicated in .dark.
@@ -50,6 +52,16 @@ button {
   --primary-foreground: var(--accent-foreground);
   --popover: var(--card);
   --popover-foreground: var(--card-foreground);
+}
+
+/* Only the header's padding changes with width (py-2 / md:py-1.5 / lg:py-1).
+   @variant, not a px query, so this flips on the same rem threshold as those
+   utilities — which themselves move with the reader's default font size. */
+@variant md {
+  :root { --header-height: calc(3rem + 1px); }
+}
+@variant lg {
+  :root { --header-height: calc(2.75rem + 1px); }
 }
 
 /* Dark mode — soft dark, warm tones */
@@ -389,6 +401,35 @@ html.dark { color-scheme: dark; }
   touch-action: pan-y;
 }
 
+/* Long-press selection handles take over the drag and kill the swipe under
+   them. useSwipeScroll's listeners are all passive, so `preventDefault()` is
+   unavailable and these properties are the only lever. Behind a coarse pointer
+   because the hook binds touch alone — a mouse has no swipe to protect, so it
+   keeps ordinary selection. `any-` so a touch laptop still counts. */
+@media (any-pointer: coarse) {
+  body.swipe-mode .app-header,
+  .swipe-snap-panel {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Opt the prose back in: `.comment-content` is the story body and every
+     comment body. The headline stays locked — a text post's title has no link
+     wrapping it, so a long press raises the handles, not the link callout. */
+  .swipe-snap-panel .comment-content {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Content links keep the long-press callout: with no share button or
+     clipboard path, on iOS it's the only way to lift a URL out of the feed. */
+  .swipe-snap-panel h1 a,
+  .swipe-snap-panel .comment-content a {
+    -webkit-touch-callout: default;
+  }
+}
+
 /* Carousel: adjacent panel positioned off-screen, slides in with active */
 .swipe-snap-panel.peeking,
 .swipe-snap-panel.incoming {
@@ -416,6 +457,15 @@ html.dark { color-scheme: dark; }
 .full-screen-item {
   width: 100%;
   min-height: 100%;
+}
+
+/* Browsers chain the document's top overscroll into pull-to-refresh, which
+   reloads the SPA and costs the reader their feed position. `contain` blocks the
+   chain but keeps the rubber-band `none` would remove. On the root because only
+   the root's value reaches the viewport, and unscoped because `/user/:id` leaves
+   swipe mode and is just as expensive to reload. */
+html {
+  overscroll-behavior-y: contain;
 }
 
 /* In swipe mode, the document scrolls naturally (enabling URL bar hiding).
@@ -517,20 +567,26 @@ body.swipe-mode.is-swiping .app-header {
   justify-content: center;
 }
 
-@media (min-width: 768px) {
+/* Stands in for the `max-w-6xl px-4 md:px-8 lg:px-16 xl:px-24` container, so its
+   gutters must switch where that container's do — hence @variant rather than px
+   queries, which drift once the reader's default font size moves. */
+@variant md {
   .page-state-center-padded { padding-inline: 2rem; }
 }
-@media (min-width: 1024px) {
+@variant lg {
   .page-state-center-padded { padding-inline: 4rem; }
 }
-@media (min-width: 1280px) {
+@variant xl {
   .page-state-center-padded { padding-inline: 6rem; }
 }
 
 /* ── Network status bar ────────────────────────────────────────────── */
 
 /* Desktop only: pad body so scrollable content isn't hidden behind the bar.
-   Mobile uses height-based calc in swipe containers instead. */
+   Mobile uses height-based calc in swipe containers instead.
+
+   px on purpose, unlike the @variant rules above: this asks which layout React
+   mounted, and useIsMobile answers with `(max-width: 767px)`. */
 @media (min-width: 768px) {
   body {
     padding-bottom: var(--network-bar-height);

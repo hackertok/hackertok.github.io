@@ -31,7 +31,7 @@ export function ThemeToggle() {
       aria-label={label}
       title={label}
       data-testid="theme-toggle"
-      className="rounded-full text-muted-foreground dark:hover:bg-muted"
+      className="rounded-full text-muted-foreground"
     >
       <Icon aria-hidden className="size-5" />
     </Button>
