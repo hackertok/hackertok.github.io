@@ -1,6 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import { setupApiMocks, stubNotFoundUser } from './fixtures/api-mocks';
-import { expectChromeTokenToMatch, setOfflineAndWaitForBar } from './fixtures/layout-helpers';
+import {
+  enlargeRootFont,
+  expectChromeTokenToMatch,
+  setOfflineAndWaitForBar,
+} from './fixtures/layout-helpers';
 
 // `--header-height` and `--network-bar-height` duplicate, by hand, heights that
 // Tailwind utilities produce on the components. Nothing in the build connects
@@ -19,24 +23,6 @@ const BREAKPOINTS = [
   { label: 'lg', width: 1100, height: 800 },
   { label: 'xl', width: 1400, height: 900 },
 ];
-
-/**
- * Approximate a raised default font size by moving the root font size that every
- * `rem` resolves against. Only an approximation: `rem` in a media query resolves
- * against the browser's *initial* size, which no stylesheet can reach, so the
- * breakpoints stay put. The Chromium CDP test below covers that half.
- */
-async function enlargeRootFont(page: Page, px: number) {
-  await page.addInitScript((size) => {
-    const apply = () => {
-      const style = document.createElement('style');
-      style.textContent = `html{font-size:${size}px}`;
-      document.head.appendChild(style);
-    };
-    if (document.head) apply();
-    else document.addEventListener('DOMContentLoaded', apply);
-  }, px);
-}
 
 /**
  * The theme toggle IS the control row that sets the header's height, so its paint

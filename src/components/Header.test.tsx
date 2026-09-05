@@ -30,11 +30,21 @@ interface MockPackableItem {
 // `lastItems` records what Header hands the packer, so the pinning contract
 // can be asserted without the real measurement the mock stands in for.
 const mockPackedNav = vi.hoisted(
-  (): { state: MockPackedNavKeys; lastItems: MockPackableItem[] } => ({
+  (): {
+    state: MockPackedNavKeys;
+    lastItems: MockPackableItem[];
+    lastOverflowWidth: number;
+  } => ({
     state: { visible: [], hidden: [], showOverflow: false },
     lastItems: [],
+    lastOverflowWidth: -1,
   }),
 );
+
+// Mobile is a render-time branch here, not a media query, so the chrome the
+// packer is charged for and the chrome that renders can be asserted together.
+const mockIsMobile = vi.hoisted((): { value: boolean } => ({ value: false }));
+vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => mockIsMobile.value }));
 
 vi.mock('../hooks/usePackedNav', () => ({
   // The hook is now generic — it returns full item slices, not key
@@ -45,8 +55,10 @@ vi.mock('../hooks/usePackedNav', () => ({
   usePackedNav: <T extends MockPackableItem>(
     _ref: unknown,
     items: T[],
+    options: { overflowWidth: number },
   ): { visible: T[]; hidden: T[]; showOverflow: boolean } => {
     mockPackedNav.lastItems = items;
+    mockPackedNav.lastOverflowWidth = options.overflowWidth;
     if (mockPackedNav.state.visible.length === 0 && !mockPackedNav.state.showOverflow) {
       return { visible: items, hidden: [], showOverflow: false };
     }
@@ -452,10 +464,86 @@ describe('Header', () => {
       expect(pinnedKeys()).toEqual([expected]);
     });
 
-    it('pins nothing on a route with no active tab', () => {
-      render(<Header />, { initialEntries: ['/'] });
+      it('pins nothing on a route with no active tab', () => {
+        render(<Header />, { initialEntries: ['/'] });
 
-      expect(pinnedKeys()).toEqual([]);
+        expect(pinnedKeys()).toEqual([]);
+      });
+    });
+
+    // Pinning only helps if the pinned pill can afford a slot, and on a phone
+    // the trigger's own chrome was eating one. Both halves are asserted here
+    // because they have to move together: charge for a label that no longer
+    // renders and the row loses a pill for nothing.
+    describe('mobile chrome', () => {
+      afterEach(() => {
+        mockIsMobile.value = false;
+        mockPackedNav.state = { visible: [], hidden: [], showOverflow: false };
+      });
+
+      it('leaves the widest pill room on a 320px phone', () => {
+        // Measured, not derived from the constants under test: 320px of
+        // viewport leaves the nav 200px once the logo, the theme toggle and
+        // the header padding have taken theirs, and `comments` renders 91.5px
+        // there — the pill the old 105px reservation hid by a single pixel.
+        const NAV_AT_320 = 200;
+        const WIDEST_PILL = 96;
+        mockIsMobile.value = true;
+
+        render(<Header />, { initialEntries: ['/best'] });
+
+        expect(NAV_AT_320 - mockPackedNav.lastOverflowWidth).toBeGreaterThanOrEqual(WIDEST_PILL);
+      });
+
+      it('still buys the separator and the label where there is room', () => {
+        render(<Header />, { initialEntries: ['/best'] });
+        const desktop = mockPackedNav.lastOverflowWidth;
+        mockIsMobile.value = true;
+
+        render(<Header />, { initialEntries: ['/best'] });
+
+        expect(mockPackedNav.lastOverflowWidth).toBeLessThan(desktop);
+      });
+
+      it('renders the trigger as a bare chevron, and no separator beside it', () => {
+        mockIsMobile.value = true;
+        mockPackedNav.state = {
+          visible: ['best'],
+          hidden: ['show', 'ask', 'newest'],
+          showOverflow: true,
+        };
+
+        render(<Header />, { initialEntries: ['/best'] });
+
+        // The name survives the label: it comes from `aria-label`.
+        const trigger = screen.getByRole('button', { name: 'More tabs' });
+        expect(within(trigger).queryByText('more')).toBeNull();
+        // Same hairline query as the overflow tests above.
+        const nav = screen.getByRole('navigation', { name: 'Sections' });
+        expect(nav.querySelector('span.w-px')).toBeNull();
+      });
+    });
+
+  describe('text probe', () => {
+    it('carries the same typography as the pills it stands in for', () => {
+      // Its width is only a reading of the reader's text size while it is set
+      // in the pills' own font — restyle them and this is the test that says
+      // so, before the packer starts measuring the wrong thing in silence.
+      render(<Header />, { initialEntries: ['/best'] });
+
+      const nav = screen.getByRole('navigation', { name: 'Sections' });
+      const probe = nav.querySelector('span.absolute');
+      const pill = within(nav).getByRole('link', { name: 'best' });
+
+      expect(probe).not.toBeNull();
+      expect(probe!.getAttribute('aria-hidden')).toBe('true');
+      for (const cls of ['text-sm', 'font-medium', 'capitalize']) {
+        expect(pill.className).toContain(cls);
+        expect(probe!.className).toContain(cls);
+      }
+      // The word is in `content`, so no second `comments` lands in the DOM.
+      expect(probe!.textContent).toBe('');
+      expect(probe!.className).toContain("before:content-['comments']");
     });
   });
 
@@ -626,9 +714,9 @@ describe('Header', () => {
       });
 
       const nav = screen.getByRole('navigation', { name: 'Sections' });
-      // Query only the hairline <span> separator, not the chevron SVG
-      // inside the "More" button (which also carries aria-hidden).
-      const separator = nav.querySelector('span[aria-hidden="true"]');
+      // The hairline by its own width, not by `aria-hidden`: the chevron and
+      // the text probe are hidden from the tree too, and only this is 1px.
+      const separator = nav.querySelector('span.w-px');
       expect(separator).toBeNull();
     });
   });

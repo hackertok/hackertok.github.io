@@ -69,9 +69,23 @@ const PILL_WIDTH_NO_ICON: Record<NavKey, number> = {
   user: 56,
   from: 56,
 };
+// 14px icon + its `gap-1.5`, reserved when md+ draws one — which is not
+// exactly when `isMobile` says so: that asks 767px in px where `md:` asks
+// 48rem. Off a 16px root the two disagree for a band, and both halves of it
+// measured safe — above, the icon is reserved and hidden, which only
+// over-reserves; below, it renders unreserved, and the band's tightest row
+// still had ~200px spare against the ~66px it wanted.
 const ICON_EXTRA = 20;
 
-// Width budget for the overflow trigger including its leading separator.
+// `px-2.5` on both sides. The rest of a pill is its label, and the two are
+// split apart because a reader can enlarge one without the other — see
+// `PackableItem.textWidth`. Every estimate above carries a little slack over
+// what it measures, and keeping the box exact puts all of that slack in the
+// label, which is the half that actually varies between fonts.
+const PILL_BOX_WIDTH = 20;
+
+// Width budget for the md+ overflow trigger including its leading separator;
+// mobile drops both and pays MOBILE_OVERFLOW_BUDGET below.
 // Breakdown:
 //   - 4px gap-1 (parent flex) between last visible item and the separator
 //   - 6px mx-1.5 left of the 1px separator line
@@ -83,11 +97,32 @@ const ICON_EXTRA = 20;
 const SEPARATOR_SLOT = 21;
 const MORE_PILL_WIDTH = 84;
 const OVERFLOW_BUDGET = SEPARATOR_SLOT + MORE_PILL_WIDTH;
+// What is left of the trigger once its box is out: 20px padding, 8px `gap-2`
+// and the 14px chevron. Only this part follows the reader's text size.
+const MORE_LABEL_WIDTH = MORE_PILL_WIDTH - 42;
 
 // Parent flex gap-1 (4px) — must stay in sync with the `gap-1` className
 // on the <nav> below. Used by usePackedNav to size the gap between items
 // when computing whether the next item still fits.
 const NAV_GAP = 4;
+
+// Mobile pays for neither: the separator is decorative and the label is a word
+// the chevron already carries (`aria-label` keeps the accessible name). That
+// frees 63px — 46px of label, and 17px of separator net of the one gap the row
+// still needs — where at 320px the nav is 200px and was missing the `comments`
+// pill by a single pixel.
+//   - ~38px chevron-only trigger (ChevronDown + px-2.5 padding)
+//   - 4px gap-1 between the last visible item and the trigger
+const MORE_ICON_WIDTH = 38;
+const MOBILE_OVERFLOW_BUDGET = NAV_GAP + MORE_ICON_WIDTH;
+
+// The probe's text at a 16px root on the machine the estimates were measured
+// on, where all four engines agree to a subpixel: `comments`, the widest
+// label, so the reading spans the longest run of glyphs there is. Elsewhere it
+// differs by design, and the difference is the signal — CI's Linux stack
+// renders the same string at 67.7px, and the packer duly spends 5% less on
+// every label than this table asks for.
+const TEXT_PROBE_BASELINE = 71.5;
 
 // Per-render packable nav-item shape — `usePackedNav` is generic over its
 // minimum shape, so we attach the full NavItemSpec on the same object and
@@ -122,20 +157,31 @@ export function Header() {
       navItems.map((it) => ({
         ...it,
         width: PILL_WIDTH_NO_ICON[it.key] + (isMobile ? 0 : ICON_EXTRA),
+        // The icon is a box too, so what is left over is label either way.
+        textWidth: PILL_WIDTH_NO_ICON[it.key] - PILL_BOX_WIDTH,
         pinned: it.isActive,
       })),
     [navItems, isMobile],
   );
 
   const navRef = useRef<HTMLElement>(null);
+  const textProbeRef = useRef<HTMLSpanElement>(null);
   const {
     visible: visibleItems,
     hidden: hiddenItems,
     showOverflow,
-  } = usePackedNav(navRef, packableItems, {
-    overflowWidth: OVERFLOW_BUDGET,
-    gap: NAV_GAP,
-  });
+  } = usePackedNav(
+    navRef,
+    packableItems,
+    {
+      overflowWidth: isMobile ? MOBILE_OVERFLOW_BUDGET : OVERFLOW_BUDGET,
+      // The mobile trigger is a bare chevron, so none of its budget is text.
+      overflowTextWidth: isMobile ? 0 : MORE_LABEL_WIDTH,
+      gap: NAV_GAP,
+      textProbeBaseline: TEXT_PROBE_BASELINE,
+    },
+    textProbeRef,
+  );
 
   // Mobile: hidden on scroll-down unless swipe mode.
   const mobileHidden = isSwipeMode
@@ -289,27 +335,49 @@ export function Header() {
 
           <nav
             ref={navRef}
-            className="flex items-center gap-1 flex-1 justify-end min-w-0"
+            // `justify-end` overflows leftward, so a row the estimates
+            // mis-sized paints over the logo. Clipped rather than hidden, with
+            // room for the active pill's `0 2px 8px` glow to survive it.
+            className="relative flex items-center gap-1 flex-1 justify-end min-w-0 overflow-clip [overflow-clip-margin:12px]"
             aria-label="Sections"
           >
+            {/* Carries a pill's typography and nothing else, so its width is
+                the reader's text size however they set it. Absolute, so it
+                takes no room in the row; `invisible` rather than `sr-only`,
+                which would shrink it to a 1px box and measure nothing. The
+                word lives in `content` so the DOM holds no second `comments`
+                for a text query — or a reader — to find. Pinned to the nav's
+                own corner (hence `relative` above) rather than left where a
+                static position falls, which differs by engine and would read
+                as a pill escaping the row in the guards that measure that. */}
+            <span
+              ref={textProbeRef}
+              aria-hidden="true"
+              className="absolute left-0 top-0 invisible pointer-events-none capitalize text-sm font-medium before:content-['comments']"
+            />
             {visibleItems.map(renderNavItem)}
             {showOverflow && (
               <>
-                {visibleItems.length > 0 && (
+                {!isMobile && visibleItems.length > 0 && (
                   <span
                     aria-hidden="true"
                     className="h-5 w-px bg-muted-foreground/40 mx-1.5"
                   />
                 )}
-                {/* More pill — gap-2 for wider chevron spacing. */}
+                {/* More pill — gap-2 for wider chevron spacing; chevron alone
+                    on mobile, where 42px of label is a pill's worth of row.
+                    `min-h-7` because dropping the label drops the line box with
+                    it, leaving the 14px icon to set the height: 22px, under the
+                    24px WCAG 2.5.8 asks for and shorter than the pills it sits
+                    beside. Inert at md+, where the label already makes 28. */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
                       aria-label="More tabs"
-                      className="inline-flex items-center gap-2 capitalize px-2.5 py-1 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted active:text-foreground active:bg-muted transition-colors"
+                      className="inline-flex items-center gap-2 capitalize px-2.5 py-1 min-h-7 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted active:text-foreground active:bg-muted transition-colors"
                     >
-                      more
+                      {!isMobile && 'more'}
                       <ChevronDown aria-hidden className="size-3.5" />
                     </button>
                   </DropdownMenuTrigger>
