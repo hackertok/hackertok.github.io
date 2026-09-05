@@ -19,7 +19,7 @@ import {
 } from './ui';
 import { useScrollDirection } from '../hooks/useScrollDirection';
 import { useScrollContainer } from '../hooks/useScrollContainer';
-import { useIsMobile } from '../hooks/useIsMobile';
+import { useIsMobileLayout } from '../hooks/useIsMobileLayout';
 import { usePackedNav, type PackableItem } from '../hooks/usePackedNav';
 import { clearListSessionState } from '../utils/itemCache';
 import { prefersReducedMotion } from '../utils/prefersReducedMotion';
@@ -69,12 +69,9 @@ const PILL_WIDTH_NO_ICON: Record<NavKey, number> = {
   user: 56,
   from: 56,
 };
-// 14px icon + its `gap-1.5`, reserved when md+ draws one — which is not
-// exactly when `isMobile` says so: that asks 767px in px where `md:` asks
-// 48rem. Off a 16px root the two disagree for a band, and both halves of it
-// measured safe — above, the icon is reserved and hidden, which only
-// over-reserves; below, it renders unreserved, and the band's tightest row
-// still had ~200px spare against the ~66px it wanted.
+// 14px icon + its `gap-1.5`, reserved when md+ draws one — and `isMobile`
+// decides that on the same 48rem `md:` does, so the reservation and the icon
+// cannot disagree about a reader who is off a 16px root.
 const ICON_EXTRA = 20;
 
 // `px-2.5` on both sides. The rest of a pill is its label, and the two are
@@ -139,7 +136,7 @@ export function Header() {
   const maskId = useId();
   const { scrollDirection, isAtTop } = useScrollDirection();
   const { isSwipeMode } = useScrollContainer();
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobileLayout();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
 

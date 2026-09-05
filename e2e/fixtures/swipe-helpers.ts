@@ -7,6 +7,20 @@ interface ActiveSwipeTextOptions {
 }
 
 /**
+ * Whether this page gets the swipe viewer, asked the way `useCanSwipe` asks it.
+ *
+ * A narrow viewport on its own stopped answering it: the viewer wants a finger
+ * too, so a desktop project only reaches it with `hasTouch`.
+ */
+export function mountsSwipeViewer(page: Page): Promise<boolean> {
+  return page.evaluate(
+    () =>
+      !matchMedia('(min-width: 48rem)').matches &&
+      matchMedia('(pointer: coarse) and (hover: none)').matches,
+  );
+}
+
+/**
  * Wait for swipe container to be ready with multiple panels.
  * Verifies container visibility, minimum panel count, rendered dimensions,
  * and that touch event listeners are attached (data-swipe-enabled).

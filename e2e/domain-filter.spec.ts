@@ -398,9 +398,9 @@ test.describe('Domain Filter - Mobile Swipe', () => {
     await expect(page.getByRole('button', { name: /try again/i })).toBeVisible();
 
     // Confirm the error UI is rendered inside the swipe viewer's container,
-    // not the desktop list's wrapper. Catches a regression that flips the
-    // viewport branch (e.g. an `isMobile` change leaking the desktop list
-    // into mobile viewports).
+    // not the desktop list's wrapper. Catches a regression that flips
+    // `useCanSwipe` — its width half or its pointer half — and leaks the
+    // desktop list into a phone.
     await expect(page.getByTestId('swipe-container')).toBeVisible();
   });
 

@@ -100,13 +100,15 @@
   </head>
   <body class="bg-background text-foreground">
     <script>
-      // Prevent scrollbar flash on mobile (swipe mode hides body overflow)
-      // React will manage this class properly once hydrated
+      // Prevent scrollbar flash on mobile (swipe mode hides body overflow).
+      // React manages the class once hydrated, so this has to reach the same
+      // verdict useCanSwipe will — hence both of its questions, in its units.
       (function() {
-        var isMobile = window.innerWidth < 768;
+        var canSwipe = !window.matchMedia('(min-width: 48rem)').matches
+          && window.matchMedia('(pointer: coarse) and (hover: none)').matches;
         var hash = window.location.hash || '#/';
         var isSwipeRoute = /^#\/(show|ask|best|newest|item\/)?/.test(hash);
-        if (isMobile && isSwipeRoute) {
+        if (canSwipe && isSwipeRoute) {
           document.documentElement.classList.add('swipe-mode');
           document.body.classList.add('swipe-mode');
         }

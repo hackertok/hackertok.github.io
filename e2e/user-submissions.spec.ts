@@ -284,8 +284,8 @@ test.describe('User Submissions - Mobile Swipe', () => {
     await expect(page.getByRole('button', { name: /try again/i })).toBeVisible();
 
     // Confirm the error UI is rendered inside the swipe viewer's container,
-    // not the desktop list's wrapper. Catches a regression that flips the
-    // viewport branch.
+    // not the desktop list's wrapper. Catches a regression that flips
+    // `useCanSwipe`, on either of the two questions it asks.
     await expect(page.getByTestId('swipe-container')).toBeVisible();
   });
 });

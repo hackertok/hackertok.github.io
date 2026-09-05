@@ -63,11 +63,28 @@ Object.defineProperty(globalThis, 'sessionStorage', {
   configurable: true,
 });
 
-// Mock matchMedia (not implemented in jsdom)
+// Mock matchMedia (not implemented in jsdom).
+//
+// `min-width` is answered from `window.innerWidth` — 1024 by default, so the
+// suite reads as desktop as it always has — because `useIsMobileLayout` asks a
+// width question and a flat `false` would answer it backwards. Everything else
+// (`prefers-color-scheme`, `hover`, `pointer`) stays false, as before, which
+// also makes jsdom a mouse: tests wanting the swipe viewer mock `useCanSwipe`.
+// `rem` counts as 16px: in a media query it is the browser default, which
+// jsdom never changes.
+const matchesWidthQuery = (query: string): boolean => {
+  const min = /min-width:\s*([\d.]+)(px|rem)/.exec(query);
+  if (!min) return false;
+  return window.innerWidth >= parseFloat(min[1]) * (min[2] === 'rem' ? 16 : 1);
+};
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
-    matches: false,
+    // A getter, not a value: `useMediaQuery` caches the list for the module's
+    // life, so a test that moves `innerWidth` afterwards has to be able to
+    // change the answer.
+    get matches() { return matchesWidthQuery(query); },
     media: query,
     onchange: null,
     addListener: vi.fn(), // deprecated
