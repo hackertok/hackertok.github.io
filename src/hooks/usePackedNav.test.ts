@@ -240,6 +240,90 @@ describe('usePackedNav', () => {
     expect(result.current.showOverflow).toBe(false);
   });
 
+  it('reads the row in the reader font, not the browser default', () => {
+    // Widths arrive as px at a 16px root, but pills are sized in `rem`: at
+    // 24px they render 1.5× while the nav, hemmed in by the viewport, does
+    // not grow to match. Taken literally the packer calls all four a fit and the
+    // row overflows the header — which is how they came to paint over the
+    // logo on a 412px phone at 150%.
+    const FEEDS: TestItem[] = [
+      { key: 'best', width: 56 },
+      { key: 'show', width: 60 },
+      { key: 'ask', width: 50 },
+      { key: 'newest', width: 52 },
+    ];
+    const options = { overflowWidth: 105, gap: 4 };
+
+    // 230px of pills in a 300px row: room to spare at the default size.
+    const atDefault = renderHook(() => usePackedNav(makeFakeRef(300), FEEDS, options));
+    expect(atDefault.result.current.showOverflow).toBe(false);
+
+    document.documentElement.style.fontSize = '24px';
+
+    // The same 300px row now spends like 200px, and 200 - 105 seats one tab.
+    const enlarged = renderHook(() => usePackedNav(makeFakeRef(300), FEEDS, options));
+    expect(keys(enlarged.result.current.visible)).toEqual(['best']);
+    expect(enlarged.result.current.showOverflow).toBe(true);
+
+    document.documentElement.style.fontSize = '';
+  });
+
+  it('follows text that grows while every rem length stays put', () => {
+    // Android's text scaling inflates glyphs and leaves padding, gaps and
+    // icons alone — and never touches the root font size, so nothing the test
+    // above reads moves at all. The probe is the only thing that notices.
+    // Three, so the row overflows and the packer actually reaches its budget
+    // — two would fit outright and never spend one.
+    const PILLS: TestItem[] = [
+      { key: 'comments', width: 96, textWidth: 76 },
+      { key: 'best', width: 56, textWidth: 36 },
+      { key: 'show', width: 60, textWidth: 40 },
+    ];
+    const options = { overflowWidth: 42, gap: 4, textProbeBaseline: 71.5 };
+
+    // 156px of the three against a 200px nav less its 42px trigger: two fit.
+    const atDefault = renderHook(() =>
+      usePackedNav(makeFakeRef(200), PILLS, options, makeFakeRef(71.5)),
+    );
+    expect(keys(atDefault.result.current.visible)).toEqual(['comments', 'best']);
+
+    // The same row with the probe 1.3× wider. Only the label halves grow, so
+    // `comments` is 20 + 76×1.3 = 118.8 and `best` 66.8 — 189.6 together,
+    // against a 158px budget. One of them has to go, and it is not the pill
+    // for the page you are on.
+    const scaled = renderHook(() =>
+      usePackedNav(makeFakeRef(200), PILLS, options, makeFakeRef(71.5 * 1.3)),
+    );
+    expect(keys(scaled.result.current.visible)).toEqual(['comments']);
+    expect(scaled.result.current.showOverflow).toBe(true);
+  });
+
+  it('leaves the root font in charge when the probe has not laid out', () => {
+    // jsdom, and the first frame in a browser: a probe that measures 0 must
+    // read as "no reading yet", not as a reader who shrank the text to nothing.
+    const FEEDS: TestItem[] = [
+      { key: 'best', width: 56, textWidth: 36 },
+      { key: 'show', width: 60, textWidth: 40 },
+      { key: 'ask', width: 50, textWidth: 30 },
+      { key: 'newest', width: 52, textWidth: 32 },
+    ];
+    document.documentElement.style.fontSize = '24px';
+
+    const { result } = renderHook(() =>
+      usePackedNav(
+        makeFakeRef(300),
+        FEEDS,
+        { overflowWidth: 105, gap: 4, textProbeBaseline: 71.5 },
+        makeFakeRef(0),
+      ),
+    );
+
+    // Same one tab the root-font path seats on its own, above.
+    expect(keys(result.current.visible)).toEqual(['best']);
+
+    document.documentElement.style.fontSize = '';
+  });
+
   it('uses ref.current consistently across renders', () => {
     // Smoke test: the hook should not error when the ref starts unset and
     // is populated later. Returns Infinity-default packing while ref is null.

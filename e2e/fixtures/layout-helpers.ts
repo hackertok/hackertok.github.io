@@ -8,6 +8,49 @@ interface CenteredBetweenChromeOptions {
 }
 
 /**
+ * Approximate a raised default font size by moving the root font size that every
+ * `rem` resolves against. Only an approximation: `rem` in a media query resolves
+ * against the browser's *initial* size, which no stylesheet can reach, so the
+ * breakpoints stay put. layout-tokens.spec.ts covers that half over CDP.
+ */
+export async function enlargeRootFont(page: Page, px: number) {
+  await page.addInitScript((size) => {
+    const apply = () => {
+      const style = document.createElement('style');
+      style.textContent = `html{font-size:${size}px}`;
+      document.head.appendChild(style);
+    };
+    if (document.head) apply();
+    else document.addEventListener('DOMContentLoaded', apply);
+  }, px);
+}
+
+/**
+ * Emulate the browser's own default font size — the setting itself, so `rem`
+ * media queries move with it, which {@link enlargeRootFont} cannot reach.
+ * Chromium only; skip the calling test elsewhere.
+ */
+export async function emulateBrowserFontSize(page: Page, px: number) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Page.setFontSizes', { fontSizes: { standard: px, fixed: px } });
+}
+
+/**
+ * Emulate Android's text scaling, which is neither of the above: it inflates
+ * glyphs and leaves every `rem` length — padding, gaps, icons — where it was.
+ * Applied after load on purpose, so a nav that only re-packs when its own box
+ * changes size fails this; the text growing inside it has to be enough.
+ */
+export async function scaleNavTextOnly(page: Page, factor: number) {
+  await page.evaluate((size) => {
+    const style = document.createElement('style');
+    // `text-sm` is 14px at a 16px root.
+    style.textContent = `header nav a, header nav span, header nav button { font-size: ${size}px !important; }`;
+    document.head.appendChild(style);
+  }, 14 * factor);
+}
+
+/**
  * Force the app into its offline-bar state after the route has already loaded.
  * This lets geometry assertions include the fixed bottom chrome without making
  * the page's initial data fetch nondeterministic.

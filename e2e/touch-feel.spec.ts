@@ -37,6 +37,12 @@ test.describe('Overscroll containment', () => {
     // be scoped to that class — asserting the class is gone proves it isn't.
     await page.goto('/#/user/pg');
 
+    // The class comes off as the profile mounts, so wait for the profile
+    // itself: on a loaded runner that mount is the slow part, and a poll over
+    // the class alone spends its whole budget waiting for a render it cannot
+    // see. That cost a CI run 10.4s here against 2.4s on a quiet machine.
+    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+
     await expect
       .poll(() =>
         page.evaluate(() => ({
