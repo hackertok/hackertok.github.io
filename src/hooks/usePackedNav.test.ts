@@ -155,6 +155,67 @@ describe('usePackedNav', () => {
     expect(keys(result.current.hidden)).toEqual(['b', 'c', 'd']);
   });
 
+  // Header's four feed tabs at their mobile widths — the row this hook was
+  // written for, reused below so the numbers mean something.
+  const FEEDS: TestItem[] = [
+    { key: 'best', width: 56 },
+    { key: 'show', width: 60 },
+    { key: 'ask', width: 50 },
+    { key: 'newest', width: 52 },
+  ];
+  const pin = (key: string) =>
+    FEEDS.map((it) => (it.key === key ? { ...it, pinned: true } : it));
+
+  it('spends the only slot on the pinned item, not the first one', () => {
+    // A 320px phone: nav ≈ 200 wide, budget = 200 - 105 = 95, so exactly one
+    // tab fits. Unpinned that is always best — which is the whole bug: open
+    // Ask from the More menu and the bar still reads Best.
+    const { result } = renderHook(() =>
+      usePackedNav(makeFakeRef(200), pin('ask'), { overflowWidth: 105, gap: 4 }),
+    );
+
+    expect(keys(result.current.visible)).toEqual(['ask']);
+    expect(keys(result.current.hidden)).toEqual(['best', 'show', 'newest']);
+    expect(result.current.showOverflow).toBe(true);
+  });
+
+  it('keeps the row in the caller order around a pinned item', () => {
+    // Total is 230, so 220 still overflows. Budget = 115: newest (52) is
+    // claimed, best (56) then fits at 112 and show would overshoot at 176.
+    // Pinning must not promote newest to the front — feeds never reorder
+    // as you move between them.
+    const { result } = renderHook(() =>
+      usePackedNav(makeFakeRef(220), pin('newest'), { overflowWidth: 105, gap: 4 }),
+    );
+
+    expect(keys(result.current.visible)).toEqual(['best', 'newest']);
+    expect(keys(result.current.hidden)).toEqual(['show', 'ask']);
+  });
+
+  it('drops a pinned item that cannot fit the budget alone', () => {
+    // Budget = 100 - 50 = 50. The pin asks for 200 — honouring it would
+    // overflow the row, which is worse than losing the active pill.
+    const items: TestItem[] = [
+      { key: 'tiny', width: 20 },
+      { key: 'huge', width: 200, pinned: true },
+    ];
+    const { result } = renderHook(() =>
+      usePackedNav(makeFakeRef(100), items, { overflowWidth: 50, gap: 4 }),
+    );
+
+    expect(keys(result.current.visible)).toEqual(['tiny']);
+    expect(keys(result.current.hidden)).toEqual(['huge']);
+  });
+
+  it('ignores the pin when everything fits', () => {
+    const { result } = renderHook(() =>
+      usePackedNav(makeFakeRef(400), pin('ask'), { overflowWidth: 105, gap: 4 }),
+    );
+
+    expect(keys(result.current.visible)).toEqual(['best', 'show', 'ask', 'newest']);
+    expect(result.current.showOverflow).toBe(false);
+  });
+
   it('repacks when items array changes (e.g. active context changes)', () => {
     // Start with comments-led ordering at a width that fits all 4.
     const { result, rerender } = renderHook(

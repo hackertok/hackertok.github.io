@@ -23,9 +23,16 @@ interface MockPackedNavKeys {
   hidden: string[];
   showOverflow: boolean;
 }
+interface MockPackableItem {
+  key: string;
+  pinned?: boolean;
+}
+// `lastItems` records what Header hands the packer, so the pinning contract
+// can be asserted without the real measurement the mock stands in for.
 const mockPackedNav = vi.hoisted(
-  (): { state: MockPackedNavKeys } => ({
+  (): { state: MockPackedNavKeys; lastItems: MockPackableItem[] } => ({
     state: { visible: [], hidden: [], showOverflow: false },
+    lastItems: [],
   }),
 );
 
@@ -35,10 +42,11 @@ vi.mock('../hooks/usePackedNav', () => ({
   // actual input items and returns the matching object. The default
   // empty-state branch returns the full input untouched (= everything
   // visible, no overflow) so unrelated tests keep finding all nav links.
-  usePackedNav: <T extends { key: string }>(
+  usePackedNav: <T extends MockPackableItem>(
     _ref: unknown,
     items: T[],
   ): { visible: T[]; hidden: T[]; showOverflow: boolean } => {
+    mockPackedNav.lastItems = items;
     if (mockPackedNav.state.visible.length === 0 && !mockPackedNav.state.showOverflow) {
       return { visible: items, hidden: [], showOverflow: false };
     }
@@ -358,8 +366,8 @@ describe('Header', () => {
 
   describe('nav DOM order', () => {
     // Locks the canonical packing rule: when an active contextual pill
-    // exists, it lives at index 0 of the <nav> children (so usePackedNav,
-    // which always keeps items[0] visible, preserves it as the row narrows).
+    // exists, it lives at index 0 of the <nav> children (a narrow row keeps
+    // it because it is the active item, not because of its index).
     // The 4 feed tabs follow in fixed Best → Show → Ask → New order — we
     // never reorder feeds based on which one is active, since that would
     // cause jarring reflow as users move between them.
@@ -419,6 +427,35 @@ describe('Header', () => {
       });
 
       expect(navChildLabels()).toEqual(['comments', 'best', 'show', 'ask', 'new']);
+    });
+  });
+
+  describe('packing priority', () => {
+    // The counterpart to the fixed order above: order stays canonical, so the
+    // active tab can only survive a narrow row by being pinned. Asserted on
+    // the packer's input because the packer itself is mocked here — see
+    // usePackedNav.test.ts for what pinning does, and e2e/header-overflow
+    // for the two meeting in a real viewport.
+    const pinnedKeys = () =>
+      mockPackedNav.lastItems.filter((i) => i.pinned).map((i) => i.key);
+
+    it.each([
+      ['/best', 'best'],
+      ['/show', 'show'],
+      ['/ask', 'ask'],
+      ['/newest', 'newest'],
+      ['/submitted/pg', 'user'],
+      ['/from/example.com', 'from'],
+    ])('pins the active item on %s', (route, expected) => {
+      render(<Header />, { initialEntries: [route] });
+
+      expect(pinnedKeys()).toEqual([expected]);
+    });
+
+    it('pins nothing on a route with no active tab', () => {
+      render(<Header />, { initialEntries: ['/'] });
+
+      expect(pinnedKeys()).toEqual([]);
     });
   });
 
