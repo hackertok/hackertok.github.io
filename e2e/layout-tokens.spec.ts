@@ -149,3 +149,81 @@ test.describe('--network-bar-height', () => {
     await expectChromeTokenToMatch(page, '--network-bar-height', '.network-status-bar');
   });
 });
+
+// The one place that paints the viewer's markup without the viewer: while it
+// decides story-or-comment, the panel is on screen and pads for the header
+// itself. React has to know that, or `<main>` reserves the header a second time
+// and the skeleton starts a whole header below the story that replaces it.
+test.describe('the chrome under a panel with no viewer yet', () => {
+  test.use({ viewport: { width: 412, height: 839 }, hasTouch: true });
+
+  test('is reserved once, by the panel', async ({ page }) => {
+    await setupApiMocks(page);
+    // Hold the type lookup open: the window is one round trip otherwise.
+    await page.route('**/v0/item/12345.json*', async route => {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      await route.fallback();
+    });
+
+    await page.goto('/#/item/12345');
+    await expect(page.getByTestId('swipe-panel')).toBeVisible();
+
+    const { contentTop, headerBottom } = await page.evaluate(() => {
+      const panel = document.querySelector('.swipe-snap-panel.active')!;
+      return {
+        contentTop: panel.firstElementChild!.getBoundingClientRect().top,
+        headerBottom: document.querySelector('.app-header')!.getBoundingClientRect().bottom,
+      };
+    });
+
+    expect(contentTop).toBeCloseTo(headerBottom, 0);
+  });
+});
+
+// The list tree's half of the same sum. `<main>` reserves both fixed bars for
+// whatever page is below it, and each reservation is the token the panels use —
+// not a second number that lands near it, which is what `pt-14` was: 3px of
+// slack, and the only hand-written chrome offset left in the app.
+//
+// Only reachable below `md:`, where the header is fixed. Above it the header is
+// in flow, `md:pt-0` applies, and the sum is trivially exact — which is why the
+// desktop centring test never saw this.
+test.describe('the chrome around a list on a narrow viewport', () => {
+  test.use({ viewport: { width: 412, height: 839 }, hasTouch: true });
+
+  test('reserves exactly the header it sits under', async ({ page }) => {
+    await setupApiMocks(page);
+    // The profile is the page a phone gets in the list tree; a mouse gets every
+    // page there, at any width under `md:`.
+    await page.goto('/#/user/pg');
+    await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
+
+    // The reservation against the thing reserved, rather than against where the
+    // first child happens to start — a margin there would be nobody's bug.
+    const { reserved, header } = await page.evaluate(() => ({
+      reserved: parseFloat(getComputedStyle(document.querySelector('main')!).paddingTop),
+      header: document.querySelector('.app-header')!.getBoundingClientRect().height,
+    }));
+
+    expect(reserved).toBeCloseTo(header, 0);
+  });
+
+  test('leaves a full-page state fitting the viewport exactly', async ({ page, context }) => {
+    await setupApiMocks(page);
+    await page.goto('/#/no-such-route');
+    await expect(page.getByText('Lost in the feed')).toBeVisible();
+    // Offline so all three terms are non-zero: the state sizes itself as the
+    // viewport less both tokens, so it fits only if both of `<main>`'s
+    // reservations are those same tokens. This is what the 3px cost — a page
+    // written to fit, scrolling.
+    await setOfflineAndWaitForBar(page, context);
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollHeight - document.documentElement.clientHeight,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+  });
+});

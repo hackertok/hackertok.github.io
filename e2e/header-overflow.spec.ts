@@ -123,11 +123,11 @@ test.describe('Header overflow — More dropdown', () => {
     const showItem = page.getByRole('menuitem', { name: 'show' });
     await expect(showItem).toBeVisible();
     await showItem.click();
-    // On this viewport SwipeStoryViewer mounts for /show and immediately
-    // replaces the URL with /item/:firstShowId (objectID 99999 in the
-    // mock) — racing Playwright's first poll. Same pattern as the
-    // domain-filter URL assertion. Either form is a pass: both prove
-    // navigation reached the show feed.
+    // Either form is a pass: both prove navigation reached the show feed.
+    // Which one shows up is the project's pointer, not this test's business —
+    // a touch project mounts SwipeStoryViewer, which replaces the URL with
+    // /item/:firstShowId (objectID 99999 in the mock) faster than Playwright's
+    // first poll; a mouse gets the list at 320px and stays on /#/show.
     await expect(page).toHaveURL(/#\/(show|item\/99999)/);
   });
 

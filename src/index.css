@@ -582,16 +582,8 @@ body.swipe-mode.is-swiping .app-header {
 
 /* ── Network status bar ────────────────────────────────────────────── */
 
-/* Desktop only: pad body so scrollable content isn't hidden behind the bar.
-   Mobile uses height-based calc in swipe containers instead.
-
-   px on purpose, unlike the @variant rules above: this asks which layout React
-   mounted, and useIsMobile answers with `(max-width: 767px)`. */
-@media (min-width: 768px) {
-  body {
-    padding-bottom: var(--network-bar-height);
-  }
-}
+/* Whatever is in flow keeps its content off this bar: the swipe panels below,
+   and `<main>` in App.tsx for every other tree. */
 
 .network-status-bar {
   position: fixed;

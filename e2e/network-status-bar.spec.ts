@@ -8,7 +8,8 @@ import {
 } from './fixtures/layout-helpers';
 
 test.describe('Network Status Bar - Viewport Switch', () => {
-  test.use({ viewport: { width: 1280, height: 720 } });
+  // Resizes into swipe mode, which takes a finger as well as a narrow window.
+  test.use({ viewport: { width: 1280, height: 720 }, hasTouch: true });
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
@@ -59,7 +60,8 @@ test.describe('Network Status Bar - Viewport Switch', () => {
     await context.setOffline(true);
     await expect(page.getByText('No internet connection')).toBeVisible({ timeout: 5000 });
 
-    // Resize triggers swipe mode via the breakpoint hook.
+    // Narrowing crosses `useCanSwipe`'s width half; the finger the describe
+    // declares is the other half.
     await page.setViewportSize({ width: 375, height: 667 });
     await page.waitForTimeout(500);
 

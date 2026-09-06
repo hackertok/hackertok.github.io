@@ -44,7 +44,9 @@ const mockPackedNav = vi.hoisted(
 // Mobile is a render-time branch here, not a media query, so the chrome the
 // packer is charged for and the chrome that renders can be asserted together.
 const mockIsMobile = vi.hoisted((): { value: boolean } => ({ value: false }));
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => mockIsMobile.value }));
+vi.mock('../hooks/useIsMobileLayout', () => ({
+  useIsMobileLayout: () => mockIsMobile.value,
+}));
 
 vi.mock('../hooks/usePackedNav', () => ({
   // The hook is now generic — it returns full item slices, not key

@@ -1,13 +1,16 @@
 import { test, expect, type Page } from '@playwright/test';
 import { setupApiMocks } from './fixtures/api-mocks';
-import { getActiveSwipePanel, waitForScrollAtIndex, waitForSwipeReady } from './fixtures/swipe-helpers';
+import {
+  getActiveSwipePanel,
+  mountsSwipeViewer,
+  waitForScrollAtIndex,
+  waitForSwipeReady,
+} from './fixtures/swipe-helpers';
 
 const TOP_STORY_TITLE = 'Rust Is the Future of JavaScript Infrastructure';
 
 async function expectTopStoryVisible(page: Page) {
-  const isMobileViewport = (page.viewportSize()?.width ?? 1280) < 768;
-
-  if (isMobileViewport) {
+  if (await mountsSwipeViewer(page)) {
     await waitForSwipeReady(page, 1);
     await waitForScrollAtIndex(page, 0);
     await expect(
@@ -16,6 +19,10 @@ async function expectTopStoryVisible(page: Page) {
     return;
   }
 
+  // A headline is a visible link in either tree, so this branch has to say
+  // which one it is in — otherwise a wrong answer above just quietly drops the
+  // panel waits and every assertion still passes.
+  await expect(page.getByTestId('swipe-container')).toHaveCount(0);
   await expect(
     page.getByRole('link', { name: TOP_STORY_TITLE }).first(),
   ).toBeVisible({ timeout: 10_000 });
@@ -32,8 +39,7 @@ test.describe('Navigation', () => {
     // On mobile, the swipe viewer auto-rewrites / → /item/<id>. Wait for
     // this replace-navigation to complete so the subsequent click isn't
     // swallowed by WebKit during the transition (Mobile Safari flake).
-    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
-    if (isMobile) {
+    if (await mountsSwipeViewer(page)) {
       await page.waitForURL(/\/#\/item\/\d+/, { timeout: 10000 });
     }
 
@@ -56,8 +62,7 @@ test.describe('Navigation', () => {
     await page.goto('/#/');
 
     // Same mobile stabilization as Show HN test above.
-    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
-    if (isMobile) {
+    if (await mountsSwipeViewer(page)) {
       await page.waitForURL(/\/#\/item\/\d+/, { timeout: 10000 });
     }
 
@@ -124,8 +129,9 @@ test.describe('Navigation', () => {
   test('navigates back to Top from other section', async ({ page }) => {
     await page.goto('/#/show');
 
+    const isMobile = await mountsSwipeViewer(page);
+
     // On mobile, wait for the show swipe-rewrite to settle before clicking.
-    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
     if (isMobile) {
       await page.waitForURL(/\/#\/item\/\d+/, { timeout: 10000 });
     }
@@ -159,7 +165,7 @@ test.describe('Navigation', () => {
     await page.goto('/#/');
     await expectTopStoryVisible(page);
 
-    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+    const isMobile = await mountsSwipeViewer(page);
 
     const bestLink = page.getByRole('link', { name: /best/i });
     await bestLink.scrollIntoViewIfNeeded();
@@ -191,7 +197,7 @@ test.describe('Navigation', () => {
 });
 
 test.describe('Navigation - Header Visibility', () => {
-  test.use({ viewport: { width: 375, height: 667 } });
+  test.use({ viewport: { width: 375, height: 667 }, hasTouch: true });
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
@@ -206,6 +212,11 @@ test.describe('Navigation - Header Visibility', () => {
 });
 
 test.describe('Navigation - Viewport Resize Transition', () => {
+  // The transition under test is the width one, so hand the desktop projects a
+  // finger: without it these viewports are a narrowed window, which now keeps
+  // the list on purpose.
+  test.use({ hasTouch: true });
+
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
   });

@@ -6,10 +6,12 @@ import { waitForSwipeReady } from './fixtures/swipe-helpers';
 // that reloads the feed, selection handles eating a drag — and which nothing else
 // in the suite would notice disappearing.
 
-const MOBILE = { width: 390, height: 780 };
+// A finger as well as a narrow viewport: the swipe viewer asks for both, so a
+// narrowed desktop window is a desktop list and has none of this to defend.
+const PHONE = { viewport: { width: 390, height: 780 }, hasTouch: true } as const;
 
 test.describe('Overscroll containment', () => {
-  test.use({ viewport: MOBILE });
+  test.use(PHONE);
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
@@ -55,7 +57,7 @@ test.describe('Overscroll containment', () => {
 });
 
 test.describe('The gate iOS puts in front of :active', () => {
-  test.use({ viewport: MOBILE });
+  test.use(PHONE);
 
   test('a passive touchstart listener is registered on the document', async ({
     page,
@@ -87,13 +89,11 @@ test.describe('The gate iOS puts in front of :active', () => {
 });
 
 test.describe('Selection during a horizontal drag', () => {
-  test.use({ viewport: MOBILE });
+  test.use(PHONE);
 
   test('a finger cannot start one on a text post headline, though its body still can', async ({
     page,
-    hasTouch,
   }) => {
-    test.skip(!hasTouch, 'the lock is gated on a coarse pointer');
     await setupApiMocks(page);
     // The Ask fixture carries `url: null`, so its title renders as bare text
     // instead of a link — the case where a long press raised the handles rather
@@ -120,25 +120,6 @@ test.describe('Selection during a horizontal drag', () => {
     const fromHeadline = await page.evaluate(() => window.getSelection()?.toString() ?? '');
 
     expect(fromHeadline, 'the headline must not be selectable').toBe('');
-  });
-
-  // The mirror of the test above: same headline, same double-click, opposite
-  // expectation. The lock exists to keep a long press off a swipe, and a mouse
-  // has no swipe to take, so it must not pay for one.
-  test('a mouse keeps that headline selectable', async ({ page, hasTouch }) => {
-    test.skip(hasTouch, 'a device with a finger has a gesture to protect');
-    await setupApiMocks(page);
-    await page.goto('/#/item/88888');
-    await waitForSwipeReady(page);
-
-    const headline = page.locator('.swipe-snap-panel.active h1').first();
-
-    await expect
-      .poll(async () => {
-        await headline.dblclick();
-        return page.evaluate(() => window.getSelection()?.toString().length ?? 0);
-      }, { message: 'the headline must stay selectable for a mouse' })
-      .toBeGreaterThan(0);
   });
 
   test('a live selection is collapsed when the gesture locks horizontal', async ({ page }) => {
@@ -210,5 +191,29 @@ test.describe('Selection during a horizontal drag', () => {
     });
 
     expect(collapsedAtLock).toBe(true);
+  });
+});
+
+// The mirror of the headline test above, and it has to look elsewhere for its
+// headline: a mouse reader never reaches a swipe panel now, so the page whose
+// selection they could lose is the desktop item page. Nothing there is behind
+// the coarse-pointer rules, which is the point — this fails if they escape it.
+test.describe('Selection with a mouse', () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+  test.skip(({ hasTouch }) => hasTouch, 'a device with a finger has a gesture to protect');
+
+  test('a headline stays selectable on the page a mouse is given', async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/#/item/88888');
+
+    const headline = page.getByRole('heading', { level: 1 }).first();
+    await expect(headline).toBeVisible();
+
+    await expect
+      .poll(async () => {
+        await headline.dblclick();
+        return page.evaluate(() => window.getSelection()?.toString().length ?? 0);
+      }, { message: 'the headline must stay selectable for a mouse' })
+      .toBeGreaterThan(0);
   });
 });

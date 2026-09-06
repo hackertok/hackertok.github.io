@@ -9,7 +9,7 @@ import type { LocationState, StoryItem } from './types';
 import type * as HnApi from './api/hn';
 
 // Force the mobile branch of the wrapper.
-vi.mock('./hooks/useIsMobile', () => ({ useIsMobile: () => true }));
+vi.mock('./hooks/useCanSwipe', () => ({ useCanSwipe: () => true }));
 
 // Stub the heavy swipe viewers so we can assert *which* viewer the wrapper
 // mounts (and with what props) without their data hooks / async state.

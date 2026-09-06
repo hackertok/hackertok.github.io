@@ -1,12 +1,12 @@
 import { HashRouter, Routes, Route, useParams, useLocation, useNavigate } from 'react-router';
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
 import { Header, ErrorBoundary, FullScreenCommentSkeletonPanel, StateView, NetworkStatusBar } from './components';
 import { TooltipProvider } from './components/ui';
 import { StoryList } from './pages';
-import { useIsMobile } from './hooks/useIsMobile';
+import { useCanSwipe } from './hooks/useCanSwipe';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 import { ItemDetail } from './pages/ItemDetail';
 import { DomainStories } from './pages/DomainStories';
@@ -22,9 +22,9 @@ import { readSwipePosition } from './utils/swipePosition';
 import type { FeedType, LocationState } from './types';
 
 function MobileStoryListWrapper({ type }: { type: FeedType }) {
-  const isMobile = useIsMobile();
+  const canSwipe = useCanSwipe();
   
-  if (isMobile) {
+  if (canSwipe) {
     return <SwipeStoryViewer type={type} />;
   }
   
@@ -37,9 +37,9 @@ function MobileStoryListWrapper({ type }: { type: FeedType }) {
 function MobileDomainStoriesWrapper() {
   const params = useParams();
   const domain = params['*'] ?? '';
-  const isMobile = useIsMobile();
+  const canSwipe = useCanSwipe();
 
-  if (isMobile && domain) {
+  if (canSwipe && domain) {
     // key={domain} forces a clean remount on domain change so the hook's lazy
     // useState init re-reads the module-level cache for the new domain.
     return <SwipeDomainStoryViewer key={domain} domain={domain} />;
@@ -59,9 +59,9 @@ function MobileDomainStoriesWrapper() {
 function MobileUserSubmissionsWrapper() {
   const { id } = useParams<{ id: string }>();
   const username = id ?? '';
-  const isMobile = useIsMobile();
+  const canSwipe = useCanSwipe();
 
-  if (isMobile && username) {
+  if (canSwipe && username) {
     return <SwipeUserSubmissionsViewer key={username} username={username} />;
   }
 
@@ -90,13 +90,13 @@ function renderSwipeViewer(viewer: LocationState, id: string | undefined): React
 // Exported for focused unit testing of the viewer-recovery branch.
 export function MobileItemDetailWrapper() {
   const { id } = useParams();
-  const isMobile = useIsMobile();
+  const canSwipe = useCanSwipe();
   const location = useLocation();
   // Snapshot read once (sticky for the wrapper's life); used only by Branch 4b to
   // recover the viewer on a stateless reload.
   const [recovered] = useState(() => readSwipePosition());
   
-  if (isMobile) {
+  if (canSwipe) {
     const state = location.state as LocationState | null;
 
     // Branch 1: Known comment → SwipeCommentViewer immediately.
@@ -134,6 +134,17 @@ export function MobileItemDetailWrapper() {
 function MobileItemResolver({ id }: { id: string }) {
   const [itemType, setItemType] = useState<'story' | null>(null);
   const navigate = useNavigate();
+  const { enableSwipeMode, disableSwipeMode } = useScrollContainer();
+
+  // The skeleton below is the viewer's own panel, and it pads for the fixed
+  // chrome itself — so React has to know this is swipe mode before paint, or
+  // `<main>` reserves the header a second time and the skeleton starts 56px
+  // low, then jumps when the viewer takes over. Before paint, and paired with
+  // a release, for the same reasons useSwipeScroll's own call is.
+  useLayoutEffect(() => {
+    enableSwipeMode();
+    return disableSwipeMode;
+  }, [enableSwipeMode, disableSwipeMode]);
 
   useEffect(() => {
     if (!id) return;
@@ -176,8 +187,17 @@ function MainContent({ children }: { children: React.ReactNode }) {
   
   // In swipe mode: document scrolls naturally (no height constraint needed).
   // Without h-dvh, ancestor chain grows with panel content.
+  //
+  // Padding for both fixed bars, since this is the only thing in flow: the
+  // header above, the network bar below. Swipe mode reserves that strip inside
+  // each panel instead — and this asks React, so an unrouted URL, which the
+  // pre-paint class in index.html guesses swipe for, reserves it too.
   return (
-    <main id="main" tabIndex={-1} className={isSwipeMode ? '' : 'pt-14 md:pt-0'}>
+    <main
+      id="main"
+      tabIndex={-1}
+      className={isSwipeMode ? '' : 'pt-[var(--header-height)] md:pt-0 pb-[var(--network-bar-height)]'}
+    >
       {children}
     </main>
   );
