@@ -422,9 +422,10 @@ html.dark { color-scheme: dark; }
     user-select: text;
   }
 
-  /* Content links keep the long-press callout: with no share button or
-     clipboard path, on iOS it's the only way to lift a URL out of the feed. */
-  .swipe-snap-panel h1 a,
+  /* Prose links keep the long-press callout: those are arbitrary third-party
+     URLs and the meta row's share control only carries the item. The headline
+     is out deliberately — the share control covers its URL, and it's the
+     likeliest target for a long press to hijack a swipe. */
   .swipe-snap-panel .comment-content a {
     -webkit-touch-callout: default;
   }
