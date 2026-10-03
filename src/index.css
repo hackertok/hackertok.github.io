@@ -422,8 +422,10 @@ html.dark { color-scheme: dark; }
     user-select: text;
   }
 
-  /* Content links keep the long-press callout: with no share button or
-     clipboard path, on iOS it's the only way to lift a URL out of the feed. */
+  /* Content links keep the long-press callout. The meta row's share control
+     carries the item's own link, not the article the headline points to or
+     the third-party URLs in prose, so on iOS this is still the only way to
+     lift those out of the feed. */
   .swipe-snap-panel h1 a,
   .swipe-snap-panel .comment-content a {
     -webkit-touch-callout: default;
