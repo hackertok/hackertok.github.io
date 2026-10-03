@@ -11,16 +11,30 @@ import * as hn from '../api/hn';
 import type { Item, Comment } from '../types';
 import { createStoryItem } from '../test/factories';
 
+// Vitest's fake requestIdleCallback types a callback scheduled with `timeout`
+// as a "Timeout", so its own cancelIdleCallback() throws a type mismatch.
+function installFakeTimers() {
+  vi.useFakeTimers({ toNotFake: ['requestIdleCallback', 'cancelIdleCallback'] });
+  vi.stubGlobal('requestIdleCallback', (cb: IdleRequestCallback) =>
+    setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 0 })));
+  vi.stubGlobal('cancelIdleCallback', (id: ReturnType<typeof setTimeout>) => clearTimeout(id));
+}
+
+function restoreRealTimers() {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+}
+
 describe('usePrefetchItem', () => {
   beforeEach(() => {
     localStorage.clear();
     cancelAllPrefetches();
-    vi.useFakeTimers();
+    installFakeTimers();
   });
 
   afterEach(() => {
     cancelAllPrefetches();
-    vi.useRealTimers();
+    restoreRealTimers();
   });
 
   describe('startPrefetch and stopPrefetch', () => {
@@ -157,12 +171,12 @@ describe('usePrefetchItems', () => {
   beforeEach(() => {
     localStorage.clear();
     cancelAllPrefetches();
-    vi.useFakeTimers();
+    installFakeTimers();
   });
 
   afterEach(() => {
     cancelAllPrefetches();
-    vi.useRealTimers();
+    restoreRealTimers();
   });
 
   const mockItems = [
@@ -235,11 +249,11 @@ describe('cancelAllPrefetches', () => {
   beforeEach(() => {
     localStorage.clear();
     cancelAllPrefetches();
-    vi.useFakeTimers();
+    installFakeTimers();
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    restoreRealTimers();
   });
 
   it('clears pending queue', () => {
@@ -296,12 +310,12 @@ describe('edge cases', () => {
   beforeEach(() => {
     localStorage.clear();
     cancelAllPrefetches();
-    vi.useFakeTimers();
+    installFakeTimers();
   });
 
   afterEach(() => {
     cancelAllPrefetches();
-    vi.useRealTimers();
+    restoreRealTimers();
   });
 
   it('handles item with id 0', () => {
