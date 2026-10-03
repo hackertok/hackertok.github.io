@@ -16,6 +16,11 @@ updates:
     cooldown:
       default-days: 3
     groups:
+      # @vitest/* peer-depends on the exact vitest version, so a lone bump of
+      # any one of them fails `npm ci`; this group must stay first to win.
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
+        exclude-patterns: ["@vitest/eslint-plugin"]
       prod-minor-patch:
         dependency-type: "production"
         update-types: ["minor", "patch"]
