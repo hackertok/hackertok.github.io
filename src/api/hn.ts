@@ -172,8 +172,16 @@ export async function fetchBestStories(offset = 0, limit = 30) {
     pageIds.map((id: number) => hnSdk.readItem(id).catch(() => null))
   );
   
+  // The whoishiring threads are type='story', not 'job', so the job filter
+  // alone lets them through when they rank among the best.
   const stories = fetched
-    .filter((fb): fb is FirebaseItem => fb != null && !fb.deleted && !fb.dead && fb.type !== 'job')
+    .filter((fb): fb is FirebaseItem =>
+      fb != null &&
+      !fb.deleted &&
+      !fb.dead &&
+      fb.type !== 'job' &&
+      !isHiringThread(fb.title)
+    )
     .map(fb => normalizeFirebaseToStoryItem(fb));
   
   return {
@@ -184,9 +192,8 @@ export async function fetchBestStories(offset = 0, limit = 30) {
 }
 
 // Newest feed: reverse-chronological submissions from HN `newstories` (≤500,
-// HN's hard cap). Mirrors fetchBestStories' offset pagination but additionally
-// filters the whoishiring bot's monthly threads (they are type='story', not
-// 'job', so the job filter alone misses them). Reuses HIRING_EXCLUDE_TITLES.
+// HN's hard cap). Mirrors fetchBestStories' offset pagination, including the
+// whoishiring filter.
 export async function fetchNewStories(offset = 0, limit = 30) {
   const now = Date.now();
 
@@ -211,7 +218,7 @@ export async function fetchNewStories(offset = 0, limit = 30) {
       !fb.deleted &&
       !fb.dead &&
       fb.type !== 'job' &&
-      !HIRING_EXCLUDE_TITLES.some(t => (fb.title ?? '').toLowerCase().includes(t))
+      !isHiringThread(fb.title)
     )
     .map(fb => normalizeFirebaseToStoryItem(fb));
 
@@ -242,6 +249,7 @@ async function fetchRankedStories(
   type: 'show' | 'ask',
   offset = 0,
   limit = 20,
+  excludeTitles?: string[],
 ) {
   const now = Date.now();
   if (!cache.ids || (now - cache.timestamp) >= CACHE_TTL) {
@@ -261,7 +269,12 @@ async function fetchRankedStories(
   );
 
   const stories = items
-    .filter((fb): fb is FirebaseItem => fb != null && !fb.deleted && !fb.dead)
+    .filter((fb): fb is FirebaseItem =>
+      fb != null &&
+      !fb.deleted &&
+      !fb.dead &&
+      !excludeTitles?.some(t => (fb.title ?? '').toLowerCase().includes(t))
+    )
     .map(fb => ({ ...normalizeFirebaseToStoryItem(fb), type: type }));
 
   return {
@@ -275,8 +288,10 @@ export function fetchShowStories(offset = 0) {
   return fetchRankedStories('showstories', showStoriesCache, 'show', offset);
 }
 
+// Ask excludes the whoishiring threads, matching fetchAskStoriesForDay. Show is
+// left unfiltered: a Show HN title mentioning hiring is a real project.
 export function fetchAskStories(offset = 0) {
-  return fetchRankedStories('askstories', askStoriesCache, 'ask', offset);
+  return fetchRankedStories('askstories', askStoriesCache, 'ask', offset, 20, HIRING_EXCLUDE_TITLES);
 }
 
 /**
@@ -314,6 +329,11 @@ const HIRING_EXCLUDE_TITLES = [
   'who is hiring',
   'who wants to be hired',
 ];
+
+function isHiringThread(title: string | undefined): boolean {
+  const lower = (title ?? '').toLowerCase();
+  return HIRING_EXCLUDE_TITLES.some(t => lower.includes(t));
+}
 
 export function fetchAskStoriesForDay(daysAgo: number): Promise<StoryItem[]> {
   return fetchTaggedStoriesForDay('ask_hn', daysAgo, HIRING_EXCLUDE_TITLES);
