@@ -84,6 +84,9 @@ export function useInfiniteStories(type: FeedType = 'top') {
     new Set(initialState.sessionState?.seenIds)
   );
   const versionRef = useRef(0);
+  // `loading` alone can't guard: two effects calling loadMore in the same
+  // commit both still see the old `loading === false`.
+  const inFlightRef = useRef(false);
   const hasStaleCacheRef = useRef(initialState.isFromCache);
   // For ask/show: tracks whether we've exhausted Firebase and moved to Algolia
   const phaseRef = useRef<'firebase' | 'algolia'>(
@@ -96,7 +99,8 @@ export function useInfiniteStories(type: FeedType = 'top') {
   );
 
   const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return;
+    if (loading || !hasMore || inFlightRef.current) return;
+    inFlightRef.current = true;
 
     setLoading(true);
     setError(null);
@@ -289,6 +293,7 @@ export function useInfiniteStories(type: FeedType = 'top') {
       }
     } finally {
       if (versionRef.current === currentVersion) {
+        inFlightRef.current = false;
         setLoading(false);
       }
     }
@@ -296,6 +301,7 @@ export function useInfiniteStories(type: FeedType = 'top') {
 
   const reset = useCallback(() => {
     versionRef.current += 1;
+    inFlightRef.current = false;
     
     const initial = getInitialState(type);
     setStories(initial.stories);

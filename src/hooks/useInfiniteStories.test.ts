@@ -106,4 +106,25 @@ describe('useInfiniteStories', () => {
 
     expect(result.current.stories.length).toBeGreaterThanOrEqual(afterRevalidation);
   });
+
+  it('starts one request when loadMore is called twice before re-rendering', async () => {
+    const { result } = renderHook(() => useInfiniteStories('top'));
+
+    // Same closure twice — what two effects in one commit both see.
+    const { loadMore } = result.current;
+    await act(() => Promise.all([loadMore(), loadMore()]));
+
+    expect(hnSdk.readRankedIds).toHaveBeenCalledTimes(1);
+    expect(result.current.stories).toHaveLength(20);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('accepts a new loadMore once the previous one settles', async () => {
+    const { result } = renderHook(() => useInfiniteStories('best'));
+
+    await act(() => result.current.loadMore());
+    await act(() => result.current.loadMore());
+
+    expect(result.current.stories).toHaveLength(50);
+  });
 });
