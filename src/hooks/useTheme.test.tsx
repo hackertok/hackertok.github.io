@@ -80,6 +80,38 @@ describe('useTheme', () => {
     expect(result.current.mode).toBe('system');
     expect(result.current.theme).toBe('light');
   });
+
+  describe('when the browser blocks storage', () => {
+    // Blocking site data makes the `localStorage` getter itself throw.
+    let restoreStorage: () => void;
+
+    beforeEach(() => {
+      const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')!;
+      Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        get() { throw new DOMException('Access is denied for this document.', 'SecurityError'); },
+      });
+      restoreStorage = () => Object.defineProperty(globalThis, 'localStorage', descriptor);
+    });
+
+    afterEach(() => restoreStorage());
+
+    it('mounts in system mode instead of throwing', () => {
+      const { result } = renderHook(() => useTheme(), { wrapper });
+
+      expect(result.current.mode).toBe('system');
+      expect(result.current.theme).toBe('light');
+    });
+
+    it('still applies a selected mode for the current visit', () => {
+      const { result } = renderHook(() => useTheme(), { wrapper });
+
+      act(() => result.current.setMode('dark'));
+
+      expect(result.current.mode).toBe('dark');
+      expect(result.current.theme).toBe('dark');
+    });
+  });
 });
 
 // Controllable matchMedia so we can simulate the OS flipping color schemes at
