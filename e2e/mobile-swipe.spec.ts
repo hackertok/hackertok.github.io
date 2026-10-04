@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { setupApiMocks } from './fixtures/api-mocks';
+import {
+  setupApiMocks,
+  createFirebaseWsHandler,
+  FIREBASE_WS_PATTERN,
+} from './fixtures/api-mocks';
+import { ALGOLIA_API } from './fixtures/mock-data';
 import {
   expectActiveSwipePanelText,
   getActiveSwipePanel,
@@ -770,5 +775,68 @@ test.describe('Mobile Direct Item Access', () => {
         return -1;
       }
     ), { timeout: 5000 }).toBe(1);
+  });
+});
+
+test.describe('Mobile Swipe Viewer - Back past the cached page', () => {
+  test.use({
+    viewport: { width: 375, height: 667 },
+    hasTouch: true,
+  });
+
+  // A full first page. The feed cache keeps only this page, so the viewer that
+  // mounts on Back can't find the Algolia stories that load after it.
+  const topIds = Array.from({ length: 20 }, (_, i) => 30001 + i);
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    await page.routeWebSocket(
+      FIREBASE_WS_PATTERN,
+      createFirebaseWsHandler({ lists: { 'v0/topstories': topIds } }),
+    );
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+  });
+
+  test('returns to the same story and its neighbors after visiting the author', async ({ page }) => {
+    test.setTimeout(60_000);
+
+    await page.goto('/#/');
+    const container = page.getByTestId('swipe-container');
+    await waitForSwipeReady(page, 20);
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+
+    // The next page (yesterday's front page, sorted by points: 55552, 55551,
+    // 55553) loads once you're within 5 stories of the end; the swipe helper
+    // only targets panels that already exist.
+    await smoothScrollAndAwaitSettled(container, panelWidth * 16);
+    await waitForSwipeReady(page, 23);
+    await smoothScrollAndAwaitSettled(container, panelWidth * 21);
+    await waitForScrollAtIndex(page, 21);
+    await expect(page).toHaveURL(/\/item\/55551/, { timeout: 5000 });
+
+    await getActiveSwipePanel(page).locator('a[href^="#/user/"]').first().click();
+    await expect(page).toHaveURL(/\/user\//, { timeout: 5000 });
+
+    // Day pages can't load again, so after Back the stories past the cached
+    // page can only come from what the viewer kept when it unmounted.
+    await page.route(`${ALGOLIA_API}/search*`, async (route) => {
+      const tags = new URL(route.request().url()).searchParams.get('tags');
+      if (tags === 'story') {
+        await route.abort();
+      } else {
+        await route.fallback();
+      }
+    });
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/item\/55551/, { timeout: 5000 });
+    await waitForSwipeReady(page, 23);
+    await waitForScrollAtIndex(page, 21);
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', '55551');
+    await expect(container.locator('[data-testid="swipe-panel"]').nth(20))
+      .toHaveAttribute('data-item-id', '55552');
   });
 });

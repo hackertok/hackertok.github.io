@@ -455,6 +455,47 @@ test.describe('Domain Filter - Mobile Swipe', () => {
       timeout: 10000,
     });
   });
+
+  test('can swipe to the end-of-feed error panel and retry from it', async ({ page }) => {
+    test.setTimeout(60000);
+
+    // Page 0 (5 stories) loads; page 1 fails until the test lets it through.
+    let failNextPage = true;
+    await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
+      const pageNum = new URL(route.request().url()).searchParams.get('page');
+      if (failNextPage && pageNum === '1') {
+        await route.fulfill({ status: 503, json: { message: 'Service unavailable' } });
+      } else {
+        await route.fallback();
+      }
+    });
+
+    await page.goto('/#/from/example.com');
+    const container = page.getByTestId('swipe-container');
+    await waitForSwipeReady(page, 5);
+
+    // Auto-retry exhausts its backoff (2s+4s+8s) before the panel turns into an error.
+    const errorPanel = container.locator('[data-testid="swipe-panel"]', { hasText: 'Failed to load item' });
+    await expect(errorPanel).toHaveCount(1, { timeout: 30000 });
+
+    // Panels are hidden until activated, so Try Again only shows if a swipe
+    // can land on the panel after the last story.
+    const width = await container.evaluate((el) => el.getBoundingClientRect().width);
+    await smoothScrollAndAwaitSettled(container, width * 5);
+    await waitForScrollAtIndex(page, 5);
+    const retryButton = errorPanel.getByRole('button', { name: /try again/i });
+    await expect(retryButton).toBeVisible();
+
+    failNextPage = false;
+    await retryButton.click();
+
+    // The next page's first story takes the error panel's place.
+    await expectActiveSwipePanelText(page, 'Advanced CSS Grid Techniques for Modern Layouts', {
+      minPanels: 7,
+      timeout: 10000,
+    });
+    await expect(page).toHaveURL(/\/item\/77700/, { timeout: 5000 });
+  });
 });
 
 test.describe('Domain Filter - Algolia Error Handling', () => {
