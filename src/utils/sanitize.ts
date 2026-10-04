@@ -44,6 +44,7 @@ const FEED_LABELS = new Map<string, string>([
   ['/show', '/show'],
   ['/ask', '/ask'],
   ['/best', '/best'],
+  ['/newest', '/newest'],
 ]);
 
 // Canonical self-host; `window.location.hostname` also treated as self at runtime.
