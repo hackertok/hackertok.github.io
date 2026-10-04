@@ -42,6 +42,10 @@ function getInitialState(type: FeedType): InitialState {
     }
   }
   
+  return getCachedState(type);
+}
+
+function getCachedState(type: FeedType): InitialState {
   const cached = getCachedFeed(type);
   if (cached && cached.stories.length > 0) {
     return {
@@ -303,7 +307,9 @@ export function useInfiniteStories(type: FeedType = 'top') {
     versionRef.current += 1;
     inFlightRef.current = false;
     
-    const initial = getInitialState(type);
+    // The cache, not the session: the session's stories paired with the cursor
+    // reset below would make the next page repeat them.
+    const initial = getCachedState(type);
     setStories(initial.stories);
     setIsFromCache(initial.isFromCache);
     // We're starting fresh, not restoring — so explicitly drop session-restore flags.
