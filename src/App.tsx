@@ -100,6 +100,12 @@ export function MobileItemDetailWrapper() {
   // Newest snapshot taken on this story, read once (sticky for the wrapper's life);
   // used only by Branch 4b to recover the viewer on a stateless reload.
   const [recovered] = useState(() => readSwipePosition({ storyId: Number(id) }));
+
+  // HN ids are numeric. The swipe viewer can't fetch anything else, and its
+  // NaN id never matches the failed fetch, so it would show the Top feed.
+  if (!id || !/^\d+$/.test(id)) {
+    return <ItemNotFound />;
+  }
   
   if (canSwipe) {
     const state = location.state as LocationState | null;
@@ -107,7 +113,7 @@ export function MobileItemDetailWrapper() {
     // Branch 1: Known comment → SwipeCommentViewer immediately.
     // Comments take priority over user/domain/from to match the header pill
     // priority (comments > user > from).
-    if (state?.isComment && id) {
+    if (state?.isComment) {
       return <SwipeCommentViewer initialCommentId={id} />;
     }
 
@@ -122,16 +128,25 @@ export function MobileItemDetailWrapper() {
     // from story viewers, so we skip the resolver's comment-vs-story fetch. Also
     // fires for a fresh same-tab nav to a still-snapshotted id+viewer (intended:
     // resume where you left off), not just back/reload.
-    if (recovered && id && recovered.storyId === Number(id)) {
+    if (recovered?.storyId === Number(id)) {
       const viewer = renderSwipeViewer(recovered.viewer, id);
       if (viewer) return viewer;
     }
 
     // Branch 5: Direct URL (no state) → resolve type first
-    return <MobileItemResolver id={id ?? ''} />;
+    return <MobileItemResolver id={id} />;
   }
   
   return <ItemDetail key={id} />;
+}
+
+function ItemNotFound() {
+  useDocumentTitle('Item not found');
+  return (
+    <div className="page-state-center-padded">
+      <StateView variant="not-found" action={{ label: 'Back to Home', to: '/' }} />
+    </div>
+  );
 }
 
 // Resolves item type for a direct URL hit on mobile (no `location.state`),

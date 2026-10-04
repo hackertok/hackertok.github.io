@@ -496,6 +496,14 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText(/not found/i)).toBeVisible();
   });
 
+  test('shows not found for an item id that is not a number', async ({ page }) => {
+    await page.goto('/#/item/abc');
+
+    await expect(page.getByRole('heading', { name: 'Item not found' })).toBeVisible();
+    await expect(page).toHaveTitle(/Item not found.*HackerTok/);
+    await expect(page.locator('[data-item-id]')).toHaveCount(0);
+  });
+
   test('restores swipe position when navigating back from not-found item', async ({ page }) => {
     // Regression: swiping away from index 0, then navigating to a non-existent item,
     // then pressing back should restore the scroll position (not reset to index 0).

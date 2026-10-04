@@ -42,7 +42,7 @@ vi.mock('./api/hn', async (importOriginal) => ({
   fetchItemOnly: vi.fn(() => new Promise<never>(() => { /* never resolves */ })),
 }));
 
-function renderWrapper(id: number, state?: LocationState) {
+function renderWrapper(id: number | string, state?: LocationState) {
   return render(
     <Routes>
       <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
@@ -137,6 +137,17 @@ describe('MobileItemDetailWrapper — viewer recovery (stateless reload)', () =>
     expect(screen.queryByTestId('feed-viewer')).toBeNull();
     expect(screen.queryByTestId('domain-viewer')).toBeNull();
     expect(screen.queryByTestId('user-viewer')).toBeNull();
+  });
+});
+
+describe('MobileItemDetailWrapper — ids that are not numbers', () => {
+  it.each(['abc', '1.5', '-1'])('shows "Item not found" for /item/%s instead of a feed', (id) => {
+    renderWrapper(id, { from: 'top' });
+
+    expect(screen.getByRole('heading', { name: 'Item not found' })).toBeInTheDocument();
+    expect(screen.queryByTestId('feed-viewer')).toBeNull();
+    expect(screen.queryByTestId('swipe-container')).toBeNull();
+    expect(document.title).toMatch(/^Item not found/);
   });
 });
 
