@@ -586,22 +586,30 @@ export async function prefetchItemComments(id: number | string, signal?: AbortSi
 }
 
 export async function fetchCommentsForItem(id: number | string, signal: AbortSignal | null = null): Promise<Comment[]> {
+  return (await fetchItemWithComments(id, signal)).comments;
+}
+
+/** The comment tree plus the item it hangs off, which the ordering reads anyway. */
+export async function fetchItemWithComments(id: number | string, signal: AbortSignal | null = null): Promise<PrefetchResult> {
   const itemId = Number(id);
-  
+
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
   }
-  
+
   const [item, comments] = await Promise.all([
     fetchFirebaseItem(itemId, signal ?? undefined),
     fetchAllCommentsAlgolia(itemId, signal ?? undefined),
   ]);
-  
+
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
   }
-  
-  return buildOrderedCommentTree(comments, itemId, item?.kids, signal ?? undefined);
+
+  return {
+    item: normalizeFirebaseItem(item),
+    comments: await buildOrderedCommentTree(comments, itemId, item.kids, signal ?? undefined),
+  };
 }
 
 // Algolia /items/{id} returns the full nested children tree in one request.

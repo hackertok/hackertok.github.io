@@ -96,6 +96,37 @@ describe('useItemWithComments', () => {
     });
   });
 
+  describe('initialItem without text (restored swipe position)', () => {
+    const body = '<p>Ask HN body</p>';
+
+    it('takes the body from the cached copy without fetching', () => {
+      setCachedItem(12345, { ...testItem, text: body }, testComments, 3);
+
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: testItem })
+      );
+
+      expect(result.current.item).toEqual({ ...testItem, text: body });
+      expect(hnSdk.readItem).not.toHaveBeenCalled();
+    });
+
+    it('takes the body from the item fetched with the comments, and caches it', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue({ ...mockFirebaseStory, text: body, score: 999 });
+      const askItem = { ...testItem, type: 'ask' as const };
+
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: askItem })
+      );
+
+      await waitFor(() => {
+        expect(result.current.commentsLoading).toBe(false);
+      });
+      // Only the body is filled in: the feed's own fields (type, points) stay.
+      expect(result.current.item).toEqual({ ...askItem, text: body });
+      expect(getCachedItem(12345)?.item).toEqual({ ...askItem, text: body });
+    });
+  });
+
   describe('deferComments option', () => {
     it('skips comment fetch when deferComments is true', async () => {
       const { result } = renderHook(() =>
@@ -723,6 +754,40 @@ describe('useItemWithComments', () => {
       });
       expect(result.current.comments).toBeTruthy();
       expect(result.current.comments!.length).toBeGreaterThan(0);
+    });
+
+    it('keeps the body of a restored story whose comments arrive through the retry', async () => {
+      const body = '<p>Ask HN body</p>';
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue({ ...mockFirebaseStory, text: body });
+      let resolveComments: (() => void) | undefined;
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, async () => {
+          await new Promise<void>(resolve => { resolveComments = resolve; });
+          return HttpResponse.json({ hits: [], nbHits: 0, page: 0, nbPages: 0, hitsPerPage: 200 });
+        })
+      );
+
+      // testItem has no `text`, like a story restored from a swipe position.
+      const { result } = renderHook(
+        () => useItemWithComments(12345, { initialItem: testItem }),
+        { wrapper: networkWrapper }
+      );
+
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => HttpResponse.json({
+          hits: [{ objectID: '1001', author: 'user1', comment_text: 'Test', created_at_i: 1000, parent_id: 12345, story_id: 12345 }],
+          nbHits: 1, page: 0, nbPages: 1, hitsPerPage: 200,
+        }))
+      );
+      act(() => { window.dispatchEvent(new Event('offline')); });
+      act(() => { window.dispatchEvent(new Event('online')); });
+      resolveComments?.();
+
+      await waitFor(() => {
+        expect(result.current.commentsLoading).toBe(false);
+      });
+      expect(result.current.item).toEqual({ ...testItem, text: body });
+      expect(getCachedItem(12345)?.item).toEqual({ ...testItem, text: body });
     });
 
     it('does not retry when comments already loaded', async () => {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useEffectEvent, useCallback } from 'react';
-import { fetchItemOnly, fetchCommentsForItem, NotFoundError } from '../api/hn';
+import { fetchItemOnly, fetchCommentsForItem, fetchItemWithComments, NotFoundError } from '../api/hn';
 import { getCachedItem, setCachedItem } from '../utils/itemCache';
 import { registerPriorityFetch, unregisterPriorityFetch } from '../utils/fetchPriority';
 import { useNetworkStatus } from './useNetworkStatus';
@@ -28,11 +28,19 @@ interface UseItemWithCommentsResult {
   refresh: () => Promise<void>;
 }
 
+// Swipe-position snapshots store stories without `text` (see swipePosition.ts),
+// so an initialItem can lack a body that another copy of the item has.
+function withText(item: Item | null | undefined, source: Item | null | undefined): Item | null {
+  if (!item) return null;
+  if (item.text !== undefined || source?.id !== item.id || source.text === undefined) return item;
+  return { ...item, text: source.text };
+}
+
 export function useItemWithComments(itemId: number | string, { initialItem = null, skipOrderingCompletion = false, isPriority = true, deferComments = false }: UseItemWithCommentsOptions = {}): UseItemWithCommentsResult {
   const initialCache = getCachedItem(itemId);
   
   // Lazy initialization from cache or initialItem for instant render
-  const [item, setItem] = useState(() => initialItem ?? initialCache?.item ?? null);
+  const [item, setItem] = useState(() => withText(initialItem, initialCache?.item) ?? initialCache?.item ?? null);
   const [comments, setComments] = useState(() => initialCache?.comments ?? null);
   
   const [itemLoading, setItemLoading] = useState(!initialItem && !initialCache?.item);
@@ -76,7 +84,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     
     const cached = getCachedItem(itemId);
     
-    const hasItem = initialItem ?? cached?.item;
+    const hasItem = withText(initialItem, cached?.item) ?? cached?.item;
     
     const stateHasDifferentItem = currentItem && String(currentItemId) !== String(itemId);
     
@@ -97,7 +105,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       const validInitialItem = initialItem && String(initialItem.id) === String(itemId) 
         ? initialItem 
         : null;
-      setItem(validInitialItem);
+      setItem(withText(validInitialItem, cached?.item));
       setItemLoading(!validInitialItem);
       setComments(null);
       setCommentsLoading(true);
@@ -166,14 +174,16 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       }
       
       try {
-        const commentsData = await fetchCommentsForItem(itemId, controller.signal);
+        const { item: fetchedItem, comments: commentsData } = await fetchItemWithComments(itemId, controller.signal);
         if (!controller.signal.aborted) {
+          setItem(current => withText(current, fetchedItem));
           setComments(commentsData);
           setCommentsLoading(false);
           setCommentsError(null);
           
-          if (itemData) {
-            setCachedItem(itemId, itemData, commentsData, 3);
+          const fullItem = withText(itemData, fetchedItem);
+          if (fullItem) {
+            setCachedItem(itemId, fullItem, commentsData, 3);
           }
           
           // Unregister priority so section prefetch and other lower-priority
@@ -205,9 +215,9 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       
       if (needsOrderingCompletion && hasItem) {
         // Show partial-ordering data immediately, complete ordering in background.
-        await loadComments(initialItem ?? cached.item, true);
+        await loadComments(hasItem, true);
       } else if (needsFullFetch) {
-        const itemData = hasItem ? (initialItem ?? cached?.item) : await loadItem();
+        const itemData = hasItem ?? await loadItem();
         
         // Comment items use a different fetch path (useCommentDetail via Algolia /items).
         if (itemData && itemData.type !== 'comment' && !controller.signal.aborted) {
@@ -264,13 +274,15 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     controllerRef.current = controller;
     setCommentsLoading(true);
 
-    void fetchCommentsForItem(itemId, controller.signal)
-      .then(commentsData => {
+    void fetchItemWithComments(itemId, controller.signal)
+      .then(({ item: fetchedItem, comments: commentsData }) => {
         if (controller.signal.aborted) return;
+        setItem(current => withText(current, fetchedItem));
         setComments(commentsData);
         setCommentsLoading(false);
         setCommentsError(null);
-        if (item) setCachedItem(itemId, item, commentsData, 3);
+        const fullItem = withText(item, fetchedItem);
+        if (fullItem) setCachedItem(itemId, fullItem, commentsData, 3);
       })
       .catch(err => {
         if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;

@@ -663,6 +663,28 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
   });
 
+  test('keeps the Ask HN body after visiting the author and going Back, and after a reload', async ({ page }) => {
+    // The saved swipe position stores stories without their body, and the
+    // restored copy is what the panel renders.
+    await page.goto('/#/ask');
+    await expect(page).toHaveURL(/\/item\/88888/);
+    const body = () => getActiveSwipePanel(page).getByText(/curious what side projects everyone is working on/i);
+    await expect(body()).toBeVisible();
+
+    await getActiveSwipePanel(page).locator('a[href^="#/user/"]').first().click();
+    await expect(page).toHaveURL(/\/user\//, { timeout: 5000 });
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/item\/88888/, { timeout: 5000 });
+    await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
+    await expect(body()).toBeVisible();
+
+    await page.reload();
+    await expect(page).toHaveURL(/\/item\/88888/, { timeout: 5000 });
+    await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
+    await expect(body()).toBeVisible();
+  });
+
   test('navigating directly to a comment shows comment in swipe viewer', async ({ page }) => {
     await page.goto('/#/item/1001');
 

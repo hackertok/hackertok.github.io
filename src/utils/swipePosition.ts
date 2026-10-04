@@ -30,7 +30,7 @@ export function sameViewer(a: LocationState, b: LocationState): boolean {
   );
 }
 
-/** Lean projection: omits `text` (the heavy Ask/Show HTML body); FullScreenItem re-fetches. */
+/** Lean projection: omits `text` (the heavy Ask/Show HTML body); useItemWithComments fills it back in. */
 function projectStory(s: StoryItem): StoryItem {
   return {
     id: s.id,
