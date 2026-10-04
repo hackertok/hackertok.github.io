@@ -21,11 +21,16 @@ import { fetchItemOnly } from './api/hn';
 import { readSwipePosition } from './utils/swipePosition';
 import type { FeedType, LocationState } from './types';
 
-function MobileStoryListWrapper({ type }: { type: FeedType }) {
+// Exported for focused unit testing.
+export function MobileStoryListWrapper({ type }: { type: FeedType }) {
   const canSwipe = useCanSwipe();
   
   if (canSwipe) {
-    return <SwipeStoryViewer type={type} />;
+    // key={type}: every feed route renders this wrapper, so a tab switch made
+    // before the viewer moves the URL to /item/:id (first load still running,
+    // or a failed one) would otherwise keep the previous feed's stories and
+    // let its in-flight page land in the new feed.
+    return <SwipeStoryViewer key={type} type={type} />;
   }
   
   return <StoryList type={type} />;

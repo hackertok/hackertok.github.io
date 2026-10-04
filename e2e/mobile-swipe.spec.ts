@@ -4,7 +4,7 @@ import {
   createFirebaseWsHandler,
   FIREBASE_WS_PATTERN,
 } from './fixtures/api-mocks';
-import { ALGOLIA_API } from './fixtures/mock-data';
+import { ALGOLIA_API, mockTopItemIds } from './fixtures/mock-data';
 import {
   expectActiveSwipePanelText,
   getActiveSwipePanel,
@@ -391,6 +391,25 @@ test.describe('Mobile Swipe Viewer', () => {
     await smoothScrollAndAwaitSettled(container, 0);
     await waitForScrollAtIndex(page, 0);
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
+  });
+
+  test('switching feeds while the first one is still loading shows only the new feed', async ({ page }) => {
+    // Every Firebase read takes 1.5s, so Top's first page is still loading at the click.
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ delayMs: 1500 }));
+    await page.goto('/#/');
+    await expect(page.getByTestId('swipe-container')).toBeVisible();
+    await expect(page.locator('[data-item-id]')).toHaveCount(0);
+
+    await page.getByRole('link', { name: 'best', exact: true }).click({ force: true });
+
+    await expect(page).toHaveURL(/\/item\/33001/, { timeout: 15000 });
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', '33001');
+    await waitForSwipeReady(page, 3);
+    const ids = await page.locator('[data-item-id]').evaluateAll(
+      (els) => els.map((el) => Number(el.getAttribute('data-item-id'))),
+    );
+    expect(ids).toEqual(expect.arrayContaining([33001, 33002, 33003]));
+    expect(ids.filter((id) => mockTopItemIds.includes(id))).toEqual([]);
   });
 
   test('swipe uses replace — back navigates to previous section, not previous item', async ({ page }) => {
