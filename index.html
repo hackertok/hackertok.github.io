@@ -85,7 +85,11 @@
       // Mirrors ThemeProvider: 'light'/'dark' are explicit pins; 'system' (and
       // any missing value) follows the OS color scheme.
       (function() {
-        var mode = localStorage.getItem('setting:theme');
+        // Reading storage throws when the browser blocks site data; follow the OS then.
+        var mode = null;
+        try {
+          mode = localStorage.getItem('setting:theme');
+        } catch (e) {}
         var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         var isDark = mode === 'dark' || (mode !== 'light' && prefersDark);
         if (isDark) {
