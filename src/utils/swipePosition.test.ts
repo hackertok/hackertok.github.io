@@ -5,6 +5,7 @@ import {
   clearSwipePosition,
   SWIPE_POSITION_KEY,
   SWIPE_POSITION_AHEAD,
+  SWIPE_POSITION_MAX_VIEWERS,
 } from './swipePosition';
 import { createStoryItem } from '../test/factories';
 import type { StoryItem } from '../types';
@@ -173,6 +174,63 @@ describe('swipePosition', () => {
     });
   });
 
+  describe('one position per viewer', () => {
+    it("keeps a viewer's position when another viewer saves", () => {
+      saveSwipePosition({ viewer: { from: 'top' }, storyId: 2, index: 1, scrollY: 0, stories });
+      saveSwipePosition({ viewer: { from: 'best' }, storyId: 3, index: 2, scrollY: 0, stories });
+
+      expect(readSwipePosition({ viewer: { from: 'top' } })?.storyId).toBe(2);
+      expect(readSwipePosition({ viewer: { from: 'best' } })?.storyId).toBe(3);
+    });
+
+    it("replaces the viewer's own older position", () => {
+      saveSwipePosition({ viewer: { fromDomain: 'a.com' }, storyId: 1, index: 0, scrollY: 0, stories });
+      saveSwipePosition({ viewer: { fromDomain: 'a.com' }, storyId: 3, index: 2, scrollY: 0, stories });
+
+      expect(readSwipePosition({ viewer: { fromDomain: 'a.com' } })?.storyId).toBe(3);
+      expect(readSwipePosition({ storyId: 1 })).toBeNull();
+    });
+
+    it('returns the newest snapshot when no viewer is given, or the newest on a story', () => {
+      saveSwipePosition({ viewer: { from: 'top' }, storyId: 2, index: 1, scrollY: 0, stories });
+      saveSwipePosition({ viewer: { from: 'best' }, storyId: 2, index: 1, scrollY: 0, stories });
+      saveSwipePosition({ viewer: { fromUser: 'pg' }, storyId: 3, index: 2, scrollY: 0, stories });
+
+      expect(readSwipePosition()?.viewer).toEqual({ fromUser: 'pg' });
+      expect(readSwipePosition({ storyId: 2 })?.viewer).toEqual({ from: 'best' });
+      expect(readSwipePosition({ viewer: { from: 'top' }, storyId: 3 })).toBeNull();
+    });
+
+    it(`keeps only the ${SWIPE_POSITION_MAX_VIEWERS} newest viewers`, () => {
+      for (let i = 0; i <= SWIPE_POSITION_MAX_VIEWERS; i++) {
+        saveSwipePosition({ viewer: { fromUser: `u${i}` }, storyId: 2, index: 1, scrollY: 0, stories });
+      }
+
+      expect(readSwipePosition({ viewer: { fromUser: 'u0' } })).toBeNull();
+      expect(readSwipePosition({ viewer: { fromUser: 'u1' } })).not.toBeNull();
+      expect(readSwipePosition({ viewer: { fromUser: `u${SWIPE_POSITION_MAX_VIEWERS}` } })).not.toBeNull();
+    });
+
+    it('expires each position on its own', () => {
+      saveSwipePosition({ viewer: { from: 'top' }, storyId: 2, index: 1, scrollY: 0, stories });
+      vi.advanceTimersByTime(20 * 60 * 1000);
+      saveSwipePosition({ viewer: { from: 'best' }, storyId: 3, index: 2, scrollY: 0, stories });
+      vi.advanceTimersByTime(11 * 60 * 1000);
+
+      expect(readSwipePosition({ viewer: { from: 'top' } })).toBeNull();
+      expect(readSwipePosition({ viewer: { from: 'best' } })?.storyId).toBe(3);
+    });
+
+    it('reads a single record saved in the earlier one-slot format', () => {
+      sessionStorage.setItem(
+        SWIPE_POSITION_KEY,
+        JSON.stringify({ viewer: { from: 'top' }, storyId: 2, index: 1, scrollY: 0, stories, savedAt: Date.now() }),
+      );
+
+      expect(readSwipePosition({ viewer: { from: 'top' } })?.storyId).toBe(2);
+    });
+  });
+
   describe('clearSwipePosition', () => {
     it('removes a stored snapshot', () => {
       saveSwipePosition({ viewer: { from: 'top' }, storyId: 2, index: 1, scrollY: 0, stories });
@@ -180,8 +238,19 @@ describe('swipePosition', () => {
       expect(readSwipePosition()).toBeNull();
     });
 
+    it("removes only the given viewer's snapshot", () => {
+      saveSwipePosition({ viewer: { from: 'top' }, storyId: 2, index: 1, scrollY: 0, stories });
+      saveSwipePosition({ viewer: { from: 'best' }, storyId: 3, index: 2, scrollY: 0, stories });
+
+      clearSwipePosition({ from: 'top' });
+
+      expect(readSwipePosition({ viewer: { from: 'top' } })).toBeNull();
+      expect(readSwipePosition({ viewer: { from: 'best' } })?.storyId).toBe(3);
+    });
+
     it('does not throw when nothing is stored', () => {
       expect(() => clearSwipePosition()).not.toThrow();
+      expect(() => clearSwipePosition({ from: 'top' })).not.toThrow();
     });
   });
 });

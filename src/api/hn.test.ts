@@ -517,6 +517,18 @@ describe('hn API utilities', () => {
       expect(result2.stories.length).toBe(5);
       expect(result2.hasMore).toBe(false);
     });
+
+    it('keeps Show HN projects whose titles mention hiring', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) =>
+        Number(id) === 99998
+          ? { ...mockShowItems[99998], title: 'Show HN: A "Who is hiring" thread search' }
+          : mockShowItems[Number(id)] ?? null
+      );
+
+      const result = await fetchShowStories(0);
+
+      expect(result.stories.map(s => s.id)).toEqual([99999, 99998, 99997]);
+    });
   });
 
   describe('fetchAskStories', () => {
@@ -598,6 +610,21 @@ describe('hn API utilities', () => {
       const result2 = await fetchAskStories(result1.nextOffset);
       expect(result2.stories.length).toBe(5);
       expect(result2.hasMore).toBe(false);
+    });
+
+    it('filters out the monthly whoishiring threads', async () => {
+      vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue([88888, 88910, 88911, 88887]);
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        const hiring: Record<number, FirebaseItem> = {
+          88910: { id: 88910, title: 'Ask HN: Who is hiring? (October 2026)', text: 'Post jobs', by: 'whoishiring', score: 300, time: Math.floor(Date.now() / 1000), descendants: 400, type: 'story' },
+          88911: { id: 88911, title: 'Ask HN: Who wants to be hired? (October 2026)', text: 'Post resumes', by: 'whoishiring', score: 120, time: Math.floor(Date.now() / 1000), descendants: 200, type: 'story' },
+        };
+        return hiring[Number(id)] ?? mockAskItems[Number(id)] ?? null;
+      });
+
+      const result = await fetchAskStories(0);
+
+      expect(result.stories.map(s => s.id)).toEqual([88888, 88887]);
     });
   });
 
@@ -802,6 +829,19 @@ describe('hn API utilities', () => {
       
       expect(result.stories).toEqual([]);
       expect(result.hasMore).toBe(false);
+    });
+
+    it('filters out the monthly whoishiring threads', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        const base = { id: Number(id), by: 'testuser', score: 50, time: Math.floor(Date.now() / 1000) - 7200, descendants: 5, type: 'story' as const };
+        if (Number(id) === 12346) return { ...base, title: 'Ask HN: Who is hiring? (October 2026)', by: 'whoishiring' };
+        if (Number(id) === 12348) return { ...base, title: 'Ask HN: Who wants to be hired? (October 2026)', by: 'whoishiring' };
+        return { ...base, title: `Item ${id}` };
+      });
+
+      const result = await fetchBestStories(0, 30);
+
+      expect(result.stories.map(s => s.id)).toEqual([12345, 12347, 12349]);
     });
   });
 

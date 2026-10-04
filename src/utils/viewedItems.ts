@@ -147,6 +147,22 @@ function createTimeMap(storageKey: string) {
 const titleTimeMap = createTimeMap(VIEWED_TITLE_TIMES_KEY);
 const detailTimeMap = createTimeMap(VIEWED_DETAIL_TIMES_KEY);
 
+// Every write stores this tab's whole in-memory copy, so a copy that predates
+// another tab's write would erase it. `storage` fires only in the other tabs;
+// dropping the copies there makes their next read or write start from storage.
+// A null key means another tab cleared all of localStorage.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    const { key } = event;
+    if (key === null || key === VIEWED_TITLE_TIMES_KEY) titleTimeMap.reset();
+    if (key === null || key === VIEWED_DETAIL_TIMES_KEY) detailTimeMap.reset();
+    if (key === null || key === VIEWED_KEY) {
+      viewedSet = null;
+      notifyListeners();
+    }
+  });
+}
+
 /** Get IDs that should be filtered (hidden) in swipe mode — entries not yet expired. */
 export function getFilteredViewedIds(): Set<number> {
   const now = Date.now();

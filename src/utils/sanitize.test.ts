@@ -537,6 +537,11 @@ describe('sanitizeHtml', () => {
         expect(result).toContain('href="#/best"');
       });
 
+      it('rewrites /newest', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/newest">link</a>');
+        expect(result).toContain('href="#/newest"');
+      });
+
       it('drops query string on feed rewrite', () => {
         const result = sanitizeHtml('<a href="https://news.ycombinator.com/show?p=2">link</a>');
         expect(result).toContain('href="#/show"');
@@ -573,6 +578,11 @@ describe('sanitizeHtml', () => {
       it('rewrites self non-hash /show', () => {
         const result = sanitizeHtml('<a href="https://hackertok.github.io/show">link</a>');
         expect(result).toContain('href="#/show"');
+      });
+
+      it('rewrites self /#/newest', () => {
+        const result = sanitizeHtml('<a href="https://hackertok.github.io/#/newest">link</a>');
+        expect(result).toContain('href="#/newest"');
       });
 
       it('rewrites self /#/user/<username>', () => {
@@ -681,6 +691,12 @@ describe('sanitizeHtml', () => {
         const url = 'https://news.ycombinator.com/best';
         const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
         expect(result).toContain('>/best</a>');
+      });
+
+      it('replaces auto-linkified HN /newest with /newest', () => {
+        const url = 'https://news.ycombinator.com/newest';
+        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
+        expect(result).toContain('>/newest</a>');
       });
 
       it('replaces auto-linkified self hash item URL with item:<id>', () => {
@@ -803,9 +819,9 @@ describe('sanitizeHtml', () => {
     });
 
     describe('negative cases', () => {
-      it('leaves news.ycombinator.com/newest unchanged', () => {
-        const result = sanitizeHtml('<a href="https://news.ycombinator.com/newest">link</a>');
-        expect(result).toContain('href="https://news.ycombinator.com/newest"');
+      it('leaves HN pages without an in-app route (e.g. /jobs) unchanged', () => {
+        const result = sanitizeHtml('<a href="https://news.ycombinator.com/jobs">link</a>');
+        expect(result).toContain('href="https://news.ycombinator.com/jobs"');
       });
 
       it('leaves unrelated hosts unchanged', () => {

@@ -96,6 +96,15 @@ describe('MobileItemDetailWrapper — viewer recovery (stateless reload)', () =>
     expect(screen.queryByTestId('user-viewer')).toBeNull();
   });
 
+  it('recovers the viewer whose snapshot is on this story when another viewer saved later', () => {
+    seedSnapshot({ from: 'best' }, 123);
+    seedSnapshot({ from: 'top' }, 456);
+
+    renderWrapper(123);
+
+    expect(screen.getByTestId('feed-viewer')).toHaveAttribute('data-type', 'best');
+  });
+
   it('falls back to the resolver when the snapshot id does not match the route', () => {
     seedSnapshot({ from: 'best' }, 999); // snapshot is for a different story
 

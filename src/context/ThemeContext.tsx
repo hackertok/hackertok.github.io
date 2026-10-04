@@ -13,8 +13,13 @@ function getSystemTheme(): Theme {
   return window.matchMedia(DARK_QUERY).matches ? 'dark' : 'light';
 }
 
+// Storage access throws when the browser blocks site data; that must not take
+// the app down, since ThemeProvider renders above the ErrorBoundary.
 function readStoredMode(): ThemeMode {
-  const stored = localStorage.getItem(MODE_KEY);
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(MODE_KEY);
+  } catch { /* storage unavailable — follow the device */ }
   if (stored === 'light' || stored === 'dark' || stored === 'system') {
     return stored;
   }
@@ -67,7 +72,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Persist only on an explicit choice. Mounting never writes, so a fresh user
   // stays "follow the device" until they opt out.
   const setMode = (next: ThemeMode) => {
-    localStorage.setItem(MODE_KEY, next);
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch { /* not persisted — still applies for this visit */ }
     setModeState(next);
   };
 

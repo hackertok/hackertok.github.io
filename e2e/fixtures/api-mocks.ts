@@ -171,10 +171,16 @@ function buildItemsMap(): Record<number, object> {
 function resolveFirebasePath(
   path: string,
   items: Record<number, object>,
-  opts?: { userResolver?: (username: string) => object | null },
+  opts?: {
+    userResolver?: (username: string) => object | null;
+    lists?: Record<string, number[]>;
+  },
 ): unknown {
   // Strip leading slash — the SDK sends `/v0/...` but our constants use `v0/...`
   const p = path.replace(/^\//, '');
+
+  const listOverride = opts?.lists?.[p];
+  if (listOverride) return listOverride;
 
   if (p === 'v0/topstories') return mockTopItemIds;
   if (p === 'v0/beststories') return mockBestItemIds;
@@ -242,6 +248,8 @@ export function createFirebaseWsHandler(opts?: {
   delayMs?: number;
   itemOverrides?: Record<number, object | null>;
   errorItemIds?: number[];
+  /** Story lists to serve instead of the defaults, keyed by path (`v0/topstories`). */
+  lists?: Record<string, number[]>;
 }) {
   const items = { ...buildItemsMap(), ...(opts?.itemOverrides ?? {}) };
 
@@ -286,7 +294,10 @@ export function createFirebaseWsHandler(opts?: {
         return;
       }
 
-      const data = resolveFirebasePath(body.p, items, { userResolver: opts?.userResolver });
+      const data = resolveFirebasePath(body.p, items, {
+        userResolver: opts?.userResolver,
+        lists: opts?.lists,
+      });
       const response = JSON.stringify({
         t: 'd',
         d: { r: reqId, b: { s: 'ok', d: data } },

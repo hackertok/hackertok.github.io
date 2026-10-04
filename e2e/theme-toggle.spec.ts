@@ -95,6 +95,26 @@ test.describe('Theme - System mode', () => {
     await expect(html).not.toHaveClass(/dark/);
   });
 
+  test('follows the OS dark preference without an error when site storage is blocked', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await setupApiMocks(page);
+    await page.addInitScript(() => {
+      const deny = () => {
+        throw new DOMException('Access is denied for this document.', 'SecurityError');
+      };
+      Object.defineProperty(window, 'localStorage', { configurable: true, get: deny });
+      Object.defineProperty(window, 'sessionStorage', { configurable: true, get: deny });
+    });
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+
+    await page.goto('/#/');
+
+    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    expect(errors).toEqual([]);
+  });
+
   // Issue 2: while following the system, flipping the OS theme flips the app.
   test('system mode follows the OS theme when it changes after load', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' });

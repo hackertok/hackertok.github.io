@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 import { useSwipeScroll } from '../hooks/useSwipeScroll';
@@ -15,15 +15,6 @@ import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
 import { StateView } from './StateView';
 import type { StoryItem, FeedType, LocationState } from '../types';
-
-/** Two LocationStates refer to the same viewer when they share a feed/domain/user. */
-function sameViewer(a: LocationState, b: LocationState): boolean {
-  return (
-    (a.from ?? null) === (b.from ?? null) &&
-    (a.fromDomain ?? null) === (b.fromDomain ?? null) &&
-    (a.fromUser ?? null) === (b.fromUser ?? null)
-  );
-}
 
 interface SwipeStoryViewerCoreProps {
   /** Story data from the consumer's data source (feed, domain, etc.) */
@@ -77,13 +68,8 @@ export function SwipeStoryViewerCore({
   // effect rewrites /item/:id), so re-validating per render would drop the snapshot
   // mid-session and collapse the list back to live `stories`.
   const [restoreSnapshot] = useState(() => {
-    const snap = readSwipePosition();
-    return snap &&
-      snap.stories.length > 0 &&
-      snap.storyId === initialItemIdNum &&
-      sameViewer(snap.viewer, backState)
-      ? snap
-      : null;
+    const snap = readSwipePosition({ viewer: backState });
+    return snap && snap.stories.length > 0 && snap.storyId === initialItemIdNum ? snap : null;
   });
   const isRestoringPosition = restoreSnapshot !== null;
   const restoredStories = restoreSnapshot?.stories ?? null;
@@ -188,23 +174,6 @@ export function SwipeStoryViewerCore({
   const anchorResolved = !anchorStoryId ||
     mergedStories.some(s => s.id === anchorStoryId);
 
-  const {
-    containerRef,
-    currentIndex,
-    currentIndexRef,
-    scrollToIndex,
-    isScrollingProgrammaticallyRef,
-  } = useSwipeScroll({
-    itemCount: mergedStories.length,
-    enabled: mergedStories.length > 0 && anchorResolved,
-  });
-
-  // Get current story for document title (updates as user swipes)
-  const currentStory = mergedStories[currentIndex];
-  const isNonStoryError = injectedError === 'job' || injectedError === 'comment';
-  const isInjectedNotFound = injectedError && (isNonStoryError || isInjectedItemNotFound);
-  const isAtEndError = error && !loading && mergedStories.length > 0 && currentIndex === mergedStories.length - 1;
-
   const { isOnline } = useNetworkStatus();
   const { isRetrying, giveUp, resetRetry } = useAutoRetry({
     error,
@@ -212,6 +181,38 @@ export function SwipeStoryViewerCore({
     isOnline,
     enabled: !injectedError,
   });
+
+  // The loading/error panel after the last story counts as a swipe target:
+  // panels stay display:none until activated, so one the gesture can't reach
+  // would hide the skeleton and the Try Again button for good.
+  const showLoadingPanel = isOnline && mergedStories.length > 0 && (loading || isRetrying);
+  const showErrorPanel = isOnline && mergedStories.length > 0 && !!error && !loading && !isRetrying;
+  const panelCount = mergedStories.length + (showLoadingPanel || showErrorPanel ? 1 : 0);
+
+  const {
+    containerRef,
+    currentIndex,
+    currentIndexRef,
+    scrollToIndex,
+    isScrollingProgrammaticallyRef,
+  } = useSwipeScroll({
+    itemCount: panelCount,
+    enabled: mergedStories.length > 0 && anchorResolved,
+  });
+
+  // The trailing panel can go away while it's showing (a load that brought no
+  // new stories, going offline); fall back to the last panel left.
+  useLayoutEffect(() => {
+    if (panelCount > 0 && currentIndex >= panelCount) {
+      scrollToIndex(panelCount - 1);
+    }
+  }, [panelCount, currentIndex, scrollToIndex]);
+
+  // Get current story for document title (updates as user swipes)
+  const currentStory = mergedStories[currentIndex];
+  const isNonStoryError = injectedError === 'job' || injectedError === 'comment';
+  const isInjectedNotFound = injectedError && (isNonStoryError || isInjectedItemNotFound);
+  const isAtEndError = error && !loading && mergedStories.length > 0 && currentIndex >= mergedStories.length - 1;
 
   const documentTitle = injectedError
     ? (isInjectedNotFound ? (isNonStoryError ? 'Item not available' : 'Item not found') : 'Failed to load item')
@@ -329,22 +330,39 @@ export function SwipeStoryViewerCore({
     mergedStoriesRef.current = mergedStories;
     backStateRef.current = backState;
   });
+
+  // Persist a snapshot of the current story + neighborhood for restore.
+  const persistSnapshot = useCallback(() => {
+    const list = mergedStoriesRef.current;
+    // On the trailing loading/error panel, the last story is where you are.
+    const index = Math.min(currentIndexRef.current, list.length - 1);
+    const cur = list[index];
+    if (!cur) return;
+    saveSwipePosition({
+      viewer: backStateRef.current,
+      storyId: cur.id,
+      index,
+      scrollY: window.scrollY,
+      stories: list,
+    });
+  }, [currentIndexRef]);
+
+  // In-app navigation (tapping the author, say) unmounts the viewer, and for
+  // the main feeds the remount on Back gets only the first cached page, which can
+  // lack the story you were on and everything around it. Saving here lets that
+  // remount restore like a reload does. A layout cleanup runs before the next
+  // route's DOM goes in, so window.scrollY is still this panel's.
+  useLayoutEffect(() => () => persistSnapshot(), [persistSnapshot]);
+
+  // Opening a feed from its tab (no story in the URL) starts it over. Drop the
+  // feed's old position now: the viewer that mounts once the URL moves to the
+  // first story would otherwise restore it if it was saved on that story.
+  const opensFresh = initialItemId == null;
+  useLayoutEffect(() => {
+    if (opensFresh) clearSwipePosition(backState);
+  }, [opensFresh, backState]);
   
   useEffect(() => {
-    // Persist a snapshot of the current story + neighborhood for reload restore.
-    const persistSnapshot = () => {
-      const list = mergedStoriesRef.current;
-      const cur = list[currentIndexRef.current];
-      if (!cur) return;
-      saveSwipePosition({
-        viewer: backStateRef.current,
-        storyId: cur.id,
-        index: currentIndexRef.current,
-        scrollY: window.scrollY,
-        stories: list,
-      });
-    };
-
     // Save position + scrollY when page is about to be hidden/cached
     const handlePageHide = () => {
       savedIndexOnHideRef.current = currentIndexRef.current;
@@ -392,7 +410,7 @@ export function SwipeStoryViewerCore({
       window.removeEventListener('pageshow', handlePageShow);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [currentIndexRef, scrollToIndex]);
+  }, [currentIndexRef, scrollToIndex, persistSnapshot]);
   
   // Handle initial scroll position when returning from external URL (no anchor)
   // This runs once when items load and we have an initialItemId but didn't anchor
@@ -481,7 +499,7 @@ export function SwipeStoryViewerCore({
         if (restoreSnapshot.scrollY > 0) {
           window.scrollTo(0, restoreSnapshot.scrollY);
         }
-        clearSwipePosition();
+        clearSwipePosition(restoreSnapshot.viewer);
       }
     }
   }, [mergedStories, initialItemId, initialItemIdNum, anchorStoryId, scrollToIndex, currentIndexRef, restoreSnapshot]);
@@ -672,21 +690,24 @@ export function SwipeStoryViewerCore({
       })}
       
       {/* Loading indicator — only when online */}
-      {isOnline && ((loading && mergedStories.length > 0) || (isRetrying && mergedStories.length > 0 && !loading)) && (
+      {showLoadingPanel && (
         <div className="swipe-snap-panel" data-testid="swipe-panel-loading">
           <FullScreenItemSkeletonPanel />
         </div>
       )}
 
-      {/* Error panel at the end — only when online and retries exhausted */}
-      {isOnline && error && !loading && !isRetrying && mergedStories.length > 0 && (
-        <div className="swipe-snap-panel flex items-center justify-center" data-testid="swipe-panel">
-          <StateView
-            variant="error"
-            title="Failed to load item"
-            description={error}
-            action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore().catch(() => { /* error state set internally */ }); } }}
-          />
+      {/* Error panel at the end — only when online and retries exhausted.
+          `.active` sets display:block, so the centering lives on an inner box. */}
+      {showErrorPanel && (
+        <div className="swipe-snap-panel" data-testid="swipe-panel">
+          <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
+            <StateView
+              variant="error"
+              title="Failed to load item"
+              description={error ?? undefined}
+              action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore().catch(() => { /* error state set internally */ }); } }}
+            />
+          </div>
         </div>
       )}
     </div>

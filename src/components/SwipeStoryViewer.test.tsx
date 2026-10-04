@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, screen, within } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { SwipeStoryViewerCore } from './SwipeStoryViewer';
 import { createStoryItem } from '../test/factories';
@@ -13,6 +13,7 @@ import {
 import { saveSwipePosition, readSwipePosition } from '../utils/swipePosition';
 import { fetchItemOnly } from '../api/hn';
 import type * as HnApi from '../api/hn';
+import type { LocationState } from '../types';
 
 // The panel wrapper (with data-item-id) is rendered by SwipeStoryViewerCore
 // itself, so stub the heavy detail child to keep these tests focused on the
@@ -30,7 +31,32 @@ vi.mock('../api/hn', async (importOriginal) => ({
   fetchItemOnly: vi.fn(() => new Promise(() => { /* never resolves */ })),
 }));
 
+// Swipes commit synchronously under reduced motion, without the Web Animations
+// API that jsdom lacks.
+vi.mock('../utils/prefersReducedMotion', () => ({ prefersReducedMotion: () => true }));
+
 Object.defineProperty(window, 'innerWidth', { value: 375, writable: true });
+
+/** One leftward swipe across most of the panel: moves to the next panel. */
+function swipeToNext() {
+  const container = screen.getByTestId('swipe-container');
+  const fire = (type: string, clientX: number) => {
+    const touch = { identifier: 1, target: container, clientX, clientY: 300 };
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'touches', { value: type === 'touchend' ? [] : [touch] });
+    Object.defineProperty(event, 'changedTouches', { value: [touch] });
+    act(() => {
+      container.dispatchEvent(event);
+    });
+  };
+  fire('touchstart', 300);
+  fire('touchmove', 60);
+  fire('touchend', 60);
+}
+
+function activePanel(): Element | null {
+  return screen.getByTestId('swipe-container').querySelector(':scope > .active');
+}
 
 beforeEach(() => {
   Element.prototype.scrollTo = vi.fn();
@@ -428,5 +454,132 @@ describe('SwipeStoryViewerCore — swipe-position restore', () => {
     const saved = readSwipePosition();
     expect(saved?.storyId).toBe(1);
     expect(saved?.viewer).toEqual({ from: 'top' });
+  });
+
+  it('persists a snapshot of the current story when the viewer unmounts', () => {
+    const stories = [createStoryItem({ id: 1 }), createStoryItem({ id: 2 }), createStoryItem({ id: 3 })];
+
+    const { unmount } = render(
+      <SwipeStoryViewerCore {...baseProps} stories={stories} backState={{ from: 'top' }} />,
+    );
+    swipeToNext();
+    expect(readSwipePosition()).toBeNull();
+
+    unmount();
+
+    const saved = readSwipePosition();
+    expect(saved?.viewer).toEqual({ from: 'top' });
+    expect(saved?.storyId).toBe(2);
+    expect(saved?.index).toBe(1);
+    expect(saved?.stories.map((s) => s.id)).toEqual([1, 2, 3]);
+  });
+
+  it('comes back to the same story after an in-app round trip, even when the feed only has its first page', () => {
+    const firstPage = Array.from({ length: 3 }, (_, i) => createStoryItem({ id: 10 + i }));
+    const secondPage = Array.from({ length: 3 }, (_, i) => createStoryItem({ id: 20 + i }));
+
+    const { unmount } = render(
+      <SwipeStoryViewerCore {...baseProps} stories={[...firstPage, ...secondPage]} backState={{ from: 'top' }} />,
+    );
+    for (let i = 0; i < 4; i++) swipeToNext();
+    expect(activePanel()?.getAttribute('data-item-id')).toBe('21');
+    unmount();
+
+    // Back remounts the viewer at the story's URL with only the cached first page.
+    render(
+      <SwipeStoryViewerCore {...baseProps} stories={firstPage} initialItemId="21" backState={{ from: 'top' }} />,
+    );
+
+    expect(renderedPanelIds()).toEqual(['10', '11', '12', '20', '21', '22']);
+    expect(activePanel()?.getAttribute('data-item-id')).toBe('21');
+    expect(fetchItemOnly).not.toHaveBeenCalled();
+  });
+
+  it('keeps the position when another feed is opened in between (switching to Best, then Back)', () => {
+    const firstPage = Array.from({ length: 3 }, (_, i) => createStoryItem({ id: 10 + i }));
+    const secondPage = Array.from({ length: 3 }, (_, i) => createStoryItem({ id: 20 + i }));
+
+    const top = render(
+      <SwipeStoryViewerCore {...baseProps} stories={[...firstPage, ...secondPage]} backState={{ from: 'top' }} />,
+    );
+    for (let i = 0; i < 4; i++) swipeToNext();
+    top.unmount();
+
+    // Best opens fresh, then its viewer unmounts too and saves its own position.
+    const bestStories = [createStoryItem({ id: 50 }), createStoryItem({ id: 51 })];
+    const best = render(
+      <SwipeStoryViewerCore {...baseProps} stories={bestStories} backState={{ from: 'best' }} />,
+    );
+    best.unmount();
+
+    render(
+      <SwipeStoryViewerCore {...baseProps} stories={firstPage} initialItemId="21" backState={{ from: 'top' }} />,
+    );
+
+    expect(renderedPanelIds()).toEqual(['10', '11', '12', '20', '21', '22']);
+    expect(activePanel()?.getAttribute('data-item-id')).toBe('21');
+  });
+
+  it("drops a feed's old position when the feed is opened from its tab", () => {
+    const stories = [createStoryItem({ id: 1 }), createStoryItem({ id: 2 })];
+    saveSwipePosition({ viewer: { from: 'best' }, storyId: 1, index: 0, scrollY: 300, stories });
+    saveSwipePosition({ viewer: { from: 'top' }, storyId: 2, index: 1, scrollY: 0, stories });
+
+    render(<SwipeStoryViewerCore {...baseProps} stories={stories} backState={{ from: 'best' }} />);
+
+    expect(readSwipePosition({ viewer: { from: 'best' } })).toBeNull();
+    expect(readSwipePosition({ viewer: { from: 'top' } })?.storyId).toBe(2);
+  });
+});
+
+describe('SwipeStoryViewerCore — end-of-feed panel', () => {
+  const stories = [createStoryItem({ id: 1 }), createStoryItem({ id: 2 })];
+  const backState: LocationState = { from: 'top' };
+  const baseProps = {
+    stories,
+    hasMore: true,
+    loadMore: vi.fn().mockResolvedValue(undefined),
+    backState,
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('lets a swipe land on the loading panel after the last story', () => {
+    render(<SwipeStoryViewerCore {...baseProps} loading error={null} />);
+
+    swipeToNext();
+    swipeToNext();
+
+    expect(activePanel()).toBe(screen.getByTestId('swipe-panel-loading'));
+  });
+
+  it('lets a swipe land on the error panel, where Try Again is', async () => {
+    vi.useFakeTimers();
+    render(<SwipeStoryViewerCore {...baseProps} loading={false} error="Network error" />);
+    // Auto-retry runs its backoff before the trailing panel turns into the error.
+    for (const ms of [2000, 4000, 8000]) {
+      await act(() => vi.advanceTimersByTimeAsync(ms));
+    }
+
+    swipeToNext();
+    swipeToNext();
+
+    const panel = activePanel() as HTMLElement;
+    expect(panel).toBe(screen.getByTestId('swipe-container').lastElementChild);
+    expect(within(panel).getByRole('button', { name: 'Try Again' })).toBeInTheDocument();
+  });
+
+  it('falls back to the last story when the trailing panel goes away', () => {
+    const { rerender } = render(<SwipeStoryViewerCore {...baseProps} loading error={null} />);
+    swipeToNext();
+    swipeToNext();
+
+    // The load finished without new stories and the feed ended.
+    rerender(<SwipeStoryViewerCore {...baseProps} loading={false} error={null} hasMore={false} />);
+
+    expect(screen.queryByTestId('swipe-panel-loading')).not.toBeInTheDocument();
+    expect(activePanel()?.getAttribute('data-item-id')).toBe('2');
   });
 });
