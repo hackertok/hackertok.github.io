@@ -722,13 +722,31 @@ describe('useDomainInfiniteStories', () => {
   });
 
   describe('cold-start empty-page cap', () => {
-    // The mobile swipe view's prefetch effect re-calls loadMore every time
-    // `loading` flips while `mergedStories.length < 10`. On a noisy substring
-    // query (e.g. `/from/microsoft` returning hundreds of `*.com` URLs that
-    // all fail the host filter), this loops 5–20 sequential fetches before
-    // Algolia's `nbPages` is exhausted, producing a multi-second skeleton↔
-    // empty-state flicker. The cap halts the loop after 3 consecutive empty
-    // pages while no story has been accepted yet.
+    // On a noisy substring query (e.g. `/from/microsoft` returning hundreds of
+    // `*.com` URLs that all fail the host filter), the first pages can hold no
+    // story at all. Until one lands, a single loadMore keeps paging — nothing
+    // else would ask for page 2, since the desktop list renders no sentinel
+    // while empty — and the cap ends that after 3 consecutive empty pages.
+
+    it('pages past a filter-rejected first page on its own', async () => {
+      let call = 0;
+      vi.spyOn(globalThis, 'fetch').mockImplementation(() => {
+        const page = call++;
+        return Promise.resolve(
+          new Response(JSON.stringify(
+            page === 0 ? noiseBody('target.com', 50, 0, 3) : body('target.com', [7, 8], page, 3),
+          )),
+        );
+      });
+
+      const { result } = renderHook(() => useDomainInfiniteStories('target.com'));
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.stories.map((s) => s.id)).toEqual([7, 8]);
+      expect(result.current.hasMore).toBe(true);
+      expect(call).toBe(2);
+      expect(__getDomainCacheForTests().get('target.com')?.page).toBe(2);
+    });
 
     it('halts after 3 consecutive filter-rejected pages and caches the terminal state', async () => {
       let call = 0;
@@ -742,19 +760,6 @@ describe('useDomainInfiniteStories', () => {
       const { result } = renderHook(() => useDomainInfiniteStories('target.com'));
 
       await waitFor(() => expect(result.current.loading).toBe(false));
-      expect(result.current.stories).toEqual([]);
-      expect(result.current.hasMore).toBe(true);
-      expect(call).toBe(1);
-
-      await act(async () => {
-        await result.current.loadMore();
-      });
-      expect(result.current.hasMore).toBe(true);
-      expect(call).toBe(2);
-
-      await act(async () => {
-        await result.current.loadMore();
-      });
       expect(result.current.hasMore).toBe(false);
       expect(result.current.stories).toEqual([]);
       expect(call).toBe(3);
@@ -824,18 +829,9 @@ describe('useDomainInfiniteStories', () => {
       const { result } = renderHook(() => useDomainInfiniteStories('target.com'));
 
       await waitFor(() => expect(result.current.loading).toBe(false));
-      expect(result.current.hasMore).toBe(true);
-
-      await act(async () => {
-        await result.current.loadMore();
-      });
-      expect(result.current.hasMore).toBe(true);
-
-      await act(async () => {
-        await result.current.loadMore();
-      });
       expect(result.current.stories.map((s) => s.id)).toEqual([99]);
       expect(result.current.hasMore).toBe(true);
+      expect(call).toBe(3);
 
       // Three more noise pages — would trip the cap if the counter hadn't
       // been reset AND we hadn't entered Regime B.
@@ -848,12 +844,12 @@ describe('useDomainInfiniteStories', () => {
       expect(call).toBe(6);
     });
 
-    it('resets the streak when domain changes mid-flight', async () => {
-      let call = 0;
+    it('resets the streak when the domain changes', async () => {
+      const calls = { foo: 0, bar: 0 };
       vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-        const page = call++;
         const url = fetchInputToUrl(input);
         const targetDomain = url.includes('query=foo') ? 'foo' : 'bar';
+        const page = calls[targetDomain]++;
         return Promise.resolve(
           new Response(JSON.stringify(noiseBody(targetDomain, 50, page, 10))),
         );
@@ -864,33 +860,18 @@ describe('useDomainInfiniteStories', () => {
         { initialProps: { domain: 'foo' } },
       );
 
-      // foo: 2 consecutive noise pages → streak=2
-      await waitFor(() => expect(result.current.loading).toBe(false));
-      await act(async () => {
-        await result.current.loadMore();
-      });
-      expect(result.current.hasMore).toBe(true);
+      // foo: 3 noise pages → streak=3, cap reached
+      await waitFor(() => expect(result.current.hasMore).toBe(false));
+      expect(calls.foo).toBe(3);
 
       // Switch to bar — domain reset block must zero the streak. If it
       // doesn't, the (stale) counter would tip at bar's first noise page
       // and the cap would fire after 1 fetch on the new domain.
       rerender({ domain: 'bar' });
-      await waitFor(() => expect(result.current.stories).toEqual([]));
+      await waitFor(() => expect(calls.bar).toBeGreaterThan(0));
       await waitFor(() => expect(result.current.loading).toBe(false));
-      expect(result.current.hasMore).toBe(true);
-
-      // bar: 2 more noise pages — streak should rebuild from 1, not 3
-      await act(async () => {
-        await result.current.loadMore();
-      });
-      expect(result.current.hasMore).toBe(true);
-
-      // bar's 3rd noise page now trips the (freshly-built) cap, proving the
-      // counter started over after the domain switch.
-      await act(async () => {
-        await result.current.loadMore();
-      });
       expect(result.current.hasMore).toBe(false);
+      expect(calls.bar).toBe(3);
     });
   });
 

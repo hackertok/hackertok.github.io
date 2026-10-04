@@ -4,13 +4,15 @@ import { normalizeAlgoliaHit } from '../api/hn';
 import type { StoryItem, AlgoliaSearchResponse } from '../types';
 
 const HITS_PER_PAGE = 50;
-// On a cold start (no story has been accepted yet), stop after this many
+// On a cold start (no story has been accepted yet), `loadMore` keeps paging
+// within one call until a page yields a story, and gives up after this many
 // consecutive pages whose hits all fail the host filter. Algolia's URL search
 // is tokenized and substring-prefix-greedy, so a query like `/from/microsoft`
 // surfaces hundreds of `*.com` URLs containing "microsoft" in the path —
-// none of which match the strict host filter. Without a cap, the swipe view's
-// prefetch effect re-calls `loadMore` every time `loading` flips, producing a
-// 4–10s skeleton↔empty-state flicker before Algolia's `nbPages` is exhausted.
+// none of which match the strict host filter. Paging inside the call matters
+// because nothing else asks for page 2: the desktop list has no sentinel to
+// scroll while it's empty, so a first page of noise read as "no submissions"
+// even when the next page had them. The cap bounds noisy queries.
 // Only applies while `storiesRef.current.length === 0`; once any real hit
 // lands, deep pagination is unbounded so sparse-but-real domains aren't trimmed.
 const MAX_EMPTY_PAGES_COLD_START = 3;
@@ -121,83 +123,87 @@ export function useDomainInfiniteStories(rawDomain: string) {
     const currentVersion = versionRef.current;
 
     try {
-      const pageToFetch = nextPageRef.current;
-      const url = `${ALGOLIA_API}/search_by_date?tags=story&query=${encodeURIComponent(domain)}&restrictSearchableAttributes=url&hitsPerPage=${HITS_PER_PAGE}&page=${pageToFetch}`;
-      const response = await fetch(url);
+      let uniqueStories: StoryItem[];
+      let newHasMore: boolean;
+      // Cold start pages on until a story lands: see MAX_EMPTY_PAGES_COLD_START.
+      do {
+        const pageToFetch = nextPageRef.current;
+        const url = `${ALGOLIA_API}/search_by_date?tags=story&query=${encodeURIComponent(domain)}&restrictSearchableAttributes=url&hitsPerPage=${HITS_PER_PAGE}&page=${pageToFetch}`;
+        const response = await fetch(url);
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch stories: ${response.status}`);
-      }
+        if (!response.ok) {
+          throw new Error(`Failed to fetch stories: ${response.status}`);
+        }
 
-      if (versionRef.current !== currentVersion) return;
+        if (versionRef.current !== currentVersion) return;
 
-      const data = (await response.json()) as AlgoliaSearchResponse;
+        const data = (await response.json()) as AlgoliaSearchResponse;
 
-      // Second staleness check: `await response.json()` yields; the domain
-      // can change (and bump versionRef) during parse. Without this, the
-      // closure-captured `domain` would cause `domainCache.set(domain, ...)`
-      // to clobber the old domain's entry with partial data, and the
-      // appended stories would land on the new domain's state.
-      if (versionRef.current !== currentVersion) return;
+        // Second staleness check: `await response.json()` yields; the domain
+        // can change (and bump versionRef) during parse. Without this, the
+        // closure-captured `domain` would cause `domainCache.set(domain, ...)`
+        // to clobber the old domain's entry with partial data, and the
+        // appended stories would land on the new domain's state.
+        if (versionRef.current !== currentVersion) return;
 
-      // `domain` is a hostname (e.g. "github.com") OR a hostname+path
-      // (e.g. "github.com/microsoft"). Algolia's URL search can surface hits
-      // where the domain appears elsewhere in the URL (other host, path
-      // segment, query string), so verify locally. The match must require a
-      // `/` boundary after the domain — a bare `startsWith(domain)` would let
-      // `github.com.evil.com` surface under `/from/github.com`.
-      //
-      // Only http(s) URLs are accepted: defense-in-depth against
-      // `javascript:`/`data:`/`file:` URLs, which `new URL` happily parses
-      // with a `hostname` that would otherwise pass the host check (e.g.
-      // `javascript://github.com/%0Aalert(1)` parses with hostname=github.com).
-      const domainSlashPrefix = `${domain}/`;
-      const hostDotSuffix = `.${domain}`;
-      const domainStories: StoryItem[] = data.hits
-        .filter((hit) => {
-          if (!hit.url) return false;
-          try {
-            const parsed = new URL(hit.url);
-            if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-            // hostname is already lowercase per WHATWG; pathname preserves
-            // case, so lowercase the full string for case-insensitive match
-            // against the (already-lowercased) `domain`. Trailing DNS dot is
-            // stripped for the same reason as the domain prop.
-            const hostname = parsed.hostname.replace(/^www\./, '').replace(/\.$/, '');
-            const fullPath = (hostname + parsed.pathname).toLowerCase();
-            return (
-              fullPath === domain ||
-              fullPath.startsWith(domainSlashPrefix) ||
-              hostname.endsWith(hostDotSuffix)
-            );
-          } catch {
-            return false;
-          }
-        })
-        .map(normalizeAlgoliaHit);
+        // `domain` is a hostname (e.g. "github.com") OR a hostname+path
+        // (e.g. "github.com/microsoft"). Algolia's URL search can surface hits
+        // where the domain appears elsewhere in the URL (other host, path
+        // segment, query string), so verify locally. The match must require a
+        // `/` boundary after the domain — a bare `startsWith(domain)` would let
+        // `github.com.evil.com` surface under `/from/github.com`.
+        //
+        // Only http(s) URLs are accepted: defense-in-depth against
+        // `javascript:`/`data:`/`file:` URLs, which `new URL` happily parses
+        // with a `hostname` that would otherwise pass the host check (e.g.
+        // `javascript://github.com/%0Aalert(1)` parses with hostname=github.com).
+        const domainSlashPrefix = `${domain}/`;
+        const hostDotSuffix = `.${domain}`;
+        const domainStories: StoryItem[] = data.hits
+          .filter((hit) => {
+            if (!hit.url) return false;
+            try {
+              const parsed = new URL(hit.url);
+              if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+              // hostname is already lowercase per WHATWG; pathname preserves
+              // case, so lowercase the full string for case-insensitive match
+              // against the (already-lowercased) `domain`. Trailing DNS dot is
+              // stripped for the same reason as the domain prop.
+              const hostname = parsed.hostname.replace(/^www\./, '').replace(/\.$/, '');
+              const fullPath = (hostname + parsed.pathname).toLowerCase();
+              return (
+                fullPath === domain ||
+                fullPath.startsWith(domainSlashPrefix) ||
+                hostname.endsWith(hostDotSuffix)
+              );
+            } catch {
+              return false;
+            }
+          })
+          .map(normalizeAlgoliaHit);
 
-      // Dedup across pages (Algolia can return overlaps on paginated search_by_date)
-      const uniqueStories = domainStories.filter((s) => {
-        if (seenIdsRef.current.has(s.id)) return false;
-        seenIdsRef.current.add(s.id);
-        return true;
-      });
+        // Dedup across pages (Algolia can return overlaps on paginated search_by_date)
+        uniqueStories = domainStories.filter((s) => {
+          if (seenIdsRef.current.has(s.id)) return false;
+          seenIdsRef.current.add(s.id);
+          return true;
+        });
 
-      const newPage = data.page + 1;
-      nextPageRef.current = newPage;
+        nextPageRef.current = data.page + 1;
 
-      // Cold-start cap: see MAX_EMPTY_PAGES_COLD_START. Snapshot before the
-      // storiesRef update below so the check reflects "had we shown anything
-      // before this fetch?", not "are we showing anything after it?".
-      const isColdStart = storiesRef.current.length === 0;
-      if (uniqueStories.length === 0 && isColdStart) {
-        emptyPageStreakRef.current += 1;
-      } else {
-        emptyPageStreakRef.current = 0;
-      }
-      const algoliaHasMore = data.page < data.nbPages - 1;
-      const capReached = emptyPageStreakRef.current >= MAX_EMPTY_PAGES_COLD_START;
-      const newHasMore = algoliaHasMore && !capReached;
+        // Cold-start cap. Snapshot before the storiesRef update below so the
+        // check reflects "had we shown anything before this fetch?", not "are
+        // we showing anything after it?".
+        const isColdStart = storiesRef.current.length === 0;
+        if (uniqueStories.length === 0 && isColdStart) {
+          emptyPageStreakRef.current += 1;
+        } else {
+          emptyPageStreakRef.current = 0;
+        }
+        const algoliaHasMore = data.page < data.nbPages - 1;
+        const capReached = emptyPageStreakRef.current >= MAX_EMPTY_PAGES_COLD_START;
+        newHasMore = algoliaHasMore && !capReached;
+      } while (uniqueStories.length === 0 && storiesRef.current.length === 0 && newHasMore);
       setHasMore(newHasMore);
 
       // Compute the next list outside any functional updater so setStories stays
@@ -208,7 +214,7 @@ export function useDomainInfiniteStories(rawDomain: string) {
       storiesRef.current = updated;
       domainCache.set(domain, {
         stories: updated,
-        page: newPage,
+        page: nextPageRef.current,
         hasMore: newHasMore,
         seenIds: new Set(seenIdsRef.current),
       });
