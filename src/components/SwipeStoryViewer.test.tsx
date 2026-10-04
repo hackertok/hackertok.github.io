@@ -494,6 +494,42 @@ describe('SwipeStoryViewerCore — swipe-position restore', () => {
     expect(activePanel()?.getAttribute('data-item-id')).toBe('21');
     expect(fetchItemOnly).not.toHaveBeenCalled();
   });
+
+  it('keeps the position when another feed is opened in between (switching to Best, then Back)', () => {
+    const firstPage = Array.from({ length: 3 }, (_, i) => createStoryItem({ id: 10 + i }));
+    const secondPage = Array.from({ length: 3 }, (_, i) => createStoryItem({ id: 20 + i }));
+
+    const top = render(
+      <SwipeStoryViewerCore {...baseProps} stories={[...firstPage, ...secondPage]} backState={{ from: 'top' }} />,
+    );
+    for (let i = 0; i < 4; i++) swipeToNext();
+    top.unmount();
+
+    // Best opens fresh, then its viewer unmounts too and saves its own position.
+    const bestStories = [createStoryItem({ id: 50 }), createStoryItem({ id: 51 })];
+    const best = render(
+      <SwipeStoryViewerCore {...baseProps} stories={bestStories} backState={{ from: 'best' }} />,
+    );
+    best.unmount();
+
+    render(
+      <SwipeStoryViewerCore {...baseProps} stories={firstPage} initialItemId="21" backState={{ from: 'top' }} />,
+    );
+
+    expect(renderedPanelIds()).toEqual(['10', '11', '12', '20', '21', '22']);
+    expect(activePanel()?.getAttribute('data-item-id')).toBe('21');
+  });
+
+  it("drops a feed's old position when the feed is opened from its tab", () => {
+    const stories = [createStoryItem({ id: 1 }), createStoryItem({ id: 2 })];
+    saveSwipePosition({ viewer: { from: 'best' }, storyId: 1, index: 0, scrollY: 300, stories });
+    saveSwipePosition({ viewer: { from: 'top' }, storyId: 2, index: 1, scrollY: 0, stories });
+
+    render(<SwipeStoryViewerCore {...baseProps} stories={stories} backState={{ from: 'best' }} />);
+
+    expect(readSwipePosition({ viewer: { from: 'best' } })).toBeNull();
+    expect(readSwipePosition({ viewer: { from: 'top' } })?.storyId).toBe(2);
+  });
 });
 
 describe('SwipeStoryViewerCore — end-of-feed panel', () => {

@@ -16,15 +16,6 @@ import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
 import { StateView } from './StateView';
 import type { StoryItem, FeedType, LocationState } from '../types';
 
-/** Two LocationStates refer to the same viewer when they share a feed/domain/user. */
-function sameViewer(a: LocationState, b: LocationState): boolean {
-  return (
-    (a.from ?? null) === (b.from ?? null) &&
-    (a.fromDomain ?? null) === (b.fromDomain ?? null) &&
-    (a.fromUser ?? null) === (b.fromUser ?? null)
-  );
-}
-
 interface SwipeStoryViewerCoreProps {
   /** Story data from the consumer's data source (feed, domain, etc.) */
   stories: StoryItem[];
@@ -77,13 +68,8 @@ export function SwipeStoryViewerCore({
   // effect rewrites /item/:id), so re-validating per render would drop the snapshot
   // mid-session and collapse the list back to live `stories`.
   const [restoreSnapshot] = useState(() => {
-    const snap = readSwipePosition();
-    return snap &&
-      snap.stories.length > 0 &&
-      snap.storyId === initialItemIdNum &&
-      sameViewer(snap.viewer, backState)
-      ? snap
-      : null;
+    const snap = readSwipePosition({ viewer: backState });
+    return snap && snap.stories.length > 0 && snap.storyId === initialItemIdNum ? snap : null;
   });
   const isRestoringPosition = restoreSnapshot !== null;
   const restoredStories = restoreSnapshot?.stories ?? null;
@@ -367,6 +353,14 @@ export function SwipeStoryViewerCore({
   // remount restore like a reload does. A layout cleanup runs before the next
   // route's DOM goes in, so window.scrollY is still this panel's.
   useLayoutEffect(() => () => persistSnapshot(), [persistSnapshot]);
+
+  // Opening a feed from its tab (no story in the URL) starts it over. Drop the
+  // feed's old position now: the viewer that mounts once the URL moves to the
+  // first story would otherwise restore it if it was saved on that story.
+  const opensFresh = initialItemId == null;
+  useLayoutEffect(() => {
+    if (opensFresh) clearSwipePosition(backState);
+  }, [opensFresh, backState]);
   
   useEffect(() => {
     // Save position + scrollY when page is about to be hidden/cached
@@ -505,7 +499,7 @@ export function SwipeStoryViewerCore({
         if (restoreSnapshot.scrollY > 0) {
           window.scrollTo(0, restoreSnapshot.scrollY);
         }
-        clearSwipePosition();
+        clearSwipePosition(restoreSnapshot.viewer);
       }
     }
   }, [mergedStories, initialItemId, initialItemIdNum, anchorStoryId, scrollToIndex, currentIndexRef, restoreSnapshot]);

@@ -92,9 +92,9 @@ export function MobileItemDetailWrapper() {
   const { id } = useParams();
   const canSwipe = useCanSwipe();
   const location = useLocation();
-  // Snapshot read once (sticky for the wrapper's life); used only by Branch 4b to
-  // recover the viewer on a stateless reload.
-  const [recovered] = useState(() => readSwipePosition());
+  // Newest snapshot taken on this story, read once (sticky for the wrapper's life);
+  // used only by Branch 4b to recover the viewer on a stateless reload.
+  const [recovered] = useState(() => readSwipePosition({ storyId: Number(id) }));
   
   if (canSwipe) {
     const state = location.state as LocationState | null;
