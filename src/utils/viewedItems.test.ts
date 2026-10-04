@@ -428,6 +428,62 @@ describe('viewedItems - Time-based functions', () => {
   });
 });
 
+describe('viewedItems - writes from another tab', () => {
+  beforeEach(() => {
+    clearViewed();
+    clearViewedTimes();
+  });
+
+  // Another tab writes straight to localStorage; the browser then fires
+  // `storage` in this tab only.
+  function writeFromOtherTab(key: string, value: unknown) {
+    localStorage.setItem(key, JSON.stringify(value));
+    window.dispatchEvent(new StorageEvent('storage', { key }));
+  }
+
+  it('keeps the other tab\'s detail views when this tab writes next', () => {
+    markViewedWithTime(111, 'detail');
+    const stored = JSON.parse(localStorage.getItem(VIEWED_DETAIL_TIMES_KEY)!) as Record<string, number>;
+    writeFromOtherTab(VIEWED_DETAIL_TIMES_KEY, { ...stored, 222: Date.now() + 3_600_000 });
+
+    markViewedWithTime(333, 'detail');
+
+    const ids = Object.keys(JSON.parse(localStorage.getItem(VIEWED_DETAIL_TIMES_KEY)!) as object);
+    expect(ids.sort()).toEqual(['111', '222', '333']);
+    expect(getFilteredViewedIds()).toEqual(new Set([111, 222, 333]));
+  });
+
+  it('keeps the other tab\'s title clicks when this tab writes next', () => {
+    markViewedWithTime(111, 'title');
+    const stored = JSON.parse(localStorage.getItem(VIEWED_TITLE_TIMES_KEY)!) as Record<string, number>;
+    writeFromOtherTab(VIEWED_TITLE_TIMES_KEY, { ...stored, 222: Date.now() + 3_600_000 });
+
+    markViewedWithTime(333, 'title');
+
+    const ids = Object.keys(JSON.parse(localStorage.getItem(VIEWED_TITLE_TIMES_KEY)!) as object);
+    expect(ids.sort()).toEqual(['111', '222', '333']);
+  });
+
+  it('picks up the other tab\'s permanent views and keeps them on the next write', () => {
+    markViewed(111);
+    writeFromOtherTab(VIEWED_KEY, [111, 222]);
+
+    expect(isViewed(222)).toBe(true);
+
+    markViewed(333);
+    expect(JSON.parse(localStorage.getItem(VIEWED_KEY)!)).toEqual([111, 222, 333]);
+  });
+
+  it('drops the in-memory copies when another tab clears storage', () => {
+    markViewedWithTime(111, 'title');
+    localStorage.clear();
+    window.dispatchEvent(new StorageEvent('storage', { key: null }));
+
+    expect(isViewed(111)).toBe(false);
+    expect(getFilteredViewedIds().size).toBe(0);
+  });
+});
+
 describe('viewedItems - Session storage functions', () => {
   beforeEach(() => {
     clearViewed();
