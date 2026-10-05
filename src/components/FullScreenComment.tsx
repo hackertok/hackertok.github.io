@@ -45,7 +45,7 @@ interface FullScreenCommentProps {
 }
 
 export function FullScreenComment({ commentId, onAuthorLoaded }: FullScreenCommentProps) {
-  const { comment, replies, itemId, itemTitle, itemAuthor, loading, error, retry } = useCommentDetail(commentId);
+  const { comment, replies, itemId, itemTitle, itemTitleLoading, itemAuthor, loading, error, retry } = useCommentDetail(commentId);
 
   const { isOnline } = useNetworkStatus();
   const { isRetrying } = useAutoRetry({
@@ -93,6 +93,7 @@ export function FullScreenComment({ commentId, onAuthorLoaded }: FullScreenComme
             replies={replies}
             itemId={itemId}
             itemTitle={itemTitle}
+            itemTitleLoading={itemTitleLoading}
             loading={loading}
             storyAuthor={itemAuthor ?? ''}
           />

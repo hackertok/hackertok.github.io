@@ -154,6 +154,44 @@ test.describe('Item Browsing - Desktop Scroll Restoration', () => {
   });
 });
 
+test.describe('Item Browsing - Desktop Back between feeds', () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+  });
+
+  test('does not repeat stories after going Back to a feed you opened a story from', async ({ page }, testInfo) => {
+    if (testInfo.project.name.startsWith('Mobile')) {
+      test.skip();
+      return;
+    }
+    const cards = page.locator('[data-testid="story-card"]');
+
+    await page.goto('/#/best');
+    await expect(cards).toHaveCount(3);
+
+    // Opening a story saves Best's session.
+    await page.locator('[data-story-id="33001"]').getByRole('link', { name: /comments/i }).click();
+    await expect(page).toHaveURL(/\/item\/33001/);
+    await page.goBack();
+    await expect(cards).toHaveCount(3);
+
+    await page.getByRole('link', { name: 'show', exact: true }).click();
+    await expect(page).toHaveURL(/\/show$/);
+    await expect(page.locator('[data-story-id="99999"]')).toBeVisible();
+
+    // The list stays mounted, so Back to Best resets it rather than remounting.
+    await page.goBack();
+    await expect(page).toHaveURL(/\/best$/);
+    // reset() drops the session and re-arms hasMore, so the end marker only
+    // returns once the load after it finishes.
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('feed:session:best'))).toBeNull();
+    await expect(page.getByText("You've reached the end")).toBeVisible();
+    await expect(cards).toHaveCount(3);
+  });
+});
+
 /**
  * Error handling tests use fixtureTest which provides errorMockedPage.
  * This fixture sets up routes on browserContext BEFORE page creation,

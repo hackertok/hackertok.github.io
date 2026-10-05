@@ -322,6 +322,9 @@ export function SwipeStoryViewerCore({
   // Uses both pageshow (for bfcache) and visibilitychange (for tab switches)
   // pageshow fires BEFORE first paint on bfcache restore - critical for preventing flash
   const savedIndexOnHideRef = useRef<number | null>(null);
+  // In memory, not storage: both restores run in the page that was hidden
+  // (bfcache keeps the JS heap), and stored values can be blocked or expire.
+  const savedScrollYOnHideRef = useRef(0);
   // Synced via effect so the long-lived hide listener reads the latest list/viewer
   // without re-subscribing (avoids a stale closure).
   const mergedStoriesRef = useRef(mergedStories);
@@ -366,9 +369,7 @@ export function SwipeStoryViewerCore({
     // Save position + scrollY when page is about to be hidden/cached
     const handlePageHide = () => {
       savedIndexOnHideRef.current = currentIndexRef.current;
-      try {
-        sessionStorage.setItem('__swipe_scrollY', String(window.scrollY));
-      } catch { /* quota exceeded — non-critical */ }
+      savedScrollYOnHideRef.current = window.scrollY;
       persistSnapshot();
     };
     
@@ -380,8 +381,7 @@ export function SwipeStoryViewerCore({
         savedIndexOnHideRef.current = null;
         scrollToIndex(targetIndex);
         // Restore scrollY after panel activation
-        const savedY = Number(sessionStorage.getItem('__swipe_scrollY')) || 0;
-        window.scrollTo(0, savedY);
+        window.scrollTo(0, savedScrollYOnHideRef.current);
       }
     };
     
@@ -389,16 +389,13 @@ export function SwipeStoryViewerCore({
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         savedIndexOnHideRef.current = currentIndexRef.current;
-        try {
-          sessionStorage.setItem('__swipe_scrollY', String(window.scrollY));
-        } catch { /* quota exceeded — non-critical */ }
+        savedScrollYOnHideRef.current = window.scrollY;
         persistSnapshot();
       } else if (document.visibilityState === 'visible' && savedIndexOnHideRef.current !== null) {
         const targetIndex = savedIndexOnHideRef.current;
         savedIndexOnHideRef.current = null;
         scrollToIndex(targetIndex);
-        const savedY = Number(sessionStorage.getItem('__swipe_scrollY')) || 0;
-        window.scrollTo(0, savedY);
+        window.scrollTo(0, savedScrollYOnHideRef.current);
       }
     };
     

@@ -22,7 +22,9 @@ const PURIFY_CONFIG: Config = {
     'p', 'br', 'a', 'b', 'i', 'u', 'strong', 'em', 'code', 'pre',
     'blockquote', 'ul', 'ol', 'li', 'span', 'div',
   ],
-  ALLOWED_ATTR: ['href', 'class', 'id'],
+  // No class or id: HN never emits them, and they'd let the text pick up the
+  // app's styles (utility classes) or shadow ids the app looks up.
+  ALLOWED_ATTR: ['href'],
   ALLOW_DATA_ATTR: false,
   ALLOW_ARIA_ATTR: false,
 };

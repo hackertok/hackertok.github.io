@@ -42,7 +42,7 @@ export function CommentDetailSkeleton() {
 }
 
 export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
-  const { comment, replies, itemId, itemTitle, itemAuthor, loading, error, retry } = useCommentDetail(commentId, initialData);
+  const { comment, replies, itemId, itemTitle, itemTitleLoading, itemAuthor, loading, error, retry } = useCommentDetail(commentId, initialData);
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
@@ -99,6 +99,7 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
             replies={replies}
             itemId={itemId}
             itemTitle={itemTitle}
+            itemTitleLoading={itemTitleLoading}
             loading={loading}
             articleClassName="mb-6"
             storyAuthor={itemAuthor ?? ''}

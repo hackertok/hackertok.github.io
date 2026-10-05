@@ -456,6 +456,67 @@ describe('SwipeStoryViewerCore — swipe-position restore', () => {
     expect(saved?.viewer).toEqual({ from: 'top' });
   });
 
+  it('does not throw when the tab is hidden and shown with site storage blocked', () => {
+    const stories = [createStoryItem({ id: 1 }), createStoryItem({ id: 2 })];
+    render(
+      <SwipeStoryViewerCore {...baseProps} stories={stories} backState={{ from: 'top' }} />,
+    );
+
+    // Blocking site data makes the `sessionStorage` getter itself throw.
+    const storage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')!;
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      get() { throw new DOMException('Access is denied for this document.', 'SecurityError'); },
+    });
+    const onError = vi.fn((event: ErrorEvent) => event.preventDefault());
+    window.addEventListener('error', onError);
+    const showTab = (state: 'hidden' | 'visible') => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    };
+    try {
+      showTab('hidden');
+      showTab('visible');
+    } finally {
+      window.removeEventListener('error', onError);
+      Object.defineProperty(globalThis, 'sessionStorage', storage);
+      delete (document as { visibilityState?: unknown }).visibilityState;
+    }
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(window.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('restores the offset within the story when the tab comes back over 30 minutes later', () => {
+    const stories = [createStoryItem({ id: 1 }), createStoryItem({ id: 2 })];
+    render(<SwipeStoryViewerCore {...baseProps} stories={stories} backState={{ from: 'top' }} />);
+
+    const now = Date.now();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
+    const scrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 500 });
+    const showTab = (state: 'hidden' | 'visible') => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    };
+    try {
+      showTab('hidden');
+      nowSpy.mockReturnValue(now + 31 * 60 * 1000);
+      showTab('visible');
+    } finally {
+      nowSpy.mockRestore();
+      if (scrollY) Object.defineProperty(window, 'scrollY', scrollY);
+      else delete (window as { scrollY?: unknown }).scrollY;
+      delete (document as { visibilityState?: unknown }).visibilityState;
+    }
+
+    expect(window.scrollTo).toHaveBeenLastCalledWith(0, 500);
+  });
+
   it('persists a snapshot of the current story when the viewer unmounts', () => {
     const stories = [createStoryItem({ id: 1 }), createStoryItem({ id: 2 }), createStoryItem({ id: 3 })];
 

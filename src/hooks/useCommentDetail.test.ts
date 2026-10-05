@@ -58,6 +58,26 @@ describe('useCommentDetail', () => {
     });
   });
 
+  it('reports the item title as loading until its fetch settles', async () => {
+    let resolveStory!: (item: FirebaseItem) => void;
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(() => new Promise(resolve => { resolveStory = resolve; }));
+
+    const { result } = renderHook(() => useCommentDetail(1001));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.itemTitle).toBeNull();
+    expect(result.current.itemTitleLoading).toBe(true);
+
+    resolveStory(mockStoryItem);
+
+    await waitFor(() => {
+      expect(result.current.itemTitleLoading).toBe(false);
+    });
+    expect(result.current.itemTitle).toBe('Rust Is the Future of JavaScript Infrastructure');
+  });
+
   it('uses initialData for immediate display', async () => {
     const initialData = {
       author: 'patio11',
@@ -113,6 +133,9 @@ describe('useCommentDetail', () => {
     // Item title is non-blocking: missing title must NOT propagate as an error.
     expect(result.current.itemTitle).toBeNull();
     expect(result.current.error).toBeNull();
+    await waitFor(() => {
+      expect(result.current.itemTitleLoading).toBe(false);
+    });
   });
 
   it('accepts string commentId', async () => {

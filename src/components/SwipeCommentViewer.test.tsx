@@ -52,6 +52,61 @@ describe('SwipeCommentViewer', () => {
     });
   });
 
+  it('does not throw on a back-forward cache restore with site storage blocked', async () => {
+    window.scrollTo = vi.fn();
+    render(<SwipeCommentViewer initialCommentId="1001" />, {
+      initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],
+    });
+    await waitFor(() => {
+      expect(screen.getAllByTestId('swipe-panel')).toHaveLength(4);
+    });
+
+    // Blocking site data makes the `sessionStorage` getter itself throw.
+    const storage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage')!;
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      get() { throw new DOMException('Access is denied for this document.', 'SecurityError'); },
+    });
+    const onError = vi.fn((event: ErrorEvent) => event.preventDefault());
+    window.addEventListener('error', onError);
+    try {
+      window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    } finally {
+      window.removeEventListener('error', onError);
+      Object.defineProperty(globalThis, 'sessionStorage', storage);
+    }
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(window.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('restores the offset on a back-forward cache restore over 30 minutes later', async () => {
+    window.scrollTo = vi.fn();
+    render(<SwipeCommentViewer initialCommentId="1001" />, {
+      initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],
+    });
+    await waitFor(() => {
+      expect(screen.getAllByTestId('swipe-panel')).toHaveLength(4);
+    });
+
+    const now = Date.now();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
+    const scrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 500 });
+    try {
+      window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+      nowSpy.mockReturnValue(now + 31 * 60 * 1000);
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    } finally {
+      nowSpy.mockRestore();
+      if (scrollY) Object.defineProperty(window, 'scrollY', scrollY);
+      else delete (window as { scrollY?: unknown }).scrollY;
+    }
+
+    expect(window.scrollTo).toHaveBeenLastCalledWith(0, 500);
+  });
+
   it('renders sibling comment panels after loading', async () => {
     render(<SwipeCommentViewer initialCommentId="1001" />, {
       initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],

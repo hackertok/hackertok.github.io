@@ -116,6 +116,28 @@ describe('CommentArticle', () => {
       ).toHaveAttribute('href', '/item/12345');
     });
 
+    it('keeps the placeholder, not the "story" fallback, while the title is still loading', () => {
+      render(
+        <CommentArticle
+          comment={mockComment}
+          replies={[]}
+          itemId={12345}
+          itemTitle={null}
+          itemTitleLoading={true}
+          loading={false}
+        />,
+      );
+
+      expect(screen.queryByText(/^story$/i)).not.toBeInTheDocument();
+      const article = screen.getByRole('article');
+      expect(article.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+      // The title fetch can hang until reconnect, so the way back to the
+      // story must not wait for it.
+      const link = screen.getByRole('link', { name: /^story$/i });
+      expect(link).toHaveAttribute('href', '/item/12345');
+      expect(link.querySelector('.animate-pulse')).not.toBeNull();
+    });
+
     it('falls back to a generic "story" link when loading settles without a title', () => {
       // Failure mode: parent fetch errored or returned a titleless item.
       // Without the fallback, the skeleton would pulse forever and a

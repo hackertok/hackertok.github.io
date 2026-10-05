@@ -15,6 +15,8 @@ interface UseCommentDetailResult {
   replies: Comment[];
   itemId: number | null;
   itemTitle: string | null;
+  /** True while the parent story's title and author are being fetched. */
+  itemTitleLoading: boolean;
   /**
    * Author handle of the parent story (not the comment's author).
    * Resolved asynchronously alongside `itemTitle`; `null` until that
@@ -46,6 +48,7 @@ export function useCommentDetail(
   const [replies, setReplies] = useState<Comment[]>([]);
   const [itemId, setItemId] = useState<number | null>(null);
   const [itemTitle, setItemTitle] = useState<string | null>(null);
+  const [itemTitleLoading, setItemTitleLoading] = useState(false);
   const [itemAuthor, setItemAuthor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +71,7 @@ export function useCommentDetail(
       });
       setItemId(item.story_id ?? null);
       setReplies(normalizeAlgoliaItemChildren(item.children ?? []));
+      setItemTitleLoading(!!item.story_id);
       setLoading(false);
 
       // Fetch parent title + author in background (non-blocking).
@@ -85,6 +89,8 @@ export function useCommentDetail(
           // Degrade gracefully — title link still works with itemId
           // alone; OP badge stays off (consumers guard with
           // `isKnownAuthor(itemAuthor)`).
+        } finally {
+          if (!signal.aborted) setItemTitleLoading(false);
         }
       }
     } catch (err) {
@@ -112,5 +118,5 @@ export function useCommentDetail(
     };
   }, [load]);
 
-  return { comment, replies, itemId, itemTitle, itemAuthor, loading, error, retry };
+  return { comment, replies, itemId, itemTitle, itemTitleLoading, itemAuthor, loading, error, retry };
 }

@@ -21,6 +21,8 @@ interface CommentArticleProps {
   replies: Comment[];
   itemId: number | null;
   itemTitle: string | null;
+  /** The thread title is still being fetched (after `loading` clears). */
+  itemTitleLoading?: boolean;
   loading: boolean;
   articleClassName?: string;
   /** Story author for OP detection. */
@@ -32,6 +34,7 @@ export function CommentArticle({
   replies,
   itemId,
   itemTitle,
+  itemTitleLoading = false,
   loading,
   articleClassName = 'mb-4',
   storyAuthor = '',
@@ -76,7 +79,19 @@ export function CommentArticle({
                 <MessagesSquare aria-hidden className="size-3.5 shrink-0" />
                 <span className="truncate">{itemTitle}</span>
               </Link>
-            ) : itemId != null && !loading ? (
+            ) : itemId != null && (loading || itemTitleLoading) ? (
+              // Title still on its way: already a link, because the title
+              // fetch has no timeout and can wait out a dropped connection.
+              <Link
+                to={`/item/${itemId}`}
+                state={{ isComment: false }}
+                className={metaPillClass}
+                aria-label="story"
+              >
+                <MessagesSquare aria-hidden className="size-3.5 shrink-0" />
+                <span className="inline-block h-3 w-48 bg-skeleton rounded animate-pulse align-middle" />
+              </Link>
+            ) : itemId != null ? (
               // Resolved-but-titleless fallback (parent fetch errored
               // or returned without a title). Show a generic "story"
               // link so the user still has a path back to the root

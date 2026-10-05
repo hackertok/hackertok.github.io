@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { screen } from '@testing-library/react';
-import { Routes, Route } from 'react-router';
+import { screen, fireEvent } from '@testing-library/react';
+import { Routes, Route, Link } from 'react-router';
 import { render } from './test/test-utils';
-import { MobileItemDetailWrapper } from './App';
+import { MobileItemDetailWrapper, MobileStoryListWrapper } from './App';
 import { saveSwipePosition } from './utils/swipePosition';
 import { createStoryItem } from './test/factories';
 import type { LocationState, StoryItem } from './types';
@@ -13,11 +13,16 @@ vi.mock('./hooks/useCanSwipe', () => ({ useCanSwipe: () => true }));
 
 // Stub the heavy swipe viewers so we can assert *which* viewer the wrapper
 // mounts (and with what props) without their data hooks / async state.
-vi.mock('./components/SwipeStoryViewer', () => ({
-  SwipeStoryViewer: ({ type, initialItemId }: { type: string; initialItemId?: string }) => (
-    <div data-testid="feed-viewer" data-type={type} data-item={initialItemId ?? ''} />
-  ),
-}));
+vi.mock('./components/SwipeStoryViewer', async () => {
+  const { useState } = await import('react');
+  return {
+    SwipeStoryViewer: function SwipeStoryViewer({ type, initialItemId }: { type: string; initialItemId?: string }) {
+      // Frozen at mount: a reused instance keeps the feed it was mounted for.
+      const [mountedType] = useState(type);
+      return <div data-testid="feed-viewer" data-type={type} data-mounted-type={mountedType} data-item={initialItemId ?? ''} />;
+    },
+  };
+});
 vi.mock('./components/SwipeDomainStoryViewer', () => ({
   SwipeDomainStoryViewer: ({ domain, initialItemId }: { domain: string; initialItemId?: string }) => (
     <div data-testid="domain-viewer" data-domain={domain} data-item={initialItemId ?? ''} />
@@ -37,7 +42,7 @@ vi.mock('./api/hn', async (importOriginal) => ({
   fetchItemOnly: vi.fn(() => new Promise<never>(() => { /* never resolves */ })),
 }));
 
-function renderWrapper(id: number, state?: LocationState) {
+function renderWrapper(id: number | string, state?: LocationState) {
   return render(
     <Routes>
       <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
@@ -132,5 +137,37 @@ describe('MobileItemDetailWrapper — viewer recovery (stateless reload)', () =>
     expect(screen.queryByTestId('feed-viewer')).toBeNull();
     expect(screen.queryByTestId('domain-viewer')).toBeNull();
     expect(screen.queryByTestId('user-viewer')).toBeNull();
+  });
+});
+
+describe('MobileItemDetailWrapper — ids that are not numbers', () => {
+  it.each(['abc', '1.5', '-1'])('shows "Item not found" for /item/%s instead of a feed', (id) => {
+    renderWrapper(id, { from: 'top' });
+
+    expect(screen.getByRole('heading', { name: 'Item not found' })).toBeInTheDocument();
+    expect(screen.queryByTestId('feed-viewer')).toBeNull();
+    expect(screen.queryByTestId('swipe-container')).toBeNull();
+    expect(document.title).toMatch(/^Item not found/);
+  });
+});
+
+describe('MobileStoryListWrapper', () => {
+  it('mounts a new viewer when you switch feeds before the URL moves to a story', () => {
+    render(
+      <>
+        <Routes>
+          <Route path="/" element={<MobileStoryListWrapper type="top" />} />
+          <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
+        </Routes>
+        <Link to="/best">best</Link>
+      </>,
+    );
+    expect(screen.getByTestId('feed-viewer')).toHaveAttribute('data-mounted-type', 'top');
+
+    fireEvent.click(screen.getByRole('link', { name: 'best' }));
+
+    const viewer = screen.getByTestId('feed-viewer');
+    expect(viewer).toHaveAttribute('data-type', 'best');
+    expect(viewer).toHaveAttribute('data-mounted-type', 'best');
   });
 });

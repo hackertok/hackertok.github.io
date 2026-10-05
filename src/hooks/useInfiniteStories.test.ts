@@ -7,7 +7,7 @@ import { createStoryItem } from '../test/factories';
 import { server } from '../mocks/server';
 import { hnSdk } from '../api/hnSdk';
 import { __resetFetchCachesForTests } from '../api/hn';
-import type { FirebaseItem } from '../types';
+import type { FeedType, FirebaseItem } from '../types';
 
 function makeFirebaseItem(id: number): FirebaseItem {
   return {
@@ -126,5 +126,28 @@ describe('useInfiniteStories', () => {
     await act(() => result.current.loadMore());
 
     expect(result.current.stories).toHaveLength(50);
+  });
+
+  it('does not repeat stories after going Back to a feed whose session was saved', async () => {
+    // StoryList stays mounted across feed routes and calls reset() when `type` changes.
+    const { result, rerender } = renderHook(
+      ({ type }: { type: FeedType }) => useInfiniteStories(type),
+      { initialProps: { type: 'best' } },
+    );
+    await act(() => result.current.loadMore());
+    // Opening a story saves the session.
+    act(() => result.current.saveSessionState(0));
+
+    rerender({ type: 'newest' });
+    act(() => result.current.reset());
+    rerender({ type: 'best' });
+    act(() => result.current.reset());
+
+    await act(() => result.current.loadMore());
+    await act(() => result.current.loadMore());
+
+    const ids = result.current.stories.map(s => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toHaveLength(50);
   });
 });

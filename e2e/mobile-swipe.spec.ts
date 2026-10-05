@@ -4,7 +4,7 @@ import {
   createFirebaseWsHandler,
   FIREBASE_WS_PATTERN,
 } from './fixtures/api-mocks';
-import { ALGOLIA_API } from './fixtures/mock-data';
+import { ALGOLIA_API, mockTopItemIds } from './fixtures/mock-data';
 import {
   expectActiveSwipePanelText,
   getActiveSwipePanel,
@@ -393,6 +393,25 @@ test.describe('Mobile Swipe Viewer', () => {
     await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
   });
 
+  test('switching feeds while the first one is still loading shows only the new feed', async ({ page }) => {
+    // Every Firebase read takes 1.5s, so Top's first page is still loading at the click.
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ delayMs: 1500 }));
+    await page.goto('/#/');
+    await expect(page.getByTestId('swipe-container')).toBeVisible();
+    await expect(page.locator('[data-item-id]')).toHaveCount(0);
+
+    await page.getByRole('link', { name: 'best', exact: true }).click({ force: true });
+
+    await expect(page).toHaveURL(/\/item\/33001/, { timeout: 15000 });
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', '33001');
+    await waitForSwipeReady(page, 3);
+    const ids = await page.locator('[data-item-id]').evaluateAll(
+      (els) => els.map((el) => Number(el.getAttribute('data-item-id'))),
+    );
+    expect(ids).toEqual(expect.arrayContaining([33001, 33002, 33003]));
+    expect(ids.filter((id) => mockTopItemIds.includes(id))).toEqual([]);
+  });
+
   test('swipe uses replace — back navigates to previous section, not previous item', async ({ page }) => {
     // Swipe-driven URL changes use replaceState (not pushState), so back
     // exits the swipe viewer rather than stepping through items.
@@ -475,6 +494,14 @@ test.describe('Mobile Direct Item Access', () => {
     // Press browser forward — should re-fetch and show error again (not skeleton)
     await page.goForward();
     await expect(page.getByText(/not found/i)).toBeVisible();
+  });
+
+  test('shows not found for an item id that is not a number', async ({ page }) => {
+    await page.goto('/#/item/abc');
+
+    await expect(page.getByRole('heading', { name: 'Item not found' })).toBeVisible();
+    await expect(page).toHaveTitle(/Item not found.*HackerTok/);
+    await expect(page.locator('[data-item-id]')).toHaveCount(0);
   });
 
   test('restores swipe position when navigating back from not-found item', async ({ page }) => {
@@ -661,6 +688,28 @@ test.describe('Mobile Direct Item Access', () => {
     // The body text should be visible — this comes from Algolia's story_text
     // field, NOT from a Firebase re-fetch (which is the point of the test).
     await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
+  });
+
+  test('keeps the Ask HN body after visiting the author and going Back, and after a reload', async ({ page }) => {
+    // The saved swipe position stores stories without their body, and the
+    // restored copy is what the panel renders.
+    await page.goto('/#/ask');
+    await expect(page).toHaveURL(/\/item\/88888/);
+    const body = () => getActiveSwipePanel(page).getByText(/curious what side projects everyone is working on/i);
+    await expect(body()).toBeVisible();
+
+    await getActiveSwipePanel(page).locator('a[href^="#/user/"]').first().click();
+    await expect(page).toHaveURL(/\/user\//, { timeout: 5000 });
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/item\/88888/, { timeout: 5000 });
+    await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
+    await expect(body()).toBeVisible();
+
+    await page.reload();
+    await expect(page).toHaveURL(/\/item\/88888/, { timeout: 5000 });
+    await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
+    await expect(body()).toBeVisible();
   });
 
   test('navigating directly to a comment shows comment in swipe viewer', async ({ page }) => {

@@ -335,10 +335,16 @@ describe('sanitizeHtml', () => {
   });
 
   describe('attribute filtering', () => {
-    it('preserves allowed attributes', () => {
-      const result = sanitizeHtml('<a href="https://example.com" class="link">text</a>');
-      expect(result).toContain('href=');
-      expect(result).toContain('class="link"');
+    it('preserves href', () => {
+      const result = sanitizeHtml('<a href="https://example.com">text</a>');
+      expect(result).toContain('href="https://example.com"');
+    });
+
+    it('removes class and id, which could restyle the page or shadow its ids', () => {
+      const result = sanitizeHtml('<p class="fixed inset-0 z-50" id="main"><a href="https://example.com" class="link" id="x">text</a></p>');
+      expect(result).not.toContain('class=');
+      expect(result).not.toContain('id=');
+      expect(result).toContain('href="https://example.com"');
     });
 
     it('removes disallowed attributes', () => {
