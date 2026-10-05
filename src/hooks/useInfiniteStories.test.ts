@@ -219,4 +219,36 @@ describe('useInfiniteStories', () => {
       expect(result.current.stories.map(s => s.id)).toEqual(getCachedFeed('top')!.stories.map(s => s.id));
     });
   });
+
+  describe('a refresh that comes back empty', () => {
+    it.each<FeedType>(['top', 'best', 'ask'])('fails the %s refresh and keeps the cached stories', async (type) => {
+      setCachedFeed(type, [5, 29, 3].map(id => createStoryItem({ id })));
+      // Every item read fails, but the page request itself succeeds.
+      vi.mocked(hnSdk.readItem).mockRejectedValue(new Error('permission_denied'));
+      const { result } = renderHook(() => useInfiniteStories(type));
+
+      await act(() => expect(result.current.loadMore()).rejects.toThrow(/none came back/));
+
+      expect(result.current.error).toMatch(/none came back/);
+      expect(result.current.stories.map(s => s.id)).toEqual([5, 29, 3]);
+    });
+
+    it('asks for the front page again on the retry, not an older day', async () => {
+      setCachedFeed('top', [5, 29, 3].map(id => createStoryItem({ id })));
+      let failReads = true;
+      vi.mocked(hnSdk.readItem).mockImplementation(async (id) => {
+        if (failReads) throw new Error('permission_denied');
+        return makeFirebaseItem(Number(id));
+      });
+      const { result } = renderHook(() => useInfiniteStories('top'));
+
+      await act(() => expect(result.current.loadMore()).rejects.toThrow(/none came back/));
+      failReads = false;
+      await act(() => result.current.loadMore());
+
+      expect(result.current.error).toBeNull();
+      expect(result.current.isFromCache).toBe(false);
+      expect(result.current.stories.map(s => s.id)).toEqual(rankedIds.slice(0, 20));
+    });
+  });
 });

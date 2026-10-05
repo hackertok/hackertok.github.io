@@ -63,6 +63,14 @@ function getCachedState(type: FeedType): InitialState {
   };
 }
 
+// A page request succeeds even when every item read in it fails. A refresh
+// that brings nothing back has still failed: as a success it would leave
+// isFromCache set, and the callers that refresh eagerly would page through
+// the whole feed.
+function emptyRefreshError(type: FeedType): Error {
+  return new Error(`Failed to fetch ${type} stories: none came back`);
+}
+
 export function useInfiniteStories(type: FeedType = 'top') {
   const [initialState] = useState(() => getInitialState(type));
   const [stories, setStories] = useState(initialState.stories);
@@ -140,8 +148,9 @@ export function useInfiniteStories(type: FeedType = 'top') {
           const frontPage = await fetchTopStories(20);
           
           if (versionRef.current !== currentVersion) return;
+          if (isRevalidating && frontPage.length === 0) throw emptyRefreshError(type);
           
-          if (isRevalidating && frontPage.length > 0) {
+          if (isRevalidating) {
             kept = startRevalidation();
           }
           
@@ -201,9 +210,10 @@ export function useInfiniteStories(type: FeedType = 'top') {
         const result = await fetchFn(positionRef.current, 30);
         
         if (versionRef.current !== currentVersion) return;
+        if (isRevalidatingBest && result.stories.length === 0) throw emptyRefreshError(type);
         
         // As in the top branch.
-        const kept = isRevalidatingBest && result.stories.length > 0 ? startRevalidation() : null;
+        const kept = isRevalidatingBest ? startRevalidation() : null;
         
         const uniqueStories = result.stories.filter(story => {
           if (seenIdsRef.current.has(story.id)) {
@@ -236,9 +246,10 @@ export function useInfiniteStories(type: FeedType = 'top') {
           const result = await fetchFn(positionRef.current);
 
           if (versionRef.current !== currentVersion) return;
+          if (isRevalidating && result.stories.length === 0) throw emptyRefreshError(type);
 
           // As in the top branch.
-          const kept = isRevalidating && result.stories.length > 0 ? startRevalidation() : null;
+          const kept = isRevalidating ? startRevalidation() : null;
 
           const uniqueStories = result.stories.filter(story => {
             if (seenIdsRef.current.has(story.id)) {

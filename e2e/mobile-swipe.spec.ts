@@ -585,6 +585,41 @@ test.describe('Mobile Swipe Viewer', () => {
     const historyLength = await page.evaluate(() => window.history.length);
     expect(historyLength).toBeLessThanOrEqual(2);
   });
+
+  test('a refresh whose stories all fail to load keeps the cached feed without paging through older days', async ({ page }) => {
+    // The list of top story ids loads, but every story read fails.
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ errorItemIds: mockTopItemIds }));
+    let dayRequests = 0;
+    await page.route(`${ALGOLIA_API}/search*`, async (route) => {
+      if (!route.request().url().includes('numericFilters')) return route.fallback();
+      dayRequests += 1;
+      const base = 900_000 + dayRequests * 10;
+      await route.fulfill({
+        json: {
+          hits: [0, 1, 2].map((i) => ({
+            objectID: String(base + i), title: `Older story ${base + i}`, url: 'https://example.com/older',
+            author: 'someone', points: 1, num_comments: 0, created_at_i: Math.floor(Date.now() / 1000) - 86_400 * dayRequests,
+            _tags: ['story'],
+          })),
+          nbHits: 3, page: 0, nbPages: 1, hitsPerPage: 30,
+        },
+      });
+    });
+    await page.addInitScript((ids) => {
+      const stories = ids.map((id) => ({
+        id, type: 'story', title: `Cached story ${id}`, url: `https://example.com/${id}`,
+        points: 1, author: 'someone', createdAt: Date.now() - 3_600_000, commentCount: 0,
+      }));
+      localStorage.setItem('feed:top', JSON.stringify({ stories, timestamp: Date.now() - 3_600_000 }));
+    }, mockTopItemIds);
+
+    await page.goto('/#/');
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', String(mockTopItemIds[0]));
+    await page.waitForTimeout(3000);
+
+    expect(dayRequests).toBe(0);
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', String(mockTopItemIds[0]));
+  });
 });
 
 test.describe('Mobile Direct Item Access', () => {
