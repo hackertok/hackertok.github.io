@@ -179,14 +179,16 @@ export async function smoothScrollAndAwaitSettled(container: Locator, targetLeft
         dispatchTouch('touchend', [], [makeTouch(endX)]);
       }, { forward: isForward, width: panelWidth });
 
-      // Wait for the animation to complete (panel gets .active)
+      // Wait for the animation to complete (panel gets .active). Long enough
+      // for WebKit under load: a gesture that lands late after a retry has
+      // been sent moves the reader a panel further than asked.
       try {
         await page.waitForFunction((idx) => {
           const c = document.querySelector('[data-testid="swipe-container"]');
           if (!c) return false;
           const panel = c.children[idx] as HTMLElement;
           return panel?.classList.contains('active');
-        }, stepTarget, { timeout: 500 });
+        }, stepTarget, { timeout: 2000 });
         success = true;
       } catch {
         // Gesture was likely rejected (e.g. programmatic scroll guard still active).
