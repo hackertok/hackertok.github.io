@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { ALGOLIA_API } from '../config/api';
 import { normalizeAlgoliaHit } from '../api/hn';
+import { algoliaPageParams, nextAlgoliaPage, type AlgoliaPageCursor } from '../utils/algoliaPaging';
 import type { StoryItem, AlgoliaSearchResponse } from '../types';
 
 const HITS_PER_PAGE = 50;
@@ -8,6 +9,7 @@ const HITS_PER_PAGE = 50;
 interface UserCacheEntry {
   stories: StoryItem[];
   page: number;
+  before?: number;
   hasMore: boolean;
   seenIds: Set<number>;
 }
@@ -45,7 +47,7 @@ export function useUserInfiniteStories(username: string) {
   const [hasMore, setHasMore] = useState(initialCached?.hasMore ?? true);
   const [prevUsername, setPrevUsername] = useState(username);
 
-  const nextPageRef = useRef(initialCached?.page ?? 0);
+  const nextPageRef = useRef<AlgoliaPageCursor>({ page: initialCached?.page ?? 0, before: initialCached?.before });
   const seenIdsRef = useRef<Set<number>>(new Set(initialCached?.seenIds ?? []));
   const versionRef = useRef(0);
   const inFlightRef = useRef(false);
@@ -69,7 +71,7 @@ export function useUserInfiniteStories(username: string) {
   // before a stale in-flight fetch can check it.
   useLayoutEffect(() => {
     const cached = username ? userStoriesCache.get(username) : undefined;
-    nextPageRef.current = cached?.page ?? 0;
+    nextPageRef.current = { page: cached?.page ?? 0, before: cached?.before };
     seenIdsRef.current = new Set(cached?.seenIds ?? []);
     storiesRef.current = cached?.stories ?? [];
     versionRef.current += 1;
@@ -90,7 +92,7 @@ export function useUserInfiniteStories(username: string) {
       // tags=story,author_X is an AND filter: only stories AND authored by X.
       // search_by_date returns chronological newest-first, matching HN's
       // /submitted ordering.
-      const url = `${ALGOLIA_API}/search_by_date?tags=story,author_${encodeURIComponent(username)}&hitsPerPage=${HITS_PER_PAGE}&page=${pageToFetch}`;
+      const url = `${ALGOLIA_API}/search_by_date?tags=story,author_${encodeURIComponent(username)}&hitsPerPage=${HITS_PER_PAGE}${algoliaPageParams(pageToFetch)}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -113,10 +115,10 @@ export function useUserInfiniteStories(username: string) {
         return true;
       });
 
-      const newPage = data.page + 1;
-      nextPageRef.current = newPage;
+      const nextPage = nextAlgoliaPage(data, HITS_PER_PAGE, pageToFetch);
+      nextPageRef.current = nextPage ?? { ...pageToFetch, page: data.page + 1 };
 
-      const newHasMore = data.page < data.nbPages - 1;
+      const newHasMore = nextPage !== null;
       setHasMore(newHasMore);
 
       // Compute outside updater to keep setStories pure (StrictMode-safe).
@@ -124,7 +126,7 @@ export function useUserInfiniteStories(username: string) {
       storiesRef.current = updated;
       userStoriesCache.set(username, {
         stories: updated,
-        page: newPage,
+        ...nextPageRef.current,
         hasMore: newHasMore,
         seenIds: new Set(seenIdsRef.current),
       });
@@ -157,7 +159,7 @@ export function useUserInfiniteStories(username: string) {
     setLoading(!!username);
     setError(null);
     setHasMore(true);
-    nextPageRef.current = 0;
+    nextPageRef.current = { page: 0 };
     seenIdsRef.current = new Set();
     storiesRef.current = [];
     if (username) userStoriesCache.delete(username);

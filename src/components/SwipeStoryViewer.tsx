@@ -34,6 +34,8 @@ interface SwipeStoryViewerCoreProps {
    *  with zero stories and no initialItemId. Feeds omit this to preserve the
    *  existing fall-through behavior (they are never truly empty). */
   emptyTitle?: string;
+  /** Called with the ids of the stories from the first through the one on screen. */
+  onReachedStoriesChange?: (storyIds: number[]) => void;
 }
 
 /**
@@ -57,6 +59,7 @@ export function SwipeStoryViewerCore({
   backState,
   titleFallback,
   emptyTitle,
+  onReachedStoriesChange,
 }: SwipeStoryViewerCoreProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -506,6 +509,10 @@ export function SwipeStoryViewerCore({
   // Each panel IS the story detail on mobile — track how long the active story
   // is looked at and hide it for a window scaled to that dwell time.
   useViewDwell(currentStory?.id);
+
+  useLayoutEffect(() => {
+    onReachedStoriesChange?.(mergedStories.slice(0, currentIndex + 1).map(story => story.id));
+  }, [mergedStories, currentIndex, onReachedStoriesChange]);
   
   // Load more stories when approaching the end (don't auto-retry on error — user taps Retry)
   useEffect(() => {
@@ -718,13 +725,14 @@ interface SwipeStoryViewerProps {
 
 /** Feed-backed swipe viewer wrapping SwipeStoryViewerCore. */
 export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps) {
-  const { stories, loading, error, hasMore, loadMore, isFromCache, isFromSession } = useInfiniteStories(type);
+  const { stories, loading, error, hasMore, loadMore, isFromCache, isFromSession, keepOnRevalidate } = useInfiniteStories(type);
 
   // Prefetch other sections in background for instant tab switching
   usePrefetchSections(type);
 
-  // Trigger revalidation eagerly — same as StoryList — so the replace
-  // happens at index 0, not mid-session after the user has swiped deep.
+  // Trigger revalidation eagerly — same as StoryList — so it lands before the
+  // reader has swiped far: the stories they've reached, the one on screen
+  // included, stay, and the rest are replaced.
   useEffect(() => {
     if (isFromSession) return;
     if (isFromCache && !loading && !error) {
@@ -744,6 +752,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
       initialItemId={initialItemId}
       backState={backState}
       titleFallback={FEED_TYPE_TITLES[type]}
+      onReachedStoriesChange={keepOnRevalidate}
     />
   );
 }

@@ -412,6 +412,151 @@ test.describe('Mobile Swipe Viewer', () => {
     expect(ids.filter((id) => mockTopItemIds.includes(id))).toEqual([]);
   });
 
+  test('a feed refresh that lands after a swipe keeps the story on screen', async ({ page }) => {
+    // An hour-old cached Top feed in the reverse of the live order, and Firebase
+    // reads that take 1.5s, so the refresh lands after the swipe.
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ delayMs: 1500 }));
+    await page.addInitScript((ids) => {
+      const stories = [...ids].reverse().map((id) => ({
+        id, type: 'story', title: `Cached story ${id}`, url: `https://example.com/${id}`,
+        points: 1, author: 'someone', createdAt: Date.now() - 3_600_000, commentCount: 0,
+      }));
+      localStorage.setItem('feed:top', JSON.stringify({ stories, timestamp: Date.now() - 3_600_000 }));
+    }, mockTopItemIds);
+
+    await page.goto('/#/');
+    await waitForSwipeReady(page, 2);
+    const container = page.getByTestId('swipe-container');
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+    await smoothScrollAndAwaitSettled(container, panelWidth);
+    await waitForScrollAtIndex(page, 1);
+    const [first, second] = [...mockTopItemIds].reverse();
+    await expect(page).toHaveURL(new RegExp(`/item/${second}`), { timeout: 5000 });
+
+    const panelIds = () => page.locator('[data-item-id]').evaluateAll(
+      (els) => els.map((el) => Number(el.getAttribute('data-item-id'))),
+    );
+    // The refresh has landed once the live ranking's first story is ahead of its third.
+    await expect.poll(async () => {
+      const ids = await panelIds();
+      return ids.indexOf(mockTopItemIds[0]) < ids.indexOf(mockTopItemIds[2]);
+    }, { timeout: 15000 }).toBe(true);
+
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', String(second));
+    await expect(page).toHaveURL(new RegExp(`/item/${second}`));
+    expect((await panelIds()).slice(0, 2)).toEqual([first, second]);
+  });
+
+  test('a link to the last story of a cached feed refreshes it without paging back through older days', async ({ page }) => {
+    // The cached feed already holds the live stories, so the refresh brings no
+    // new ones, and the link opens the last of them.
+    await page.addInitScript((ids) => {
+      const stories = ids.map((id) => ({
+        id, type: 'story', title: `Cached story ${id}`, url: `https://example.com/${id}`,
+        points: 1, author: 'someone', createdAt: Date.now() - 3_600_000, commentCount: 0,
+      }));
+      localStorage.setItem('feed:top', JSON.stringify({ stories, timestamp: Date.now() - 3_600_000 }));
+    }, mockTopItemIds);
+    // Day pages that never run out, as the live API's don't.
+    let dayRequests = 0;
+    await page.route(`${ALGOLIA_API}/search*`, async (route) => {
+      if (!route.request().url().includes('numericFilters')) return route.fallback();
+      dayRequests += 1;
+      const base = 900_000 + dayRequests * 10;
+      await route.fulfill({
+        json: {
+          hits: [0, 1, 2].map((i) => ({
+            objectID: String(base + i), title: `Older story ${base + i}`, url: 'https://example.com/older',
+            author: 'someone', points: 1, num_comments: 0, created_at_i: Math.floor(Date.now() / 1000) - 86_400 * dayRequests,
+            _tags: ['story'],
+          })),
+          nbHits: 3, page: 0, nbPages: 1, hitsPerPage: 30,
+        },
+      });
+    });
+
+    const last = mockTopItemIds[mockTopItemIds.length - 1];
+    await page.goto(`/#/item/${last}`);
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', String(last));
+
+    // The refresh rewrites the cache once it lands.
+    const startedAt = Date.now();
+    await expect.poll(
+      () => page.evaluate(() => (JSON.parse(localStorage.getItem('feed:top') ?? '{}') as { timestamp?: number }).timestamp ?? 0),
+      { timeout: 10_000 },
+    ).toBeGreaterThan(startedAt - 60_000);
+    await page.waitForTimeout(1000);
+    expect(dayRequests).toBeLessThan(5);
+  });
+
+  test('a refresh with no new stories drops the cached ones past the reader, so the next page does not repeat them', async ({ page }) => {
+    // A cache longer than one page, as the desktop list writes: the live front
+    // page, then the older stories that yesterday's page holds.
+    const older = Array.from({ length: 9 }, (_, i) => 900_001 + i);
+    const yesterday = Math.floor(Date.now() / 1000) - 86_400;
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({
+      delayMs: 1500,
+      itemOverrides: Object.fromEntries(older.map((id) => [id, {
+        id, title: `Older story ${id}`, url: 'https://example.com/older', by: 'someone', score: 1,
+        time: yesterday, descendants: 0, type: 'story',
+      }])),
+    }));
+    let dayRequests = 0;
+    await page.route(`${ALGOLIA_API}/search*`, async (route) => {
+      if (!route.request().url().includes('numericFilters')) return route.fallback();
+      dayRequests += 1;
+      const ids = dayRequests === 1 ? older : [0, 1, 2].map((i) => 700_000 + dayRequests * 10 + i);
+      await route.fulfill({
+        json: {
+          hits: ids.map((id) => ({
+            objectID: String(id), title: `Older story ${id}`, url: 'https://example.com/older',
+            author: 'someone', points: 1, num_comments: 0, created_at_i: yesterday - 86_400 * (dayRequests - 1),
+            _tags: ['story'],
+          })),
+          nbHits: ids.length, page: 0, nbPages: 1, hitsPerPage: 30,
+        },
+      });
+    });
+    await page.addInitScript(({ live, older }) => {
+      const stories = [...live, ...older].map((id) => ({
+        id, type: 'story', title: `Cached story ${id}`, url: `https://example.com/${id}`,
+        points: 1, author: 'someone', createdAt: Date.now() - 3_600_000, commentCount: 0,
+      }));
+      localStorage.setItem('feed:top', JSON.stringify({ stories, timestamp: Date.now() - 3_600_000 }));
+      // A reload keeps the history entry's state, so the viewer reopens the
+      // story where it was in the feed: past the whole front page.
+      history.replaceState({ usr: { from: 'top' }, key: 'reload', idx: 0 }, '');
+    }, { live: mockTopItemIds, older });
+
+    const reading = older[2];
+    await page.goto(`/#/item/${reading}`);
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', String(reading));
+
+    const startedAt = Date.now();
+    await expect.poll(
+      () => page.evaluate(() => (JSON.parse(localStorage.getItem('feed:top') ?? '{}') as { timestamp?: number }).timestamp ?? 0),
+      { timeout: 10_000 },
+    ).toBeGreaterThan(startedAt - 60_000);
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', String(reading));
+
+    // Two swipes on, the next page loads.
+    await expect(page.locator(`[data-item-id="${older[4]}"]`).first()).toBeAttached();
+    const container = page.getByTestId('swipe-container');
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+    const index = mockTopItemIds.length + 2;
+    await smoothScrollAndAwaitSettled(container, panelWidth * (index + 1));
+    await waitForScrollAtIndex(page, index + 1);
+    await smoothScrollAndAwaitSettled(container, panelWidth * (index + 2));
+    await waitForScrollAtIndex(page, index + 2);
+    await expect.poll(() => dayRequests).toBeGreaterThan(0);
+    await page.waitForTimeout(1000);
+
+    const ids = await page.locator('[data-item-id]').evaluateAll(
+      (els) => els.map((el) => Number(el.getAttribute('data-item-id'))),
+    );
+    expect(ids.filter((id, i) => ids.indexOf(id) !== i)).toEqual([]);
+  });
+
   test('swipe uses replace — back navigates to previous section, not previous item', async ({ page }) => {
     // Swipe-driven URL changes use replaceState (not pushState), so back
     // exits the swipe viewer rather than stepping through items.
@@ -468,6 +613,25 @@ test.describe('Mobile Direct Item Access', () => {
 
     // Should display the item body text (sanitized HTML rendered in FullScreenItem)
     await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
+  });
+
+  test('keeps a linked story that is not in the feed after swiping away and back', async ({ page }) => {
+    // 88888 is an Ask HN story, so the Top feed shows it in front of its own stories.
+    await page.goto('/#/item/88888');
+    await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
+
+    const container = page.getByTestId('swipe-container');
+    await waitForSwipeReady(page, 6);
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+
+    await smoothScrollAndAwaitSettled(container, panelWidth);
+    await waitForScrollAtIndex(page, 1);
+    await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
+
+    await smoothScrollAndAwaitSettled(container, 0);
+    await waitForScrollAtIndex(page, 0);
+    await expect(page).toHaveURL(/\/item\/88888/, { timeout: 5000 });
+    await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
   });
 
   test('clears error state when navigating back and forward from not-found item', async ({ page }) => {

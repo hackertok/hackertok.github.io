@@ -173,10 +173,9 @@ describe('UserProfile', () => {
 
   describe('mobile swipe-mode bug', () => {
     // The bootstrap script in index.html applies `swipe-mode` to <html>/<body>
-    // for all `#/...` routes on mobile so the swipe viewers don't double-paint
-    // a scrollable page first. UserProfile is vertically scrollable, so it
-    // must imperatively turn that class off on mount or direct loads end up
-    // with `body { overflow: clip }` and the page can't scroll.
+    // on mobile so the swipe viewers don't double-paint a scrollable page
+    // first. UserProfile is vertically scrollable, so it turns that class off
+    // on mount, or a page left with `body { overflow: clip }` can't scroll.
     it('removes the swipe-mode class from <html> and <body> on mount', async () => {
       document.documentElement.classList.add('swipe-mode');
       document.body.classList.add('swipe-mode');

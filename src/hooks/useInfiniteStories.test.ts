@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useInfiniteStories } from './useInfiniteStories';
-import { setCachedFeed, clearFeedCache } from '../utils/feedCache';
+import { setCachedFeed, getCachedFeed, clearFeedCache } from '../utils/feedCache';
 import { clearListSessionState } from '../utils/itemCache';
 import { createStoryItem } from '../test/factories';
 import { server } from '../mocks/server';
@@ -149,5 +149,74 @@ describe('useInfiniteStories', () => {
     const ids = result.current.stories.map(s => s.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toHaveLength(50);
+  });
+
+  describe('revalidation', () => {
+    function seedStaleFeed(type: FeedType) {
+      // A cached order the live ranking (1, 2, 3, …) has moved on from.
+      setCachedFeed(type, [5, 29, 3].map(id => createStoryItem({ id, title: `Cached Story ${id}` })));
+    }
+
+    it.each<FeedType>(['top', 'best', 'ask'])('keeps the %s stories passed to keepOnRevalidate ahead of the fresh ones', async (type) => {
+      seedStaleFeed(type);
+      const { result } = renderHook(() => useInfiniteStories(type));
+
+      act(() => result.current.keepOnRevalidate([5, 29]));
+      await act(() => result.current.loadMore());
+
+      const fresh = getCachedFeed(type)!.stories.map(s => s.id);
+      expect(fresh).toContain(5);
+      expect(result.current.stories.map(s => s.id)).toEqual([5, 29, ...fresh.filter(id => id !== 5 && id !== 29)]);
+      expect(result.current.stories[0].title).toBe('Cached Story 5');
+    });
+
+    it('keeps only the stories passed, not the ones ahead of them in the feed', async () => {
+      // A linked story the viewer moved to the front: the reader has seen it
+      // and none of the cached stories before it.
+      seedStaleFeed('top');
+      const { result } = renderHook(() => useInfiniteStories('top'));
+
+      act(() => result.current.keepOnRevalidate([3]));
+      await act(() => result.current.loadMore());
+
+      const fresh = getCachedFeed('top')!.stories.map(s => s.id);
+      expect(result.current.stories.map(s => s.id)).toEqual([3, ...fresh.filter(id => id !== 3)]);
+    });
+
+    it.each<FeedType>(['top', 'best', 'ask'])('counts the %s feed as fresh when every fetched story was kept', async (type) => {
+      // The swipe viewer calls loadMore for as long as isFromCache is set.
+      setCachedFeed(type, rankedIds.map(id => createStoryItem({ id })));
+      const { result } = renderHook(() => useInfiniteStories(type));
+
+      act(() => result.current.keepOnRevalidate(rankedIds));
+      await act(() => result.current.loadMore());
+
+      expect(result.current.isFromCache).toBe(false);
+      expect(result.current.stories.map(s => s.id)).toEqual(rankedIds);
+    });
+
+    it.each<FeedType>(['top', 'best', 'ask'])('drops the cached %s stories past the kept ones when every fetched story was kept', async (type) => {
+      // A cache longer than one page, as the desktop list writes, and a reader
+      // past the whole fetched page.
+      setCachedFeed(type, rankedIds.map(id => createStoryItem({ id })));
+      const { result } = renderHook(() => useInfiniteStories(type));
+
+      act(() => result.current.keepOnRevalidate(rankedIds.slice(0, 40)));
+      await act(() => result.current.loadMore());
+      expect(result.current.stories.map(s => s.id)).toEqual(rankedIds.slice(0, 40));
+
+      await act(() => result.current.loadMore());
+      const ids = result.current.stories.map(s => s.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('replaces every story when none were kept', async () => {
+      seedStaleFeed('top');
+      const { result } = renderHook(() => useInfiniteStories('top'));
+
+      await act(() => result.current.loadMore());
+
+      expect(result.current.stories.map(s => s.id)).toEqual(getCachedFeed('top')!.stories.map(s => s.id));
+    });
   });
 });

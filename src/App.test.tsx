@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
-import { Routes, Route, Link } from 'react-router';
+import { Routes, Route, Link, useNavigate } from 'react-router';
 import { render } from './test/test-utils';
 import { MobileItemDetailWrapper, MobileStoryListWrapper } from './App';
+import { fetchItemOnly } from './api/hn';
 import { saveSwipePosition } from './utils/swipePosition';
 import { createStoryItem } from './test/factories';
 import type { LocationState, StoryItem } from './types';
@@ -17,9 +18,18 @@ vi.mock('./components/SwipeStoryViewer', async () => {
   const { useState } = await import('react');
   return {
     SwipeStoryViewer: function SwipeStoryViewer({ type, initialItemId }: { type: string; initialItemId?: string }) {
-      // Frozen at mount: a reused instance keeps the feed it was mounted for.
+      // Frozen at mount: a reused instance keeps the feed and item it was mounted for.
       const [mountedType] = useState(type);
-      return <div data-testid="feed-viewer" data-type={type} data-mounted-type={mountedType} data-item={initialItemId ?? ''} />;
+      const [mountedItem] = useState(initialItemId ?? '');
+      return (
+        <div
+          data-testid="feed-viewer"
+          data-type={type}
+          data-mounted-type={mountedType}
+          data-item={initialItemId ?? ''}
+          data-mounted-item={mountedItem}
+        />
+      );
     },
   };
 });
@@ -137,6 +147,41 @@ describe('MobileItemDetailWrapper — viewer recovery (stateless reload)', () =>
     expect(screen.queryByTestId('feed-viewer')).toBeNull();
     expect(screen.queryByTestId('domain-viewer')).toBeNull();
     expect(screen.queryByTestId('user-viewer')).toBeNull();
+  });
+});
+
+describe('MobileItemDetailWrapper — direct link', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  function SwipeToNextStory() {
+    const navigate = useNavigate();
+    // What the swipe viewer does when the first swipe lands on the next story.
+    return (
+      <button onClick={() => void navigate('/item/12345', { replace: true, state: { from: 'top' } })}>
+        swipe
+      </button>
+    );
+  }
+
+  it('keeps the story viewer when the first swipe adds `from: top` to the URL state', async () => {
+    vi.mocked(fetchItemOnly).mockResolvedValueOnce(createStoryItem({ id: 88888 }));
+    render(
+      <Routes>
+        <Route path="/item/:id" element={<><MobileItemDetailWrapper /><SwipeToNextStory /></>} />
+      </Routes>,
+      { initialEntries: ['/item/88888'] },
+    );
+    expect(await screen.findByTestId('feed-viewer')).toHaveAttribute('data-item', '88888');
+
+    fireEvent.click(screen.getByRole('button', { name: 'swipe' }));
+
+    // A new instance would start over from 12345 and lose 88888, the story
+    // the link opened, which isn't in the Top feed.
+    const viewer = screen.getByTestId('feed-viewer');
+    expect(viewer).toHaveAttribute('data-item', '12345');
+    expect(viewer).toHaveAttribute('data-mounted-item', '88888');
   });
 });
 

@@ -110,8 +110,10 @@
       (function() {
         var canSwipe = !window.matchMedia('(min-width: 48rem)').matches
           && window.matchMedia('(pointer: coarse) and (hover: none)').matches;
-        var hash = window.location.hash || '#/';
-        var isSwipeRoute = /^#\/(show|ask|best|newest|item\/)?/.test(hash);
+        var path = (window.location.hash || '#/').slice(1).split('?')[0];
+        // Only the routes App.tsx gives a swipe viewer: the class otherwise
+        // stays on pages that never clear it (404, "Item not found").
+        var isSwipeRoute = /^\/(?:(?:show|ask|best|newest)\/?|item\/\d+\/?|from\/.+|submitted\/[^\/]+\/?)?$/i.test(path);
         if (canSwipe && isSwipeRoute) {
           document.documentElement.classList.add('swipe-mode');
           document.body.classList.add('swipe-mode');

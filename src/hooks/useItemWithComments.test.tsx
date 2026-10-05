@@ -121,9 +121,9 @@ describe('useItemWithComments', () => {
       await waitFor(() => {
         expect(result.current.commentsLoading).toBe(false);
       });
-      // Only the body is filled in: the feed's own fields (type, points) stay.
-      expect(result.current.item).toEqual({ ...askItem, text: body });
-      expect(getCachedItem(12345)?.item).toEqual({ ...askItem, text: body });
+      // Firebase calls Ask HN posts `story`, so the type stays the feed's.
+      expect(result.current.item).toEqual({ ...askItem, text: body, points: 999 });
+      expect(getCachedItem(12345)?.item).toEqual({ ...askItem, text: body, points: 999 });
     });
   });
 
@@ -490,6 +490,46 @@ describe('useItemWithComments', () => {
       });
 
       expect(result.current.item).toBeTruthy();
+    });
+
+    function seedStaleCache() {
+      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}12345`, JSON.stringify({
+        item: testItem,
+        comments: testComments,
+        timestamp: Date.now() - 60 * 60 * 1000,
+        orderedDepth: 3,
+      }));
+    }
+
+    it('updates the title, points and comment count from the revalidation', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue({
+        ...mockFirebaseStory, title: 'Renamed by a moderator', score: 450, descendants: 120,
+      });
+      seedStaleCache();
+
+      const { result } = renderHook(() => useItemWithComments(12345));
+      expect(result.current.item).toEqual(testItem);
+
+      const fresh = { ...testItem, title: 'Renamed by a moderator', points: 450, commentCount: 120 };
+      await waitFor(() => {
+        expect(result.current.item).toEqual(fresh);
+      });
+      expect(getCachedItem(12345)?.item).toEqual(fresh);
+    });
+
+    it('keeps the cached title when the story has since been deleted', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue({
+        id: 12345, deleted: true, time: mockFirebaseStory.time, type: 'story',
+      });
+      seedStaleCache();
+
+      const { result } = renderHook(() => useItemWithComments(12345));
+
+      await waitFor(() => {
+        expect(getCachedItem(12345)?.isFresh).toBe(true);
+      });
+      expect(result.current.item).toEqual(testItem);
+      expect(getCachedItem(12345)?.item).toEqual(testItem);
     });
 
     it('fetches when cache has no comments', async () => {

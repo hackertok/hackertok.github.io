@@ -207,6 +207,30 @@ test.describe('The first paint, before React', () => {
         await page.evaluate(() => document.documentElement.classList.contains('swipe-mode')),
       ).toBe(true);
     });
+
+    for (const route of ['/#/best', '/#/item/12345', '/#/from/github.com/rust-lang', '/#/submitted/pg']) {
+      test(`bets on it for ${route}`, async ({ page }) => {
+        await page.route('**/*.js', r => r.abort());
+        await page.goto(route, { waitUntil: 'domcontentloaded' });
+
+        expect(
+          await page.evaluate(() => document.documentElement.classList.contains('swipe-mode')),
+        ).toBe(true);
+      });
+    }
+
+    // None of these mount a viewer, and the 404 and not-found pages never
+    // clear the class, so a wrong bet would stay.
+    for (const route of ['/#/user/pg', '/#/no-such-page', '/#/item/abc', '/#/from/']) {
+      test(`does not for ${route}`, async ({ page }) => {
+        await page.route('**/*.js', r => r.abort());
+        await page.goto(route, { waitUntil: 'domcontentloaded' });
+
+        expect(
+          await page.evaluate(() => document.documentElement.classList.contains('swipe-mode')),
+        ).toBe(false);
+      });
+    }
   });
 
   test.describe('with a finger, on a viewport only rem calls narrow', () => {

@@ -5,7 +5,7 @@
  * Stale responses discarded via a monotonic version counter.
  * Deduplication across pages via a `seenIds` set.
  */
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { fetchTopStories, fetchFrontPageForDay, fetchBestStories, fetchNewStories, fetchShowStories, fetchAskStories, fetchAskStoriesForDay, fetchShowStoriesForDay } from '../api/hn';
 import { getCachedFeed, setCachedFeed } from '../utils/feedCache';
 import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/itemCache';
@@ -92,6 +92,12 @@ export function useInfiniteStories(type: FeedType = 'top') {
   // commit both still see the old `loading === false`.
   const inFlightRef = useRef(false);
   const hasStaleCacheRef = useRef(initialState.isFromCache);
+  const storiesRef = useRef(stories);
+  const keptIdsRef = useRef<ReadonlySet<number>>(new Set());
+
+  useLayoutEffect(() => {
+    storiesRef.current = stories;
+  }, [stories]);
   // For ask/show: tracks whether we've exhausted Firebase and moved to Algolia
   const phaseRef = useRef<'firebase' | 'algolia'>(
     (() => {
@@ -112,9 +118,22 @@ export function useInfiniteStories(type: FeedType = 'top') {
     // Capture current version to check if response is stale
     const currentVersion = versionRef.current;
 
+    // Revalidation REPLACES the stale stories, except the ones passed to
+    // keepOnRevalidate. seenIds restarts from those, so nothing fresh gets
+    // dropped.
+    const startRevalidation = () => {
+      const kept = storiesRef.current.filter(story => keptIdsRef.current.has(story.id));
+      seenIdsRef.current = new Set(kept.map(story => story.id));
+      return kept;
+    };
+
     try {
       if (type === 'top') {
         let newStories: StoryItem[] = [];
+        // Set once a refresh's page arrives, which then rebuilds the list even
+        // with nothing new on it: the cached stories past the kept ones are no
+        // longer in seenIds, so the next page would repeat them.
+        let kept: StoryItem[] | null = null;
         const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
         
         if (positionRef.current === 0) {
@@ -122,9 +141,8 @@ export function useInfiniteStories(type: FeedType = 'top') {
           
           if (versionRef.current !== currentVersion) return;
           
-          // Revalidation REPLACES all stories — clear seenIds so nothing gets dropped.
-          if (isRevalidating) {
-            seenIdsRef.current.clear();
+          if (isRevalidating && frontPage.length > 0) {
+            kept = startRevalidation();
           }
           
           newStories = frontPage.filter(story => {
@@ -135,8 +153,10 @@ export function useInfiniteStories(type: FeedType = 'top') {
             return true;
           });
           
-          if (newStories.length > 0) {
-            setCachedFeed(type, newStories);
+          // Fresh once the page arrives, even if every story on it was kept:
+          // the swipe viewer calls loadMore for as long as isFromCache is set.
+          if (frontPage.length > 0) {
+            setCachedFeed(type, frontPage);
             setIsFromCache(false);
             hasStaleCacheRef.current = false;
           }
@@ -169,12 +189,10 @@ export function useInfiniteStories(type: FeedType = 'top') {
 
         if (newStories.length === 0 && positionRef.current >= 365) {
           setHasMore(false);
+        } else if (kept) {
+          setStories([...kept, ...newStories]);
         } else if (newStories.length > 0) {
-          if (isRevalidating) {
-            setStories(newStories);
-          } else {
-            setStories(prev => [...prev, ...newStories]);
-          }
+          setStories(prev => [...prev, ...newStories]);
         }
       } else if (type === 'best' || type === 'newest') {
         // Offset-based pagination via Firebase /beststories or /newstories.
@@ -184,9 +202,8 @@ export function useInfiniteStories(type: FeedType = 'top') {
         
         if (versionRef.current !== currentVersion) return;
         
-        if (isRevalidatingBest) {
-          seenIdsRef.current.clear();
-        }
+        // As in the top branch.
+        const kept = isRevalidatingBest && result.stories.length > 0 ? startRevalidation() : null;
         
         const uniqueStories = result.stories.filter(story => {
           if (seenIdsRef.current.has(story.id)) {
@@ -196,8 +213,9 @@ export function useInfiniteStories(type: FeedType = 'top') {
           return true;
         });
 
-        if (positionRef.current === 0 && uniqueStories.length > 0) {
-          setCachedFeed(type, uniqueStories);
+        // By the fetched page, as in the top branch.
+        if (positionRef.current === 0 && result.stories.length > 0) {
+          setCachedFeed(type, result.stories);
           setIsFromCache(false);
           hasStaleCacheRef.current = false;
         }
@@ -205,12 +223,10 @@ export function useInfiniteStories(type: FeedType = 'top') {
         positionRef.current = result.nextOffset;
         setHasMore(result.hasMore);
         
-        if (uniqueStories.length > 0) {
-          if (isRevalidatingBest) {
-            setStories(uniqueStories);
-          } else {
-            setStories(prev => [...prev, ...uniqueStories]);
-          }
+        if (kept) {
+          setStories([...kept, ...uniqueStories]);
+        } else if (uniqueStories.length > 0) {
+          setStories(prev => [...prev, ...uniqueStories]);
         }
       } else if (type === 'show' || type === 'ask') {
         const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
@@ -221,9 +237,8 @@ export function useInfiniteStories(type: FeedType = 'top') {
 
           if (versionRef.current !== currentVersion) return;
 
-          if (isRevalidating) {
-            seenIdsRef.current.clear();
-          }
+          // As in the top branch.
+          const kept = isRevalidating && result.stories.length > 0 ? startRevalidation() : null;
 
           const uniqueStories = result.stories.filter(story => {
             if (seenIdsRef.current.has(story.id)) {
@@ -233,8 +248,9 @@ export function useInfiniteStories(type: FeedType = 'top') {
             return true;
           });
 
-          if (positionRef.current === 0 && uniqueStories.length > 0) {
-            setCachedFeed(type, uniqueStories);
+          // By the fetched page, as in the top branch.
+          if (positionRef.current === 0 && result.stories.length > 0) {
+            setCachedFeed(type, result.stories);
             setIsFromCache(false);
             hasStaleCacheRef.current = false;
           }
@@ -248,12 +264,10 @@ export function useInfiniteStories(type: FeedType = 'top') {
             // Do NOT call setHasMore(false) — Algolia has more content
           }
 
-          if (uniqueStories.length > 0) {
-            if (isRevalidating) {
-              setStories(uniqueStories);
-            } else {
-              setStories(prev => [...prev, ...uniqueStories]);
-            }
+          if (kept) {
+            setStories([...kept, ...uniqueStories]);
+          } else if (uniqueStories.length > 0) {
+            setStories(prev => [...prev, ...uniqueStories]);
           }
         } else {
           // Algolia phase: fetch day-by-day
@@ -326,6 +340,13 @@ export function useInfiniteStories(type: FeedType = 'top') {
     clearListSessionState(type);
   }, [type]);
 
+  // The swipe viewer passes the stories from the first through the one on
+  // screen: a revalidation that lands after a swipe would otherwise put a
+  // different story under the reader.
+  const keepOnRevalidate = useCallback((storyIds: readonly number[]) => {
+    keptIdsRef.current = new Set(storyIds);
+  }, []);
+
   // Save session state for instant back navigation
   const saveSessionState = useCallback((scrollY = window.scrollY) => {
     if (stories.length === 0) return;
@@ -356,5 +377,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
     isFromSession,
     initialScrollY,
     saveSessionState,
+    keepOnRevalidate,
   } as const;
 }

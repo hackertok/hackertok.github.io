@@ -360,6 +360,7 @@ async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Pr
   const allComments: AlgoliaComment[] = [];
   let page = 0;
   const hitsPerPage = 200; // Algolia max
+  let isCapped = false;
   
   while (true) {
     if (signal?.aborted) return allComments;
@@ -372,8 +373,10 @@ async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Pr
     
     const data = await response.json() as AlgoliaSearchResponse<AlgoliaComment>;
     allComments.push(...data.hits);
+    // Search returns at most 1,000 hits and caps nbPages to match.
+    if (page === 0) isCapped = data.nbHits > data.nbPages * hitsPerPage;
     
-    if (data.hits.length < hitsPerPage || allComments.length >= data.nbHits) {
+    if (data.hits.length < hitsPerPage || allComments.length >= data.nbHits || page >= data.nbPages - 1) {
       break;
     }
     page++;
@@ -381,8 +384,36 @@ async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Pr
     // Safety limit to prevent infinite loops
     if (page > 10) break;
   }
+
+  // The item endpoint has the rest of a bigger thread. It also misses a few
+  // comments that search has, so it adds to search's results.
+  if (isCapped && !signal?.aborted) {
+    const tree = await fetchAlgoliaItem(itemId, signal).catch(() => null);
+    const seen = new Set(allComments.map(c => c.objectID));
+    for (const comment of flattenAlgoliaItemChildren(tree?.children ?? [])) {
+      if (!seen.has(comment.objectID)) allComments.push(comment);
+    }
+  }
   
   return allComments;
+}
+
+function flattenAlgoliaItemChildren(children: AlgoliaItemChild[], into: AlgoliaComment[] = []): AlgoliaComment[] {
+  for (const child of children) {
+    // Deleted comments have no author; their replies are left as orphans,
+    // which buildCommentTree drops just as it does for search results.
+    if (child.author) {
+      into.push({
+        objectID: String(child.id),
+        author: child.author,
+        comment_text: child.text ?? '',
+        created_at_i: child.created_at_i,
+        parent_id: child.parent_id,
+      });
+    }
+    flattenAlgoliaItemChildren(child.children ?? [], into);
+  }
+  return into;
 }
 
 // `kidsOrder` (from Firebase kids arrays) maintains HN's ranking order; falls
