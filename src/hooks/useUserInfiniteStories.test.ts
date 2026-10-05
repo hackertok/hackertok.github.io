@@ -244,6 +244,34 @@ describe('useUserInfiniteStories', () => {
     });
   });
 
+  describe('more submissions than search returns', () => {
+    it('loads past the last page from the oldest story so far', async () => {
+      const hit = (id: number, createdAt: number) => ({ ...body([id]).hits[0], created_at_i: createdAt });
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+        const filter = new URL(fetchInputToUrl(input)).searchParams.get('numericFilters');
+        // Search stops at 1,000 hits and caps nbPages to match, so its last
+        // page doesn't reach nbHits.
+        return Promise.resolve(Response.json(filter === null
+          ? { hits: [hit(1, 300), hit(2, 200)], nbHits: 1500, nbPages: 1, page: 0, hitsPerPage: 50 }
+          : { hits: [hit(2, 200), hit(3, 100)], nbHits: 2, nbPages: 1, page: 0, hitsPerPage: 50 }));
+      });
+
+      const { result } = renderHook(() => useUserInfiniteStories('pg'));
+      await waitFor(() => expect(result.current.stories.map((s) => s.id)).toEqual([1, 2]));
+      expect(result.current.hasMore).toBe(true);
+
+      await act(async () => {
+        await result.current.loadMore();
+      });
+
+      const nextUrl = new URL(fetchInputToUrl(fetchSpy.mock.calls[1]?.[0]));
+      expect(nextUrl.searchParams.get('numericFilters')).toBe('created_at_i<=200');
+      expect(nextUrl.searchParams.get('page')).toBe('0');
+      expect(result.current.stories.map((s) => s.id)).toEqual([1, 2, 3]);
+      expect(result.current.hasMore).toBe(false);
+    });
+  });
+
   describe('username change', () => {
     it('discards stale state and re-fetches when username changes', async () => {
       vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {

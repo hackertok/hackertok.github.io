@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { ALGOLIA_API } from '../config/api';
 import { normalizeAlgoliaHit } from '../api/hn';
+import { algoliaPageParams, nextAlgoliaPage, type AlgoliaPageCursor } from '../utils/algoliaPaging';
 import type { StoryItem, AlgoliaSearchResponse } from '../types';
 
 const HITS_PER_PAGE = 50;
@@ -20,6 +21,7 @@ const MAX_EMPTY_PAGES_COLD_START = 3;
 interface DomainCacheEntry {
   stories: StoryItem[];
   page: number;
+  before?: number;
   hasMore: boolean;
   seenIds: Set<number>;
 }
@@ -72,7 +74,7 @@ export function useDomainInfiniteStories(rawDomain: string) {
   const [hasMore, setHasMore] = useState(initialCached?.hasMore ?? true);
   const [prevDomain, setPrevDomain] = useState(domain);
 
-  const nextPageRef = useRef(initialCached?.page ?? 0);
+  const nextPageRef = useRef<AlgoliaPageCursor>({ page: initialCached?.page ?? 0, before: initialCached?.before });
   const seenIdsRef = useRef<Set<number>>(new Set(initialCached?.seenIds ?? []));
   const versionRef = useRef(0);
   const inFlightRef = useRef(false);
@@ -105,7 +107,7 @@ export function useDomainInfiniteStories(rawDomain: string) {
   // it. useEffect would leave a gap where resolved fetches slip through.
   useLayoutEffect(() => {
     const cached = domain ? domainCache.get(domain) : undefined;
-    nextPageRef.current = cached?.page ?? 0;
+    nextPageRef.current = { page: cached?.page ?? 0, before: cached?.before };
     seenIdsRef.current = new Set(cached?.seenIds ?? []);
     storiesRef.current = cached?.stories ?? [];
     versionRef.current += 1;
@@ -128,7 +130,7 @@ export function useDomainInfiniteStories(rawDomain: string) {
       // Cold start pages on until a story lands: see MAX_EMPTY_PAGES_COLD_START.
       do {
         const pageToFetch = nextPageRef.current;
-        const url = `${ALGOLIA_API}/search_by_date?tags=story&query=${encodeURIComponent(domain)}&restrictSearchableAttributes=url&hitsPerPage=${HITS_PER_PAGE}&page=${pageToFetch}`;
+        const url = `${ALGOLIA_API}/search_by_date?tags=story&query=${encodeURIComponent(domain)}&restrictSearchableAttributes=url&hitsPerPage=${HITS_PER_PAGE}${algoliaPageParams(pageToFetch)}`;
         const response = await fetch(url);
 
         if (!response.ok) {
@@ -189,7 +191,8 @@ export function useDomainInfiniteStories(rawDomain: string) {
           return true;
         });
 
-        nextPageRef.current = data.page + 1;
+        const nextPage = nextAlgoliaPage(data, HITS_PER_PAGE, pageToFetch);
+        nextPageRef.current = nextPage ?? { ...pageToFetch, page: data.page + 1 };
 
         // Cold-start cap. Snapshot before the storiesRef update below so the
         // check reflects "had we shown anything before this fetch?", not "are
@@ -200,7 +203,7 @@ export function useDomainInfiniteStories(rawDomain: string) {
         } else {
           emptyPageStreakRef.current = 0;
         }
-        const algoliaHasMore = data.page < data.nbPages - 1;
+        const algoliaHasMore = nextPage !== null;
         const capReached = emptyPageStreakRef.current >= MAX_EMPTY_PAGES_COLD_START;
         newHasMore = algoliaHasMore && !capReached;
       } while (uniqueStories.length === 0 && storiesRef.current.length === 0 && newHasMore);
@@ -214,7 +217,7 @@ export function useDomainInfiniteStories(rawDomain: string) {
       storiesRef.current = updated;
       domainCache.set(domain, {
         stories: updated,
-        page: nextPageRef.current,
+        ...nextPageRef.current,
         hasMore: newHasMore,
         seenIds: new Set(seenIdsRef.current),
       });
@@ -251,7 +254,7 @@ export function useDomainInfiniteStories(rawDomain: string) {
     setLoading(!!domain);
     setError(null);
     setHasMore(true);
-    nextPageRef.current = 0;
+    nextPageRef.current = { page: 0 };
     seenIdsRef.current = new Set();
     storiesRef.current = [];
     emptyPageStreakRef.current = 0;
