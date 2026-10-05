@@ -103,17 +103,16 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     }
   }, [scrollInitialized, currentIndex, siblingIds, navigate, location.pathname]);
 
-  // Save/restore scrollY for bfcache
+  // Save/restore scrollY for bfcache. In memory, not storage: bfcache keeps the
+  // JS heap, and stored values can be blocked or expire.
+  const scrollYOnHideRef = useRef(0);
   useEffect(() => {
     const handlePageHide = () => {
-      try {
-        sessionStorage.setItem('__swipe_comment_scrollY', String(window.scrollY));
-      } catch { /* quota exceeded — non-critical */ }
+      scrollYOnHideRef.current = window.scrollY;
     };
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
-        const savedY = Number(sessionStorage.getItem('__swipe_comment_scrollY')) || 0;
-        window.scrollTo(0, savedY);
+        window.scrollTo(0, scrollYOnHideRef.current);
       }
     };
     window.addEventListener('pagehide', handlePageHide);
