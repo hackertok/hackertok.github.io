@@ -1088,5 +1088,81 @@ describe('hn API utilities', () => {
 
       mockFetch.mockRestore();
     });
+
+    describe('a thread bigger than search returns', () => {
+      const itemId = 9100;
+      const firebaseItem: FirebaseItem = {
+        id: itemId, title: 'Big thread', by: 'author', score: 900, time: 1700000000,
+        descendants: 1500, kids: [101, 102, 103, 104], type: 'story',
+      };
+      const searchHits = [
+        { objectID: '101', author: 'alice', comment_text: 'From search', created_at_i: 1700000100, parent_id: itemId },
+        // Missing from the item tree below, as some comments are.
+        { objectID: '102', author: 'bob', comment_text: 'Only in search', created_at_i: 1700000200, parent_id: itemId },
+      ];
+      const tree = {
+        id: itemId, type: 'story', author: 'author', text: null, created_at_i: 1700000000,
+        parent_id: null, story_id: itemId,
+        children: [
+          {
+            id: 101, author: 'alice', text: 'From the tree', created_at_i: 1700000100, parent_id: itemId,
+            children: [{ id: 201, author: 'carol', text: 'Reply', created_at_i: 1700000300, parent_id: 101, children: [] }],
+          },
+          {
+            id: 103, author: null, text: null, created_at_i: 1700000400, parent_id: itemId,
+            children: [{ id: 202, author: 'dave', text: 'Reply to a deleted comment', created_at_i: 1700000500, parent_id: 103, children: [] }],
+          },
+          { id: 104, author: 'erin', text: 'Past the limit', created_at_i: 1700000600, parent_id: itemId, children: [] },
+        ],
+      };
+
+      const urlOf = (input: RequestInfo | URL) =>
+        typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+      function mockAlgolia(search: { nbHits: number; nbPages: number }, { treeStatus = 200 } = {}) {
+        return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+          if (urlOf(input).includes(`/items/${itemId}`)) {
+            return treeStatus === 200 ? Response.json(tree) : new Response(null, { status: treeStatus });
+          }
+          return Response.json({ hits: searchHits, page: 0, hitsPerPage: 200, ...search });
+        });
+      }
+
+      beforeEach(() => {
+        vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => (Number(id) === itemId ? firebaseItem : null));
+      });
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it('adds the comments past the limit from the item tree', async () => {
+        // nbPages is capped at 1,000 hits / 200 per page, so it no longer covers nbHits.
+        mockAlgolia({ nbHits: 1500, nbPages: 5 });
+
+        const comments = await fetchCommentsForItem(itemId);
+
+        expect(comments.map(c => c.id)).toEqual([101, 102, 104]);
+        expect(comments[0].text).toBe('From search');
+        expect(comments[0].children.map(c => c.id)).toEqual([201]);
+      });
+
+      it('keeps the search results when the item tree fails', async () => {
+        mockAlgolia({ nbHits: 1500, nbPages: 5 }, { treeStatus: 500 });
+
+        const comments = await fetchCommentsForItem(itemId);
+
+        expect(comments.map(c => c.id)).toEqual([101, 102]);
+      });
+
+      it('skips the item tree when search has every comment', async () => {
+        const mockFetch = mockAlgolia({ nbHits: 2, nbPages: 1 });
+
+        await fetchCommentsForItem(itemId);
+
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        expect(urlOf(mockFetch.mock.calls[0][0])).toContain('/search?');
+      });
+    });
   });
 });
