@@ -19,7 +19,7 @@ import { SwipeCommentViewer } from './components/SwipeCommentViewer';
 import { NetworkStatusProvider } from './context/NetworkStatusContext';
 import { fetchItemOnly } from './api/hn';
 import { readSwipePosition } from './utils/swipePosition';
-import type { FeedType, LocationState } from './types';
+import type { FeedType, LocationState, SwipePosition } from './types';
 
 // Exported for focused unit testing.
 export function MobileStoryListWrapper({ type }: { type: FeedType }) {
@@ -103,41 +103,58 @@ export function MobileItemDetailWrapper() {
 
   // HN ids are numeric. The swipe viewer can't fetch anything else, and its
   // NaN id never matches the failed fetch, so it would show the Top feed.
-  if (!id || !/^\d+$/.test(id)) {
+  const isNumericId = id !== undefined && /^\d+$/.test(id);
+  const viewer = canSwipe && isNumericId
+    ? pickSwipeViewer(location.state as LocationState | null, recovered, id)
+    : null;
+  const isResolvedStory = useResolveDirectLink(id, canSwipe && isNumericId && !viewer);
+
+  if (!isNumericId) {
     return <ItemNotFound />;
   }
-  
+
   if (canSwipe) {
-    const state = location.state as LocationState | null;
+    if (viewer) return viewer;
 
-    // Branch 1: Known comment → SwipeCommentViewer immediately.
-    // Comments take priority over user/domain/from to match the header pill
-    // priority (comments > user > from).
-    if (state?.isComment) {
-      return <SwipeCommentViewer initialCommentId={id} />;
-    }
-
-    // Branches 2–4: viewer context from location.state (zero-latency path).
-    if (state) {
-      const viewer = renderSwipeViewer(state, id);
-      if (viewer) return viewer;
-    }
-
-    // Branch 4b: stateless reload — recover the viewer from the snapshot so
-    // non-`top` feeds (best/show/ask/domain/user) restore too. Snapshots come only
-    // from story viewers, so we skip the resolver's comment-vs-story fetch. Also
-    // fires for a fresh same-tab nav to a still-snapshotted id+viewer (intended:
-    // resume where you left off), not just back/reload.
-    if (recovered?.storyId === Number(id)) {
-      const viewer = renderSwipeViewer(recovered.viewer, id);
-      if (viewer) return viewer;
-    }
-
-    // Branch 5: Direct URL (no state) → resolve type first
-    return <MobileItemResolver id={id} />;
+    // Branch 5: Direct URL (no state) → resolve type first. The story viewer
+    // must be the element Branch 4 renders for `{ from: 'top' }`: the first
+    // swipe writes that state, and a different element there would remount
+    // the viewer and drop the story this link opened.
+    if (isResolvedStory) return renderSwipeViewer({ from: 'top' }, id);
+    return <MobileItemResolverSkeleton />;
   }
   
   return <ItemDetail key={id} />;
+}
+
+function pickSwipeViewer(
+  state: LocationState | null,
+  recovered: SwipePosition | null,
+  id: string,
+): ReactNode {
+  // Branch 1: Known comment → SwipeCommentViewer immediately.
+  // Comments take priority over user/domain/from to match the header pill
+  // priority (comments > user > from).
+  if (state?.isComment) {
+    return <SwipeCommentViewer initialCommentId={id} />;
+  }
+
+  // Branches 2–4: viewer context from location.state (zero-latency path).
+  if (state) {
+    const viewer = renderSwipeViewer(state, id);
+    if (viewer) return viewer;
+  }
+
+  // Branch 4b: stateless reload — recover the viewer from the snapshot so
+  // non-`top` feeds (best/show/ask/domain/user) restore too. Snapshots come only
+  // from story viewers, so we skip the resolver's comment-vs-story fetch. Also
+  // fires for a fresh same-tab nav to a still-snapshotted id+viewer (intended:
+  // resume where you left off), not just back/reload.
+  if (recovered?.storyId === Number(id)) {
+    return renderSwipeViewer(recovered.viewer, id);
+  }
+
+  return null;
 }
 
 function ItemNotFound() {
@@ -149,11 +166,40 @@ function ItemNotFound() {
   );
 }
 
-// Resolves item type for a direct URL hit on mobile (no `location.state`),
-// then mounts the matching viewer.
-function MobileItemResolver({ id }: { id: string }) {
-  const [itemType, setItemType] = useState<'story' | null>(null);
+// Resolves item type for a direct URL hit on mobile (no `location.state`):
+// a comment re-routes to Branch 1, and anything else reports `true` so the
+// wrapper mounts the story viewer.
+function useResolveDirectLink(id: string | undefined, enabled: boolean): boolean {
+  const [storyId, setStoryId] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!enabled || !id) return;
+    const controller = new AbortController();
+
+    void fetchItemOnly(id, controller.signal)
+      .then(item => {
+        if (controller.signal.aborted) return;
+        if (item.type === 'comment') {
+          // Navigate with state so MobileItemDetailWrapper Branch 1 picks it up
+          void navigate(`/item/${id}`, { replace: true, state: { isComment: true } });
+        } else {
+          setStoryId(id);
+        }
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        // Default to story viewer on error (it has its own error handling)
+        setStoryId(id);
+      });
+
+    return () => controller.abort();
+  }, [id, enabled, navigate]);
+
+  return storyId !== null && storyId === id;
+}
+
+function MobileItemResolverSkeleton() {
   const { enableSwipeMode, disableSwipeMode } = useScrollContainer();
 
   // The skeleton below is the viewer's own panel, and it pads for the fixed
@@ -165,33 +211,6 @@ function MobileItemResolver({ id }: { id: string }) {
     enableSwipeMode();
     return disableSwipeMode;
   }, [enableSwipeMode, disableSwipeMode]);
-
-  useEffect(() => {
-    if (!id) return;
-    const controller = new AbortController();
-
-    void fetchItemOnly(id, controller.signal)
-      .then(item => {
-        if (controller.signal.aborted) return;
-        if (item.type === 'comment') {
-          // Navigate with state so MobileItemDetailWrapper Branch 1 picks it up
-          void navigate(`/item/${id}`, { replace: true, state: { isComment: true } });
-        } else {
-          setItemType('story');
-        }
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        // Default to story viewer on error (it has its own error handling)
-        setItemType('story');
-      });
-
-    return () => controller.abort();
-  }, [id, navigate]);
-
-  if (itemType === 'story') {
-    return <SwipeStoryViewer type="top" initialItemId={id} />;
-  }
 
   return (
     <div className="swipe-snap-container" data-testid="swipe-container">

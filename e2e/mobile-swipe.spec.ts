@@ -470,6 +470,25 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
   });
 
+  test('keeps a linked story that is not in the feed after swiping away and back', async ({ page }) => {
+    // 88888 is an Ask HN story, so the Top feed shows it in front of its own stories.
+    await page.goto('/#/item/88888');
+    await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
+
+    const container = page.getByTestId('swipe-container');
+    await waitForSwipeReady(page, 6);
+    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
+
+    await smoothScrollAndAwaitSettled(container, panelWidth);
+    await waitForScrollAtIndex(page, 1);
+    await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
+
+    await smoothScrollAndAwaitSettled(container, 0);
+    await waitForScrollAtIndex(page, 0);
+    await expect(page).toHaveURL(/\/item\/88888/, { timeout: 5000 });
+    await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
+  });
+
   test('clears error state when navigating back and forward from not-found item', async ({ page }) => {
     // Regression test: navigating to a non-existent item sets anchorItemId,
     // injectedError, and fetchedItemIdRef. Browser back/forward must properly
