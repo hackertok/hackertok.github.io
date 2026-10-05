@@ -36,6 +36,24 @@ function withText(item: Item | null | undefined, source: Item | null | undefined
   return { ...item, text: source.text };
 }
 
+// The comments fetch reads the item too, so it has newer points, comment count
+// and title than a cached or restored copy. The rest stays: Firebase calls
+// Ask/Show posts `story`, and a deleted story comes back without a title.
+function withFetchedFields(item: Item | null | undefined, fetched: Item): Item | null {
+  if (!item || item.type === 'comment' || item.type === 'job' || fetched.type !== 'story' ||
+      fetched.id !== item.id || !fetched.title) {
+    return withText(item, fetched);
+  }
+  return {
+    ...item,
+    title: fetched.title,
+    url: fetched.url ?? item.url,
+    text: fetched.text ?? item.text,
+    points: fetched.points,
+    commentCount: fetched.commentCount,
+  };
+}
+
 export function useItemWithComments(itemId: number | string, { initialItem = null, skipOrderingCompletion = false, isPriority = true, deferComments = false }: UseItemWithCommentsOptions = {}): UseItemWithCommentsResult {
   const initialCache = getCachedItem(itemId);
   
@@ -176,12 +194,12 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       try {
         const { item: fetchedItem, comments: commentsData } = await fetchItemWithComments(itemId, controller.signal);
         if (!controller.signal.aborted) {
-          setItem(current => withText(current, fetchedItem));
+          setItem(current => withFetchedFields(current, fetchedItem));
           setComments(commentsData);
           setCommentsLoading(false);
           setCommentsError(null);
           
-          const fullItem = withText(itemData, fetchedItem);
+          const fullItem = withFetchedFields(itemData, fetchedItem);
           if (fullItem) {
             setCachedItem(itemId, fullItem, commentsData, 3);
           }
@@ -277,11 +295,11 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     void fetchItemWithComments(itemId, controller.signal)
       .then(({ item: fetchedItem, comments: commentsData }) => {
         if (controller.signal.aborted) return;
-        setItem(current => withText(current, fetchedItem));
+        setItem(current => withFetchedFields(current, fetchedItem));
         setComments(commentsData);
         setCommentsLoading(false);
         setCommentsError(null);
-        const fullItem = withText(item, fetchedItem);
+        const fullItem = withFetchedFields(item, fetchedItem);
         if (fullItem) setCachedItem(itemId, fullItem, commentsData, 3);
       })
       .catch(err => {

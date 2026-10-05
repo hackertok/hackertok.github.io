@@ -73,11 +73,46 @@ function attachFrameBuffering(ws: WebSocketRoute, handler: (raw: string) => void
   });
 }
 
+// Page 0 of the domain search: the original item + 4 clones (5 total for scrollability).
+const mockDomainPage0Hits = [
+  mockDomainItem,
+  ...Array.from({ length: 4 }, (_, i) => ({
+    ...mockDomainItem,
+    objectID: String(77770 + i),
+    title: `Domain Article ${i + 2}`,
+  })),
+];
+
+// Firebase's copy of a story only the Algolia mocks list. The app takes a
+// story's title and counts from Firebase once its comments load, so the two
+// have to agree.
+function firebaseStoryFromHit(hit: typeof mockDomainItem) {
+  return {
+    id: Number(hit.objectID),
+    title: hit.title,
+    url: hit.url,
+    by: hit.author,
+    score: hit.points,
+    time: hit.created_at_i,
+    descendants: hit.num_comments,
+    type: 'story',
+  };
+}
+
 /**
  * Build the item lookup table used by the WebSocket mock.
  */
 function buildItemsMap(): Record<number, object> {
+  const algoliaOnlyStories = [
+    ...mockDomainPage0Hits.slice(1),
+    mockDomainPaginationItem1,
+    mockDomainPaginationItem2,
+    mockPaginationItem1,
+    mockPaginationItem2,
+    mockPaginationItem3,
+  ];
   return {
+    ...Object.fromEntries(algoliaOnlyStories.map(hit => [Number(hit.objectID), firebaseStoryFromHit(hit)])),
     12345: mockItem1,
     12346: mockItem2,
     12347: mockItem3,
@@ -460,15 +495,7 @@ export async function setupApiMocks(page: Page) {
       }
     } else if (query) {
       if (pageNum === 0) {
-        // Page 0: original item + 4 generated clones (5 total for scrollability)
-        hits = [
-          mockDomainItem,
-          ...Array.from({ length: 4 }, (_, i) => ({
-            ...mockDomainItem,
-            objectID: String(77770 + i),
-            title: `Domain Article ${i + 2}`,
-          })),
-        ];
+        hits = mockDomainPage0Hits;
         nbPages = 2;
       } else {
         // Page 1: pagination items with unique titles for assertion
