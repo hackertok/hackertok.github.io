@@ -111,16 +111,12 @@ test.describe('User Profile - Mobile', () => {
   });
 
   test('clears swipe-mode after mount on direct /user/:id load', async ({ page }) => {
-    // index.html's bootstrap script optimistically adds `swipe-mode` to <html>
-    // and <body> for ANY `#/...` route on mobile (the regex
-    // `^#\/(show|ask|best|newest|item\/)?` is not end-anchored and the group is
-    // optional, so `#/user/pg` matches via the empty-group fallback). That
-    // class sets `overflow: clip` on the body, which would wedge the
-    // vertically scrollable profile if nothing cleared it. UserProfile's
-    // mount effect imperatively calls `disableSwipeMode()` to unwedge it —
-    // this assertion runs AFTER the heading is visible (i.e. after React has
-    // hydrated and the effect has fired) so the assertion pins the
-    // post-mount state.
+    // `swipe-mode` sets `overflow: clip` on the body, which would wedge the
+    // vertically scrollable profile. index.html's bootstrap script no longer
+    // adds it for `#/user/...`, and UserProfile's mount effect calls
+    // `disableSwipeMode()` in case anything else does — this assertion runs
+    // AFTER the heading is visible (i.e. after React has hydrated and the
+    // effect has fired) so the assertion pins the post-mount state.
     await page.goto('/#/user/pg');
 
     await expect(page.getByRole('heading', { level: 1, name: 'pg' })).toBeVisible();
