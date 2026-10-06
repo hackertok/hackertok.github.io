@@ -5,11 +5,14 @@ import {
   saveListSessionState,
   getListSessionState,
   clearListSessionState,
+  setLocalStorageItem,
   ITEM_CACHE_KEY_PREFIX,
   FEED_SESSION_KEY_PREFIX,
+  MAX_ITEM_CACHE_CHARS,
 } from './itemCache';
 import type { Comment, StoryItem } from '../types';
 import { createStoryItem, createComment } from '../test/factories';
+import { installStorageQuota } from '../test/storageQuota';
 
 describe('itemCache', () => {
   beforeEach(() => {
@@ -178,14 +181,58 @@ describe('itemCache', () => {
         vi.advanceTimersByTime(100);
       }
 
-      let count = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        if (localStorage.key(i)?.startsWith(ITEM_CACHE_KEY_PREFIX)) {
-          count++;
-        }
+      expect(cachedItemKeys()).toHaveLength(60);
+      expect(getCachedItem(4)).toBeNull();
+      expect(getCachedItem(5)).not.toBeNull();
+    });
+
+    it('keeps the cached items within their size budget, dropping the oldest', () => {
+      // Five of these fit the budget; each write past that drops the oldest.
+      const text = 'x'.repeat(MAX_ITEM_CACHE_CHARS / 5 - 1_000);
+      for (let i = 0; i < 8; i++) {
+        setCachedItem(i, createStoryItem({ id: i }), [createComment({ id: i, text })]);
+        vi.advanceTimersByTime(100);
       }
 
-      expect(count).toBeLessThanOrEqual(61); // small slack for prune timing
+      expect(cachedItemChars()).toBeLessThanOrEqual(MAX_ITEM_CACHE_CHARS);
+      expect(cachedItemKeys()).toEqual([3, 4, 5, 6, 7].map(id => `${ITEM_CACHE_KEY_PREFIX}${id}`));
+    });
+
+    it('does not keep a thread bigger than half the budget, nor its older copy', () => {
+      setCachedItem(123, mockItem, mockComments);
+      const text = 'x'.repeat(MAX_ITEM_CACHE_CHARS / 2);
+
+      setCachedItem(123, mockItem, [createComment({ id: 1, text })]);
+
+      expect(getCachedItem(123)).toBeNull();
+    });
+
+    it('reads the age of each cached item without parsing its thread', () => {
+      for (let i = 0; i < 60; i++) {
+        setCachedItem(i, createStoryItem({ id: i }), mockComments);
+        vi.advanceTimersByTime(100);
+      }
+      const parse = vi.spyOn(JSON, 'parse');
+
+      setCachedItem(999, mockItem, mockComments);
+
+      expect(parse).not.toHaveBeenCalled();
+      parse.mockRestore();
+      expect(getCachedItem(0)).toBeNull();
+      expect(getCachedItem(999)).not.toBeNull();
+    });
+
+    it('keeps a readable entry without a write time as the oldest', () => {
+      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}1`, JSON.stringify({ item: mockItem, comments: [] }));
+      for (let i = 2; i <= 60; i++) {
+        setCachedItem(i, createStoryItem({ id: i }), []);
+      }
+      expect(getCachedItem(1)).not.toBeNull();
+
+      setCachedItem(61, mockItem, []);
+
+      expect(getCachedItem(1)).toBeNull();
+      expect(getCachedItem(2)).not.toBeNull();
     });
 
     it('removes corrupted entries during pruning', () => {
@@ -212,7 +259,67 @@ describe('itemCache', () => {
     });
   });
 
+  describe('setLocalStorageItem', () => {
+    let quota: ReturnType<typeof installStorageQuota>;
+
+    beforeEach(() => {
+      quota = installStorageQuota(20_000);
+      for (let i = 0; i < 4; i++) {
+        setCachedItem(i, createStoryItem({ id: i }), [createComment({ id: i, text: 'x'.repeat(2_000) })]);
+        vi.advanceTimersByTime(100);
+      }
+    });
+
+    afterEach(() => {
+      quota.restore();
+    });
+
+    it('stores the value', () => {
+      setLocalStorageItem('feed:top', 'value');
+
+      expect(localStorage.getItem('feed:top')).toBe('value');
+      expect(cachedItemKeys()).toHaveLength(4);
+    });
+
+    it('makes room in a full storage by dropping the older half of the cached items', () => {
+      quota.fill();
+
+      setLocalStorageItem('feed:top', 'y'.repeat(3_000));
+
+      expect(localStorage.getItem('feed:top')).toHaveLength(3_000);
+      expect(cachedItemKeys()).toEqual([`${ITEM_CACHE_KEY_PREFIX}2`, `${ITEM_CACHE_KEY_PREFIX}3`]);
+    });
+
+    it('makes room for a cached item the same way', () => {
+      quota.fill();
+
+      setCachedItem(99, mockItem, [createComment({ id: 99, text: 'y'.repeat(3_000) })]);
+
+      expect(getCachedItem(99)).not.toBeNull();
+      expect(getCachedItem(0)).toBeNull();
+    });
+
+    it('gives up quietly when dropping cached items is not enough', () => {
+      quota.fill();
+
+      expect(() => setLocalStorageItem('feed:top', 'y'.repeat(30_000))).not.toThrow();
+      expect(localStorage.getItem('feed:top')).toBeNull();
+    });
+  });
 });
+
+function cachedItemKeys(): string[] {
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(ITEM_CACHE_KEY_PREFIX)) keys.push(key);
+  }
+  return keys.sort((a, b) => Number(a.slice(ITEM_CACHE_KEY_PREFIX.length)) - Number(b.slice(ITEM_CACHE_KEY_PREFIX.length)));
+}
+
+function cachedItemChars(): number {
+  return cachedItemKeys().reduce((sum, key) => sum + key.length + localStorage.getItem(key)!.length, 0);
+}
 
 describe('sessionStorage - List Session State', () => {
   beforeEach(() => {
