@@ -9,7 +9,7 @@ interface SwipeUserSubmissionsViewerProps {
   /** HN username, case-preserved. Firebase and Algolia treat this as case-sensitive. */
   username: string;
   /**
-   * Numeric story ID to anchor on (set by `MobileItemDetailWrapper` when the
+   * Numeric story ID to anchor on (set by `MobileStoryRoute` when the
    * route is `/item/:id` with `state.fromUser`). Must NOT be set for the bare
    * `/submitted/:id` route — `id` there is the username, and a non-numeric
    * `initialItemId` would `Number()` to `NaN`, triggering a wasteful injected
