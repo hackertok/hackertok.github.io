@@ -140,6 +140,50 @@ describe('ItemDetail', () => {
       expect(await screen.findByText('Loaded on retry')).toBeInTheDocument();
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
     });
+
+    it('keeps a comment on screen through every automatic replies retry', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const text = 'The wasm-bindgen approach is really interesting.';
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => (
+        Number(id) === 1001
+          ? { id: 1001, by: 'patio11', text, time: Math.floor(Date.now() / 1000) - 1800, parent: 12345, type: 'comment' }
+          : defaultItem
+      ));
+      let repliesRequests = 0;
+      server.use(
+        http.get(`${ALGOLIA_API}/items/:id`, () => {
+          repliesRequests++;
+          return new HttpResponse(null, { status: 503 });
+        }),
+      );
+
+      const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+
+      renderItemDetail(1001);
+
+      await screen.findByText(text);
+      // The first load, then three retries 2s, 4s and 8s apart.
+      for (let requests = 1; requests <= 4; requests++) {
+        for (let step = 0; step < 100 && repliesRequests < requests; step++) await advance(100);
+        await advance(100);
+        expect(repliesRequests).toBe(requests);
+        expect(screen.getByText(text)).toBeInTheDocument();
+      }
+
+      for (let step = 0; step < 20 && !screen.queryByRole('button', { name: 'Retry' }); step++) await advance(100);
+      const retry = screen.getByRole('button', { name: 'Retry' });
+      expect(screen.queryByText('Failed to load comment')).not.toBeInTheDocument();
+      expect(screen.getByText('patio11')).toBeInTheDocument();
+      expect(repliesRequests).toBe(4);
+
+      server.use(
+        http.get(`${ALGOLIA_API}/items/:id`, () => HttpResponse.json(mockAlgoliaCommentItem)),
+      );
+      fireEvent.click(retry);
+
+      expect(await screen.findByText('tptacek')).toBeInTheDocument();
+      expect(screen.getByText('patio11')).toBeInTheDocument();
+    });
   });
 
   describe('comment detection', () => {
