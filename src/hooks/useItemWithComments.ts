@@ -26,6 +26,8 @@ interface UseItemWithCommentsResult {
   isNotFound: boolean;
   commentsError: string | null;
   refresh: () => Promise<void>;
+  /** Refetch the comments only; a failure stays a `commentsError`. */
+  retryComments: () => Promise<void>;
 }
 
 // Swipe-position snapshots store stories without `text` (see swipePosition.ts),
@@ -326,25 +328,50 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     setItemLoading(true);
     setCommentsLoading(true);
     
+    let itemData: Item;
     try {
-      const itemData = await fetchItemOnly(itemId);
+      itemData = await fetchItemOnly(itemId);
       setItem(itemData);
-      
-      // Comment items use a different fetch path (useCommentDetail via Algolia /items)
-      if (itemData.type !== 'comment') {
-        const commentsData = await fetchCommentsForItem(itemId);
-        setComments(commentsData);
-        setCachedItem(itemId, itemData, commentsData);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setIsNotFound(err instanceof NotFoundError);
-      throw err;
-    } finally {
       setItemLoading(false);
       setCommentsLoading(false);
+      throw err;
     }
+    setItemLoading(false);
+
+    // Comment items use a different fetch path (useCommentDetail via Algolia /items)
+    if (itemData.type !== 'comment') {
+      try {
+        const commentsData = await fetchCommentsForItem(itemId);
+        setComments(commentsData);
+        setCachedItem(itemId, itemData, commentsData);
+      } catch (err) {
+        // The item loaded, so the page can show it with the comments error.
+        setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
+      }
+    }
+    setCommentsLoading(false);
   }, [itemId]);
+
+  // Behind the comments section's retry. `commentsError` stays set until the
+  // fetch settles: the section shows its skeleton for it, and clearing it
+  // would show "No comments yet." meanwhile. It rejects on failure so
+  // useAutoRetry counts the attempt.
+  const retryComments = useCallback(async () => {
+    try {
+      const { item: fetchedItem, comments: commentsData } = await fetchItemWithComments(itemId);
+      setItem(current => withFetchedFields(current, fetchedItem));
+      setComments(commentsData);
+      setCommentsError(null);
+      const fullItem = withFetchedFields(item, fetchedItem);
+      if (fullItem) setCachedItem(itemId, fullItem, commentsData, 3);
+    } catch (err) {
+      setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
+      throw err;
+    }
+  }, [itemId, item]);
 
   return { 
     item, 
@@ -355,6 +382,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     error,
     isNotFound,
     commentsError,
-    refresh
+    refresh,
+    retryComments
   };
 }

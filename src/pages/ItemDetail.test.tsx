@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { Routes, Route } from 'react-router';
 import { ItemDetail } from './ItemDetail';
@@ -93,6 +93,52 @@ describe('ItemDetail', () => {
 
       const link = await screen.findByRole('link', { name: /back to home/i });
       expect(link).toHaveAttribute('href', '/');
+    });
+  });
+
+  describe('comments that keep failing', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('keeps the story on screen through every automatic comments retry', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let commentRequests = 0;
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => {
+          commentRequests++;
+          return new HttpResponse(null, { status: 503 });
+        }),
+      );
+
+      const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+
+      renderItemDetail(12345);
+
+      await screen.findByRole('heading', { level: 1 });
+      // The first load, then three retries 2s, 4s and 8s apart.
+      for (let requests = 1; requests <= 4; requests++) {
+        for (let step = 0; step < 100 && commentRequests < requests; step++) await advance(100);
+        await advance(100);
+        expect(commentRequests).toBe(requests);
+        expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
+      }
+
+      for (let step = 0; step < 20 && !screen.queryByRole('button', { name: 'Retry' }); step++) await advance(100);
+      const retry = screen.getByRole('button', { name: 'Retry' });
+      expect(screen.queryByText('Failed to load item')).not.toBeInTheDocument();
+      expect(commentRequests).toBe(4);
+
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => HttpResponse.json({
+          hits: [{ objectID: '1001', author: 'patio11', comment_text: 'Loaded on retry', created_at_i: 1000, parent_id: 12345, story_id: 12345 }],
+          nbHits: 1, page: 0, nbPages: 1, hitsPerPage: 200,
+        })),
+      );
+      fireEvent.click(retry);
+
+      expect(await screen.findByText('Loaded on retry')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
     });
   });
 
