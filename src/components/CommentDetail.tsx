@@ -63,21 +63,24 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
 
   useDocumentTitle(comment?.author ? `Comment by ${comment.author}` : undefined);
 
-  if (error && !isRetrying) {
+  const retryNow = () => void retry().catch(() => { /* error state set internally */ });
+
+  // A comment seeded from initialData stays on screen; only its replies fail.
+  if (error && !comment && !isRetrying) {
     return (
       <div className="page-state-center-padded">
         <StateView
           variant="error"
           title="Failed to load comment"
           description={error}
-          action={{ label: 'Retry', onClick: () => void retry().catch(() => { /* error state set internally */ }) }}
+          action={{ label: 'Retry', onClick: retryNow }}
         />
       </div>
     );
   }
 
   // Retry-in-progress skeleton (avoids error UI flash between attempts).
-  if (error && isRetrying) {
+  if (error && !comment) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
         <CommentDetailSkeleton />
@@ -100,7 +103,8 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
             itemId={itemId}
             itemTitle={itemTitle}
             itemTitleLoading={itemTitleLoading}
-            loading={loading}
+            loading={loading || (!!error && isRetrying)}
+            onRetryReplies={error && !isRetrying ? retryNow : undefined}
             articleClassName="mb-6"
             storyAuthor={itemAuthor ?? ''}
           />
