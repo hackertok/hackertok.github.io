@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CommentTree, CommentSkeletonTree } from '../components';
 import { StateView } from './StateView';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
@@ -7,6 +8,7 @@ import type { Comment } from '../types';
 interface CommentsSectionProps {
   comments: Comment[] | null;
   commentsError: string | null;
+  /** Refetch the comments only. `commentsError` stays set until it settles. */
   onRetry: () => void | Promise<void>;
   /** Story author for OP detection. */
   storyAuthor?: string;
@@ -20,11 +22,19 @@ export function CommentsSection({ comments, commentsError, onRetry, storyAuthor 
     retryFn: onRetry,
     isOnline,
   });
+  const [isManualRetrying, setIsManualRetrying] = useState(false);
 
-  if (commentsError && !comments?.length && !isRetrying) {
-    return <StateView variant="error" compact description="Failed to load comments" action={{ label: 'Retry', onClick: () => void onRetry()?.catch(() => { /* error state set internally */ }) }} />;
+  const retryNow = () => {
+    setIsManualRetrying(true);
+    void Promise.resolve(onRetry())
+      .catch(() => { /* error state set internally */ })
+      .finally(() => setIsManualRetrying(false));
+  };
+
+  if (commentsError && !comments?.length && !isRetrying && !isManualRetrying) {
+    return <StateView variant="error" compact description="Failed to load comments" action={{ label: 'Retry', onClick: retryNow }} />;
   }
-  if (commentsError && !comments?.length && isRetrying) {
+  if (commentsError && !comments?.length) {
     return <CommentSkeletonTree count={6} />;
   }
   // startIdx=1 reserves slot 0 for the `.story-stage-leader` header

@@ -1003,5 +1003,105 @@ describe('useItemWithComments', () => {
 
       expect(result.current.error).toBeTruthy();
     });
+
+    it('reports a refresh whose comments fail as a comments error', async () => {
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => new HttpResponse(null, { status: 503 }))
+      );
+
+      const { result } = renderHook(() => useItemWithComments(12345));
+
+      await waitFor(() => {
+        expect(result.current.commentsError).toBeTruthy();
+      });
+
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      expect(result.current.error).toBeNull();
+      expect(result.current.commentsError).toBeTruthy();
+      expect(result.current.item?.id).toBe(12345);
+      expect(result.current.itemLoading).toBe(false);
+      expect(result.current.commentsLoading).toBe(false);
+    });
+  });
+
+  describe('retryComments', () => {
+    const askItem = createStoryItem({ ...testItem, type: 'ask' });
+
+    beforeEach(() => {
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => new HttpResponse(null, { status: 503 }))
+      );
+    });
+
+    it('keeps the item when the comments fail again', async () => {
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: askItem })
+      );
+
+      await waitFor(() => {
+        expect(result.current.commentsError).toBeTruthy();
+      });
+
+      let rejected = false;
+      await act(async () => {
+        await result.current.retryComments().catch(() => { rejected = true; });
+      });
+
+      expect(rejected).toBe(true);
+      expect(result.current.error).toBeNull();
+      expect(result.current.commentsError).toBeTruthy();
+      expect(result.current.item?.type).toBe('ask');
+    });
+
+    it('keeps the comments error set while the retry is in flight', async () => {
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: askItem })
+      );
+
+      await waitFor(() => {
+        expect(result.current.commentsError).toBeTruthy();
+      });
+
+      let retryPromise: Promise<void>;
+      act(() => {
+        retryPromise = result.current.retryComments();
+      });
+
+      expect(result.current.commentsError).toBeTruthy();
+      expect(result.current.commentsLoading).toBe(false);
+
+      await act(async () => {
+        await retryPromise!.catch(() => { /* still failing */ });
+      });
+    });
+
+    it('loads the comments and keeps the item type when the retry succeeds', async () => {
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: askItem })
+      );
+
+      await waitFor(() => {
+        expect(result.current.commentsError).toBeTruthy();
+      });
+
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => HttpResponse.json({
+          hits: [{ objectID: '1001', author: 'user1', comment_text: 'Back', created_at_i: 1000, parent_id: 12345, story_id: 12345 }],
+          nbHits: 1, page: 0, nbPages: 1, hitsPerPage: 200,
+        }))
+      );
+
+      await act(async () => {
+        await result.current.retryComments();
+      });
+
+      expect(result.current.commentsError).toBeNull();
+      expect(result.current.comments).toHaveLength(1);
+      expect(result.current.item?.type).toBe('ask');
+      expect(getCachedItem(12345)?.comments).toHaveLength(1);
+    });
   });
 });
