@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { Routes, Route, Link, useNavigate } from 'react-router';
 import { render } from './test/test-utils';
-import { MobileItemDetailWrapper, MobileStoryListWrapper } from './App';
+import { MobileStoryRoute } from './App';
 import { fetchItemOnly } from './api/hn';
 import { saveSwipePosition } from './utils/swipePosition';
 import { createStoryItem } from './test/factories';
@@ -16,11 +16,13 @@ vi.mock('./hooks/useCanSwipe', () => ({ useCanSwipe: () => true }));
 // mounts (and with what props) without their data hooks / async state.
 vi.mock('./components/SwipeStoryViewer', async () => {
   const { useState } = await import('react');
+  let mounts = 0;
   return {
     SwipeStoryViewer: function SwipeStoryViewer({ type, initialItemId }: { type: string; initialItemId?: string }) {
       // Frozen at mount: a reused instance keeps the feed and item it was mounted for.
       const [mountedType] = useState(type);
       const [mountedItem] = useState(initialItemId ?? '');
+      const [mount] = useState(() => ++mounts);
       return (
         <div
           data-testid="feed-viewer"
@@ -28,6 +30,7 @@ vi.mock('./components/SwipeStoryViewer', async () => {
           data-mounted-type={mountedType}
           data-item={initialItemId ?? ''}
           data-mounted-item={mountedItem}
+          data-mount={mount}
         />
       );
     },
@@ -55,7 +58,7 @@ vi.mock('./api/hn', async (importOriginal) => ({
 function renderWrapper(id: number | string, state?: LocationState) {
   return render(
     <Routes>
-      <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
+      <Route path="/item/:id" element={<MobileStoryRoute />} />
     </Routes>,
     { initialEntries: [{ pathname: `/item/${id}`, state }] },
   );
@@ -66,7 +69,7 @@ function seedSnapshot(viewer: LocationState, storyId: number) {
   saveSwipePosition({ viewer, storyId, index: 0, scrollY: 0, stories });
 }
 
-describe('MobileItemDetailWrapper — viewer recovery (stateless reload)', () => {
+describe('MobileStoryRoute — viewer recovery (stateless reload)', () => {
   beforeEach(() => {
     sessionStorage.clear();
   });
@@ -150,7 +153,7 @@ describe('MobileItemDetailWrapper — viewer recovery (stateless reload)', () =>
   });
 });
 
-describe('MobileItemDetailWrapper — direct link', () => {
+describe('MobileStoryRoute — direct link', () => {
   beforeEach(() => {
     sessionStorage.clear();
   });
@@ -169,7 +172,7 @@ describe('MobileItemDetailWrapper — direct link', () => {
     vi.mocked(fetchItemOnly).mockResolvedValueOnce(createStoryItem({ id: 88888 }));
     render(
       <Routes>
-        <Route path="/item/:id" element={<><MobileItemDetailWrapper /><SwipeToNextStory /></>} />
+        <Route path="/item/:id" element={<><MobileStoryRoute /><SwipeToNextStory /></>} />
       </Routes>,
       { initialEntries: ['/item/88888'] },
     );
@@ -185,7 +188,7 @@ describe('MobileItemDetailWrapper — direct link', () => {
   });
 });
 
-describe('MobileItemDetailWrapper — ids that are not numbers', () => {
+describe('MobileStoryRoute — ids that are not numbers', () => {
   it.each(['abc', '1.5', '-1'])('shows "Item not found" for /item/%s instead of a feed', (id) => {
     renderWrapper(id, { from: 'top' });
 
@@ -196,13 +199,42 @@ describe('MobileItemDetailWrapper — ids that are not numbers', () => {
   });
 });
 
-describe('MobileStoryListWrapper', () => {
+describe('MobileStoryRoute — feed routes', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  // What the feed's viewer does once its first story shows.
+  function MoveToFirstStory({ feed }: { feed: LocationState['from'] }) {
+    const navigate = useNavigate();
+    return (
+      <button onClick={() => void navigate('/item/1000', { replace: true, state: { from: feed } })}>
+        first story
+      </button>
+    );
+  }
+
+  function renderFeedRoutes() {
+    return render(
+      <>
+        <Routes>
+          <Route path="/" element={<MobileStoryRoute feed="top" />} />
+          <Route path="/best" element={<MobileStoryRoute feed="best" />} />
+          <Route path="/item/:id" element={<MobileStoryRoute />} />
+        </Routes>
+        <MoveToFirstStory feed="best" />
+        <Link to="/best">best</Link>
+      </>,
+      { initialEntries: ['/best'] },
+    );
+  }
+
   it('mounts a new viewer when you switch feeds before the URL moves to a story', () => {
     render(
       <>
         <Routes>
-          <Route path="/" element={<MobileStoryListWrapper type="top" />} />
-          <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
+          <Route path="/" element={<MobileStoryRoute feed="top" />} />
+          <Route path="/best" element={<MobileStoryRoute feed="best" />} />
         </Routes>
         <Link to="/best">best</Link>
       </>,
@@ -214,5 +246,38 @@ describe('MobileStoryListWrapper', () => {
     const viewer = screen.getByTestId('feed-viewer');
     expect(viewer).toHaveAttribute('data-type', 'best');
     expect(viewer).toHaveAttribute('data-mounted-type', 'best');
+  });
+
+  it('keeps the viewer when it moves the URL to its first story', () => {
+    renderFeedRoutes();
+    const mount = screen.getByTestId('feed-viewer').getAttribute('data-mount');
+
+    fireEvent.click(screen.getByRole('button', { name: 'first story' }));
+
+    const viewer = screen.getByTestId('feed-viewer');
+    expect(viewer).toHaveAttribute('data-item', '1000');
+    expect(viewer).toHaveAttribute('data-mounted-item', '');
+    expect(viewer).toHaveAttribute('data-mount', mount);
+  });
+
+  it('starts the feed over when its tab is opened from one of its stories', () => {
+    renderFeedRoutes();
+    fireEvent.click(screen.getByRole('button', { name: 'first story' }));
+    const mount = screen.getByTestId('feed-viewer').getAttribute('data-mount');
+
+    fireEvent.click(screen.getByRole('link', { name: 'best' }));
+
+    const viewer = screen.getByTestId('feed-viewer');
+    expect(viewer).toHaveAttribute('data-item', '');
+    expect(viewer).not.toHaveAttribute('data-mount', mount);
+  });
+
+  it('keeps the viewer when its tab is opened again before the URL moves', () => {
+    renderFeedRoutes();
+    const mount = screen.getByTestId('feed-viewer').getAttribute('data-mount');
+
+    fireEvent.click(screen.getByRole('link', { name: 'best' }));
+
+    expect(screen.getByTestId('feed-viewer')).toHaveAttribute('data-mount', mount);
   });
 });
