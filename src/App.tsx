@@ -114,7 +114,9 @@ export function MobileStoryRoute({ feed }: { feed?: FeedType }) {
   const isResolvedStory = useResolveDirectLink(id, canSwipe && isNumericId && !viewer);
 
   if (feed) {
-    return canSwipe ? renderSwipeViewer({ from: feed }, undefined, feedEntries) : <StoryList type={feed} />;
+    // key={feed}: a list mounts for each feed, so Back to one restores its
+    // saved session, as Back from a story does.
+    return canSwipe ? renderSwipeViewer({ from: feed }, undefined, feedEntries) : <StoryList key={feed} type={feed} />;
   }
 
   if (!isNumericId) {
