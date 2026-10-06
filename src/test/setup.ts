@@ -167,7 +167,7 @@ process.stderr.write = function (
 
 // Start MSW server before all tests
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'warn' });
+  server.listen({ onUnhandledFrame: 'warn' });
 });
 
 // Reset handlers and clean up after each test
