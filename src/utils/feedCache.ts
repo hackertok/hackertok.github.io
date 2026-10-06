@@ -1,4 +1,5 @@
 import type { StoryItem, FeedType } from '../types';
+import { setLocalStorageItem } from './itemCache';
 
 /** Feed list cache (localStorage, stale-while-revalidate). */
 
@@ -35,7 +36,7 @@ export function setCachedFeed(type: FeedType, stories: StoryItem[]): void {
   try {
     const key = `${FEED_CACHE_KEY_PREFIX}${type}`;
     const data = { stories, timestamp: Date.now() };
-    localStorage.setItem(key, JSON.stringify(data));
+    setLocalStorageItem(key, JSON.stringify(data));
   } catch { /* best-effort */ }
 }
 

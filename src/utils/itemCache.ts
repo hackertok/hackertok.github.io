@@ -6,6 +6,11 @@ export const ITEM_CACHE_KEY_PREFIX = 'item:';
 const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes
 const CACHE_STALE_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_CACHED_ITEMS = 60;
+// Chromium, Firefox and WebKit give an origin 5,242,880 characters of
+// localStorage. Items get up to this much of it, so the feed lists, viewed
+// times and theme still fit beside them.
+export const MAX_ITEM_CACHE_CHARS = 3_000_000;
+const TIMESTAMP_FIELD = '"timestamp":';
 
 export function getCachedItem(itemId: number | string): { item: Item; comments: Comment[]; timestamp: number; isFresh: boolean; orderedDepth: number } | null {
   try {
@@ -38,60 +43,96 @@ export function getCachedItem(itemId: number | string): { item: Item; comments: 
 
 /** `orderedDepth`: 1 = top-level only (prefetch), 3 = full ordering. */
 export function setCachedItem(itemId: number | string, item: Item, comments: Comment[], orderedDepth = 3): void {
+  const key = `${ITEM_CACHE_KEY_PREFIX}${itemId}`;
   try {
-    // Clean up old entries first
-    pruneItemCache();
-    
-    const key = `${ITEM_CACHE_KEY_PREFIX}${itemId}`;
-    const data = {
-      item,
-      comments,
-      timestamp: Date.now(),
-      orderedDepth,
-    };
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch {
-    // localStorage might be full - try to make room
-    try {
-      pruneItemCache(5);
-      const key = `${ITEM_CACHE_KEY_PREFIX}${itemId}`;
-      localStorage.setItem(key, JSON.stringify({ item, comments, timestamp: Date.now(), orderedDepth }));
-    } catch { /* best-effort */ }
-  }
+    const value = JSON.stringify({ item, comments, timestamp: Date.now(), orderedDepth });
+    // A thread this big would push out half the cache, so it isn't kept.
+    if (value.length > MAX_ITEM_CACHE_CHARS / 2) {
+      // An older copy would still be read as fresh in its place.
+      localStorage.removeItem(key);
+      return;
+    }
+    pruneItemCache(key, key.length + value.length);
+    setLocalStorageItem(key, value);
+  } catch { /* best-effort */ }
 }
 
-function pruneItemCache(removeCount = 0): void {
+/**
+ * `localStorage.setItem` that makes room when storage is full: the older half
+ * of the cached items goes, and the write is tried once more.
+ */
+export function setLocalStorageItem(key: string, value: string): void {
   try {
-    const itemKeys = [];
-    const corruptKeys: string[] = [];
-    
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(ITEM_CACHE_KEY_PREFIX)) {
-        try {
-          const data = JSON.parse(localStorage.getItem(key)!) as { timestamp?: number };
-          itemKeys.push({ key, timestamp: data.timestamp ?? 0 });
-        } catch {
-          // Corrupted entry, collect for removal after the scan
-          corruptKeys.push(key);
-        }
-      }
+    localStorage.setItem(key, value);
+    return;
+  } catch { /* full, most likely */ }
+  try {
+    const entries = readItemCache();
+    for (const entry of entries.slice(0, Math.ceil(entries.length / 2))) {
+      localStorage.removeItem(entry.key);
     }
-    
-    // Remove corrupted entries in a separate pass to avoid
-    // mutating localStorage indices during the scan loop.
-    for (const key of corruptKeys) {
-      localStorage.removeItem(key);
-    }
-    
-    itemKeys.sort((a, b) => a.timestamp - b.timestamp);
-    
-    // Remove oldest entries if over limit or if forced
-    const toRemove = removeCount || Math.max(0, itemKeys.length - MAX_CACHED_ITEMS);
-    for (let i = 0; i < toRemove && i < itemKeys.length; i++) {
-      localStorage.removeItem(itemKeys[i].key);
+    localStorage.setItem(key, value);
+  } catch { /* best-effort */ }
+}
+
+interface ItemCacheEntry { key: string; timestamp: number; chars: number }
+
+/** Drops the oldest items until one more of `incomingChars` fits the budget. */
+function pruneItemCache(incomingKey: string, incomingChars: number): void {
+  try {
+    const entries = readItemCache().filter(entry => entry.key !== incomingKey);
+    let count = entries.length + 1;
+    let chars = incomingChars;
+    for (const entry of entries) chars += entry.chars;
+
+    for (const entry of entries) {
+      if (count <= MAX_CACHED_ITEMS && chars <= MAX_ITEM_CACHE_CHARS) break;
+      localStorage.removeItem(entry.key);
+      count--;
+      chars -= entry.chars;
     }
   } catch { /* best-effort */ }
+}
+
+/** The cached items, oldest first. Unreadable entries are removed. */
+function readItemCache(): ItemCacheEntry[] {
+  const entries: ItemCacheEntry[] = [];
+  const corruptKeys: string[] = [];
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key?.startsWith(ITEM_CACHE_KEY_PREFIX)) continue;
+    const value = localStorage.getItem(key) ?? '';
+    const timestamp = readTimestamp(value);
+    if (timestamp === null) corruptKeys.push(key);
+    else entries.push({ key, timestamp, chars: key.length + value.length });
+  }
+
+  // Removed after the scan, which reads localStorage by index.
+  for (const key of corruptKeys) {
+    localStorage.removeItem(key);
+  }
+
+  return entries.sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/**
+ * An entry's write time, read without parsing its thread. The field comes after
+ * the item and comments, whose quotes are escaped, so its last match is the one.
+ */
+function readTimestamp(value: string): number | null {
+  const at = value.lastIndexOf(TIMESTAMP_FIELD);
+  if (at !== -1) {
+    const timestamp = Number.parseInt(value.slice(at + TIMESTAMP_FIELD.length), 10);
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  try {
+    // A readable entry with no write time counts as the oldest.
+    const data = JSON.parse(value) as { timestamp?: number };
+    return data.timestamp ?? 0;
+  } catch {
+    return null;
+  }
 }
 
 // ============================================================================

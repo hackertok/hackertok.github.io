@@ -925,6 +925,94 @@ describe('useItemWithComments', () => {
       });
       expect(result.current.commentsError).toBeTruthy();
     });
+
+    describe('priority flag', () => {
+      const oneHit = () => HttpResponse.json({
+        hits: [{ objectID: '1001', author: 'user1', comment_text: 'Test', created_at_i: 1000, parent_id: 12345, story_id: 12345 }],
+        nbHits: 1, page: 0, nbPages: 1, hitsPerPage: 200,
+      });
+
+      // The first comments request hangs, like a fetch stalled by losing the network.
+      async function renderWithStalledComments() {
+        let stalled = false;
+        server.use(
+          http.get(`${ALGOLIA_API}/search`, async () => {
+            stalled = true;
+            await new Promise(() => { /* never settles */ });
+            return oneHit();
+          })
+        );
+        const hook = renderHook(
+          ({ deferComments }) => useItemWithComments(12345, { initialItem: testItem, deferComments }),
+          { wrapper: networkWrapper, initialProps: { deferComments: false } }
+        );
+        await waitFor(() => expect(stalled).toBe(true));
+        expect(isPriorityFetchActive()).toBe(true);
+        return hook;
+      }
+
+      it('is released when the comments arrive through the reconnect retry', async () => {
+        const { result, rerender, unmount } = await renderWithStalledComments();
+
+        server.use(http.get(`${ALGOLIA_API}/search`, oneHit));
+        act(() => { window.dispatchEvent(new Event('offline')); });
+        act(() => { window.dispatchEvent(new Event('online')); });
+
+        await waitFor(() => expect(result.current.comments).toHaveLength(1));
+        expect(isPriorityFetchActive()).toBe(false);
+
+        // A swipe panel two away turns deferred, then unmounts.
+        rerender({ deferComments: true });
+        unmount();
+        expect(isPriorityFetchActive()).toBe(false);
+      });
+
+      it('is released when the reconnect retry fails', async () => {
+        const { result } = await renderWithStalledComments();
+
+        server.use(http.get(`${ALGOLIA_API}/search`, () => new HttpResponse(null, { status: 500 })));
+        act(() => { window.dispatchEvent(new Event('offline')); });
+        act(() => { window.dispatchEvent(new Event('online')); });
+
+        await waitFor(() => expect(result.current.commentsError).toBeTruthy());
+        expect(isPriorityFetchActive()).toBe(false);
+      });
+
+      it('is released when the panel turns deferred before the reconnect retry settles', async () => {
+        const { result, rerender } = await renderWithStalledComments();
+
+        let release: (() => void) | undefined;
+        server.use(
+          http.get(`${ALGOLIA_API}/search`, async () => {
+            await new Promise<void>(resolve => { release = resolve; });
+            return oneHit();
+          })
+        );
+        act(() => { window.dispatchEvent(new Event('offline')); });
+        act(() => { window.dispatchEvent(new Event('online')); });
+        await waitFor(() => expect(release).toBeDefined());
+
+        rerender({ deferComments: true });
+        expect(isPriorityFetchActive()).toBe(true);
+
+        release!();
+        await waitFor(() => expect(result.current.comments).toHaveLength(1));
+        expect(isPriorityFetchActive()).toBe(false);
+      });
+    });
+  });
+
+  describe('priority flag for a comment item', () => {
+    it('is released once the comment item loads', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue({
+        id: 1001, by: 'user1', text: 'A comment', time: Math.floor(Date.now() / 1000) - 60, parent: 12345, type: 'comment',
+      });
+
+      const { result } = renderHook(() => useItemWithComments(1001));
+
+      await waitFor(() => expect(result.current.item?.type).toBe('comment'));
+      expect(isPriorityFetchActive()).toBe(false);
+    });
   });
 
   describe('refresh loading states', () => {
@@ -1002,6 +1090,106 @@ describe('useItemWithComments', () => {
       });
 
       expect(result.current.error).toBeTruthy();
+    });
+
+    it('reports a refresh whose comments fail as a comments error', async () => {
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => new HttpResponse(null, { status: 503 }))
+      );
+
+      const { result } = renderHook(() => useItemWithComments(12345));
+
+      await waitFor(() => {
+        expect(result.current.commentsError).toBeTruthy();
+      });
+
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      expect(result.current.error).toBeNull();
+      expect(result.current.commentsError).toBeTruthy();
+      expect(result.current.item?.id).toBe(12345);
+      expect(result.current.itemLoading).toBe(false);
+      expect(result.current.commentsLoading).toBe(false);
+    });
+  });
+
+  describe('retryComments', () => {
+    const askItem = createStoryItem({ ...testItem, type: 'ask' });
+
+    beforeEach(() => {
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => new HttpResponse(null, { status: 503 }))
+      );
+    });
+
+    it('keeps the item when the comments fail again', async () => {
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: askItem })
+      );
+
+      await waitFor(() => {
+        expect(result.current.commentsError).toBeTruthy();
+      });
+
+      let rejected = false;
+      await act(async () => {
+        await result.current.retryComments().catch(() => { rejected = true; });
+      });
+
+      expect(rejected).toBe(true);
+      expect(result.current.error).toBeNull();
+      expect(result.current.commentsError).toBeTruthy();
+      expect(result.current.item?.type).toBe('ask');
+    });
+
+    it('keeps the comments error set while the retry is in flight', async () => {
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: askItem })
+      );
+
+      await waitFor(() => {
+        expect(result.current.commentsError).toBeTruthy();
+      });
+
+      let retryPromise: Promise<void>;
+      act(() => {
+        retryPromise = result.current.retryComments();
+      });
+
+      expect(result.current.commentsError).toBeTruthy();
+      expect(result.current.commentsLoading).toBe(false);
+
+      await act(async () => {
+        await retryPromise!.catch(() => { /* still failing */ });
+      });
+    });
+
+    it('loads the comments and keeps the item type when the retry succeeds', async () => {
+      const { result } = renderHook(() =>
+        useItemWithComments(12345, { initialItem: askItem })
+      );
+
+      await waitFor(() => {
+        expect(result.current.commentsError).toBeTruthy();
+      });
+
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => HttpResponse.json({
+          hits: [{ objectID: '1001', author: 'user1', comment_text: 'Back', created_at_i: 1000, parent_id: 12345, story_id: 12345 }],
+          nbHits: 1, page: 0, nbPages: 1, hitsPerPage: 200,
+        }))
+      );
+
+      await act(async () => {
+        await result.current.retryComments();
+      });
+
+      expect(result.current.commentsError).toBeNull();
+      expect(result.current.comments).toHaveLength(1);
+      expect(result.current.item?.type).toBe('ask');
+      expect(getCachedItem(12345)?.comments).toHaveLength(1);
     });
   });
 });

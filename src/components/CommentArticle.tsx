@@ -24,6 +24,8 @@ interface CommentArticleProps {
   /** The thread title is still being fetched (after `loading` clears). */
   itemTitleLoading?: boolean;
   loading: boolean;
+  /** Set when the replies failed to load: their section offers a Retry that calls it. */
+  onRetryReplies?: () => void;
   articleClassName?: string;
   /** Story author for OP detection. */
   storyAuthor?: string;
@@ -36,6 +38,7 @@ export function CommentArticle({
   itemTitle,
   itemTitleLoading = false,
   loading,
+  onRetryReplies,
   articleClassName = 'mb-4',
   storyAuthor = '',
 }: CommentArticleProps) {
@@ -129,6 +132,8 @@ export function CommentArticle({
           // for the ~100-500ms before the algolia fetch resolves. On
           // cold load PageStage's overlay covers this branch.
           <CommentSkeletonTree count={6} />
+        ) : onRetryReplies ? (
+          <StateView variant="error" compact description="Failed to load replies" action={{ label: 'Retry', onClick: onRetryReplies }} />
         ) : replies.length > 0 ? (
           <CommentTree comments={replies} storyAuthor={storyAuthor} />
         ) : (
