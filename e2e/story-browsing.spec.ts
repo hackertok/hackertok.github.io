@@ -1,8 +1,8 @@
 import { expect } from '@playwright/test';
 import { test as baseTest } from '@playwright/test';
 import { test as fixtureTest } from './fixtures/test';
-import { setupApiMocks, setupApiMocksWithDelay } from './fixtures/api-mocks';
-import { ALGOLIA_API } from './fixtures/mock-data';
+import { setupApiMocks, setupApiMocksWithDelay, createFirebaseWsHandler, FIREBASE_WS_PATTERN } from './fixtures/api-mocks';
+import { ALGOLIA_API, mockTopItemIds } from './fixtures/mock-data';
 
 const test = baseTest;
 
@@ -189,6 +189,50 @@ test.describe('Item Browsing - Desktop Back between feeds', () => {
     await expect.poll(() => page.evaluate(() => sessionStorage.getItem('feed:session:best'))).toBeNull();
     await expect(page.getByText("You've reached the end")).toBeVisible();
     await expect(cards).toHaveCount(3);
+  });
+});
+
+test.describe('Item Browsing - Desktop refresh', () => {
+  test.use({ viewport: { width: 1280, height: 720 } });
+
+  test('a refresh whose stories all fail to load keeps the cached feed without paging through older days', async ({ page }, testInfo) => {
+    if (testInfo.project.name.startsWith('Mobile')) {
+      test.skip();
+      return;
+    }
+    await setupApiMocks(page);
+    // The list of top story ids loads, but every story read fails.
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ errorItemIds: mockTopItemIds }));
+    let dayRequests = 0;
+    await page.route(`${ALGOLIA_API}/search*`, async (route) => {
+      if (!route.request().url().includes('numericFilters')) return route.fallback();
+      dayRequests += 1;
+      const base = 900_000 + dayRequests * 10;
+      await route.fulfill({
+        json: {
+          hits: [0, 1, 2].map((i) => ({
+            objectID: String(base + i), title: `Older story ${base + i}`, url: 'https://example.com/older',
+            author: 'someone', points: 1, num_comments: 0, created_at_i: Math.floor(Date.now() / 1000) - 86_400 * dayRequests,
+            _tags: ['story'],
+          })),
+          nbHits: 3, page: 0, nbPages: 1, hitsPerPage: 30,
+        },
+      });
+    });
+    await page.addInitScript((ids) => {
+      const stories = ids.map((id) => ({
+        id, type: 'story', title: `Cached story ${id}`, url: `https://example.com/${id}`,
+        points: 1, author: 'someone', createdAt: Date.now() - 3_600_000, commentCount: 0,
+      }));
+      localStorage.setItem('feed:top', JSON.stringify({ stories, timestamp: Date.now() - 3_600_000 }));
+    }, mockTopItemIds);
+
+    await page.goto('/#/');
+    await expect(page.getByText(`Cached story ${mockTopItemIds[0]}`)).toBeVisible();
+    await page.waitForTimeout(3000);
+
+    expect(dayRequests).toBe(0);
+    await expect(page.locator('[data-testid="story-card"]')).toHaveCount(mockTopItemIds.length);
   });
 });
 
