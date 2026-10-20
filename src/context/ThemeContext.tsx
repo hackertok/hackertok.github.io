@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ThemeContext } from './themeContextDef';
 import { THEME_COLORS, nextMode } from './themeConfig';
 import type { Theme, ThemeMode } from '../types';
+import { setLocalStorageItem } from '../utils/itemCache';
 
 // Persisted user preference ('light' | 'dark' | 'system'). An absent or
 // invalid value falls back to 'system' (follow the device).
@@ -70,11 +71,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [mode]);
 
   // Persist only on an explicit choice. Mounting never writes, so a fresh user
-  // stays "follow the device" until they opt out.
+  // stays "follow the device" until they opt out. A write that still fails
+  // leaves the choice applied for this visit only.
   const setMode = (next: ThemeMode) => {
-    try {
-      localStorage.setItem(MODE_KEY, next);
-    } catch { /* not persisted — still applies for this visit */ }
+    setLocalStorageItem(MODE_KEY, next);
     setModeState(next);
   };
 

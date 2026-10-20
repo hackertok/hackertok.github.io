@@ -97,7 +97,7 @@ test.describe('Comment Detail - Error + Retry', () => {
   // Auto-retry exhausts 3 backoff attempts (2s+4s+8s) before surfacing error UI.
   test.setTimeout(60000);
 
-  test('shows error state with retry button when Algolia fails', async ({ page }) => {
+  test('keeps the comment and offers to retry its replies when Algolia fails', async ({ page }) => {
     await setupApiMocks(page);
 
     await page.route(`${ALGOLIA_API}/items/1001`, async (route) => {
@@ -106,12 +106,17 @@ test.describe('Comment Detail - Error + Retry', () => {
 
     await page.goto('/#/item/1001');
 
+    // The comment itself comes from Firebase.
+    const firebaseText = page.getByText(/really well-written piece/);
+    await expect(firebaseText).toBeVisible();
+
     // 30s timeout covers the 2+4+8 backoff plus slack.
-    await expect(page.getByText('Failed to load comment')).toBeVisible({ timeout: 30000 });
-    await expect(page.getByRole('button', { name: /retry/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /retry/i })).toBeVisible({ timeout: 30000 });
+    await expect(firebaseText).toBeVisible();
+    await expect(page.getByText('Failed to load comment')).not.toBeVisible();
   });
 
-  test('recovers after retry when Algolia temporarily fails', async ({ page }) => {
+  test('loads the replies on retry once Algolia recovers', async ({ page }) => {
     await setupApiMocks(page);
 
     let shouldFail = true;
@@ -127,7 +132,14 @@ test.describe('Comment Detail - Error + Retry', () => {
             created_at_i: Math.floor(Date.now() / 1000) - 1800,
             parent_id: 12345,
             story_id: 12345,
-            children: [],
+            children: [{
+              id: 2001,
+              author: 'tptacek',
+              text: 'A reply that loaded on retry.',
+              created_at_i: Math.floor(Date.now() / 1000) - 900,
+              parent_id: 1001,
+              children: [],
+            }],
             type: 'comment',
           },
         });
@@ -136,15 +148,15 @@ test.describe('Comment Detail - Error + Retry', () => {
 
     await page.goto('/#/item/1001');
 
-    await expect(page.getByText('Failed to load comment')).toBeVisible({ timeout: 30000 });
     const retryButton = page.getByRole('button', { name: /retry/i });
-    await expect(retryButton).toBeVisible();
+    await expect(retryButton).toBeVisible({ timeout: 30000 });
 
     // Flip the failure switch BEFORE the retry click so the next request succeeds.
     shouldFail = false;
     await retryButton.click();
 
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('A reply that loaded on retry.')).toBeVisible({ timeout: 10000 });
     await expect(page.getByText(/wasm-bindgen/i).first()).toBeVisible();
+    await expect(retryButton).not.toBeVisible();
   });
 });
