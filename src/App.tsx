@@ -21,21 +21,6 @@ import { fetchItemOnly } from './api/hn';
 import { readSwipePosition } from './utils/swipePosition';
 import type { FeedType, LocationState, SwipePosition } from './types';
 
-// Exported for focused unit testing.
-export function MobileStoryListWrapper({ type }: { type: FeedType }) {
-  const canSwipe = useCanSwipe();
-  
-  if (canSwipe) {
-    // key={type}: every feed route renders this wrapper, so a tab switch made
-    // before the viewer moves the URL to /item/:id (first load still running,
-    // or a failed one) would otherwise keep the previous feed's stories and
-    // let its in-flight page land in the new feed.
-    return <SwipeStoryViewer key={type} type={type} />;
-  }
-  
-  return <StoryList type={type} />;
-}
-
 // Falls through to the desktop list when the URL has no domain (empty `/from/`)
 // so the "No domain specified" fallback in DomainStories handles it consistently
 // on both platforms.
@@ -74,10 +59,12 @@ function MobileUserSubmissionsWrapper() {
 }
 
 // Maps a viewer context to its swipe viewer (priority fromUser → fromDomain → from;
-// written mutually exclusively). Shared by the location.state path (Branches 2–4)
-// and snapshot recovery (4b); the `key` mirrors viewer identity so switching paths
-// reuses the instance. `id` is the story id here (/item/:id), so it's initialItemId.
-function renderSwipeViewer(viewer: LocationState, id: string | undefined): ReactNode {
+// written mutually exclusively). Shared by the feed routes, the location.state path
+// (Branches 2–4) and snapshot recovery (4b); the `key` mirrors viewer identity so
+// switching paths reuses the instance. `id` is the story id here (/item/:id), so
+// it's initialItemId. A feed viewer's key also carries `feedEntries` (see
+// MobileStoryRoute).
+function renderSwipeViewer(viewer: LocationState, id: string | undefined, feedEntries: number): ReactNode {
   if (viewer.fromUser) {
     return <SwipeUserSubmissionsViewer key={viewer.fromUser} username={viewer.fromUser} initialItemId={id} />;
   }
@@ -85,29 +72,52 @@ function renderSwipeViewer(viewer: LocationState, id: string | undefined): React
     return <SwipeDomainStoryViewer key={viewer.fromDomain} domain={viewer.fromDomain} initialItemId={id} />;
   }
   if (viewer.from) {
-    return <SwipeStoryViewer key={viewer.from} type={viewer.from} initialItemId={id} />;
+    return <SwipeStoryViewer key={`${viewer.from}:${feedEntries}`} type={viewer.from} initialItemId={id} />;
   }
   return null;
 }
 
-// Routes /item/:id to the correct mobile viewer based on `location.state`
+// The element for the feed routes (`feed` set) and /item/:id. On a phone the
+// feed's viewer moves the URL to /item/:id as soon as its first story shows,
+// and React keeps that viewer only if both routes render the same component:
+// as two components, the viewer mounted again there and fetched the first
+// page a second time. On /item/:id it picks the viewer from `location.state`
 // (or the item type for direct URLs without state).
-// Exported for focused unit testing of the viewer-recovery branch.
-export function MobileItemDetailWrapper() {
+// Exported for focused unit testing.
+export function MobileStoryRoute({ feed }: { feed?: FeedType }) {
   const { id } = useParams();
   const canSwipe = useCanSwipe();
   const location = useLocation();
   // Newest snapshot taken on this story, read once (sticky for the wrapper's life);
   // used only by Branch 4b to recover the viewer on a stateless reload.
-  const [recovered] = useState(() => readSwipePosition({ storyId: Number(id) }));
+  const [recovered] = useState(() => (feed ? null : readSwipePosition({ storyId: Number(id) })));
+
+  // Counts the feed routes entered from another route. It's in the feed
+  // viewer's key, so opening a feed (a tab, the logo, Back to a feed URL)
+  // starts it over, while the viewer's own move to /item/:id keeps the key.
+  // A tab switch made before that move (first load still running, or a
+  // failed one) mounts the new feed's viewer too, so the previous feed's
+  // in-flight page can't land in it.
+  const [feedEntries, setFeedEntries] = useState(0);
+  const [lastFeed, setLastFeed] = useState(feed);
+  if (feed !== lastFeed) {
+    setLastFeed(feed);
+    if (feed) setFeedEntries(feedEntries + 1);
+  }
 
   // HN ids are numeric. The swipe viewer can't fetch anything else, and its
   // NaN id never matches the failed fetch, so it would show the Top feed.
   const isNumericId = id !== undefined && /^\d+$/.test(id);
   const viewer = canSwipe && isNumericId
-    ? pickSwipeViewer(location.state as LocationState | null, recovered, id)
+    ? pickSwipeViewer(location.state as LocationState | null, recovered, id, feedEntries)
     : null;
   const isResolvedStory = useResolveDirectLink(id, canSwipe && isNumericId && !viewer);
+
+  if (feed) {
+    // key={feed}: a list mounts for each feed, so Back to one restores its
+    // saved session, as Back from a story does.
+    return canSwipe ? renderSwipeViewer({ from: feed }, undefined, feedEntries) : <StoryList key={feed} type={feed} />;
+  }
 
   if (!isNumericId) {
     return <ItemNotFound />;
@@ -120,7 +130,7 @@ export function MobileItemDetailWrapper() {
     // must be the element Branch 4 renders for `{ from: 'top' }`: the first
     // swipe writes that state, and a different element there would remount
     // the viewer and drop the story this link opened.
-    if (isResolvedStory) return renderSwipeViewer({ from: 'top' }, id);
+    if (isResolvedStory) return renderSwipeViewer({ from: 'top' }, id, feedEntries);
     return <MobileItemResolverSkeleton />;
   }
   
@@ -131,6 +141,7 @@ function pickSwipeViewer(
   state: LocationState | null,
   recovered: SwipePosition | null,
   id: string,
+  feedEntries: number,
 ): ReactNode {
   // Branch 1: Known comment → SwipeCommentViewer immediately.
   // Comments take priority over user/domain/from to match the header pill
@@ -141,7 +152,7 @@ function pickSwipeViewer(
 
   // Branches 2–4: viewer context from location.state (zero-latency path).
   if (state) {
-    const viewer = renderSwipeViewer(state, id);
+    const viewer = renderSwipeViewer(state, id, feedEntries);
     if (viewer) return viewer;
   }
 
@@ -151,7 +162,7 @@ function pickSwipeViewer(
   // fires for a fresh same-tab nav to a still-snapshotted id+viewer (intended:
   // resume where you left off), not just back/reload.
   if (recovered?.storyId === Number(id)) {
-    return renderSwipeViewer(recovered.viewer, id);
+    return renderSwipeViewer(recovered.viewer, id, feedEntries);
   }
 
   return null;
@@ -181,7 +192,7 @@ function useResolveDirectLink(id: string | undefined, enabled: boolean): boolean
       .then(item => {
         if (controller.signal.aborted) return;
         if (item.type === 'comment') {
-          // Navigate with state so MobileItemDetailWrapper Branch 1 picks it up
+          // Navigate with state so MobileStoryRoute Branch 1 picks it up
           void navigate(`/item/${id}`, { replace: true, state: { isComment: true } });
         } else {
           setStoryId(id);
@@ -289,12 +300,12 @@ function App() {
                   <NetworkStatusBar />
                   <MainContent>
                     <Routes>
-                      <Route path="/" element={<MobileStoryListWrapper type="top" />} />
-                      <Route path="/show" element={<MobileStoryListWrapper type="show" />} />
-                      <Route path="/ask" element={<MobileStoryListWrapper type="ask" />} />
-                      <Route path="/best" element={<MobileStoryListWrapper type="best" />} />
-                      <Route path="/newest" element={<MobileStoryListWrapper type="newest" />} />
-                      <Route path="/item/:id" element={<MobileItemDetailWrapper />} />
+                      <Route path="/" element={<MobileStoryRoute feed="top" />} />
+                      <Route path="/show" element={<MobileStoryRoute feed="show" />} />
+                      <Route path="/ask" element={<MobileStoryRoute feed="ask" />} />
+                      <Route path="/best" element={<MobileStoryRoute feed="best" />} />
+                      <Route path="/newest" element={<MobileStoryRoute feed="newest" />} />
+                      <Route path="/item/:id" element={<MobileStoryRoute />} />
                       <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
                       <Route path="/user/:id" element={<UserProfile />} />
                       <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />

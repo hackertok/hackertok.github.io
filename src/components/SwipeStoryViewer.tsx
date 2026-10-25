@@ -361,8 +361,9 @@ export function SwipeStoryViewerCore({
   useLayoutEffect(() => () => persistSnapshot(), [persistSnapshot]);
 
   // Opening a feed from its tab (no story in the URL) starts it over. Drop the
-  // feed's old position now: the viewer that mounts once the URL moves to the
-  // first story would otherwise restore it if it was saved on that story.
+  // feed's old position now: a domain or user list mounts its viewer again
+  // once the URL moves to the first story, which would otherwise restore it if
+  // it was saved on that story.
   const opensFresh = initialItemId == null;
   useLayoutEffect(() => {
     if (opensFresh) clearSwipePosition(backState);

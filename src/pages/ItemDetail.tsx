@@ -8,7 +8,7 @@ import { useAutoRetry } from '../hooks/useAutoRetry';
 
 export function ItemDetail() {
   const { id } = useParams();
-  const { item, comments, itemLoading, commentsLoading, error, isNotFound, commentsError, refresh } = useItemWithComments(id ?? '');
+  const { item, comments, itemLoading, commentsLoading, error, isNotFound, commentsError, refresh, retryComments } = useItemWithComments(id ?? '');
 
   const { isOnline } = useNetworkStatus();
   const { isRetrying: isItemRetrying, resetRetry: resetItemRetry } = useAutoRetry({
@@ -91,7 +91,7 @@ export function ItemDetail() {
               <CommentsSection
                 comments={comments}
                 commentsError={commentsError}
-                onRetry={refresh}
+                onRetry={retryComments}
                 storyAuthor={item.author}
               />
             </section>

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { getCachedFeed, setCachedFeed, clearFeedCache, isCacheFresh } from './feedCache';
-import { createStoryItem } from '../test/factories';
+import { setCachedItem } from './itemCache';
+import { createComment, createStoryItem } from '../test/factories';
+import { installStorageQuota } from '../test/storageQuota';
 
 describe('feedCache', () => {
   beforeEach(() => {
@@ -31,6 +33,22 @@ describe('feedCache', () => {
       
       expect(topResult.stories[0].title).toBe('Top Story');
       expect(bestResult.stories[0].title).toBe('Best Story');
+    });
+
+    it('makes room for the list when cached items have filled the storage', () => {
+      const quota = installStorageQuota(20_000);
+      try {
+        for (let i = 0; i < 4; i++) {
+          setCachedItem(i, createStoryItem({ id: i }), [createComment({ id: i, text: 'x'.repeat(2_000) })]);
+        }
+        quota.fill();
+
+        setCachedFeed('top', Array.from({ length: 10 }, (_, i) => createStoryItem({ id: 100 + i })));
+
+        expect(getCachedFeed('top')?.stories).toHaveLength(10);
+      } finally {
+        quota.restore();
+      }
     });
   });
 

@@ -14,25 +14,14 @@ export function StoryList({ type }: { type: FeedType }) {
     error,
     hasMore,
     loadMore,
-    reset,
     isFromCache,
     isFromSession,
     initialScrollY,
     saveSessionState,
   } = useInfiniteStories(type);
 
-  // Track previous type so the reset effect only fires on type
-  // CHANGE, not on initial mount.
-  const prevTypeRef = useRef(type);
+  // `type` must not change for a mounted list: the feed routes key it by type.
   const hasRestoredScroll = useRef(false);
-
-  useEffect(() => {
-    if (prevTypeRef.current !== type) {
-      prevTypeRef.current = type;
-      hasRestoredScroll.current = false;
-      reset();
-    }
-  }, [type, reset]);
 
   // Restore scroll BEFORE paint so the user doesn't see a flash of
   // top-of-page on back-nav.
