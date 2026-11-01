@@ -21,6 +21,9 @@ import {
   DETAIL_DWELL_LONG_MS,
   detailTtlHoursForDwell,
 } from './viewedItems';
+import { setCachedItem } from './itemCache';
+import { createComment, createStoryItem } from '../test/factories';
+import { installStorageQuota } from '../test/storageQuota';
 
 describe('viewedItems', () => {
   beforeEach(() => {
@@ -96,6 +99,22 @@ describe('viewedItems', () => {
       // Verify localStorage is also bounded
       const stored = JSON.parse(localStorage.getItem(VIEWED_KEY)!) as number[];
       expect(stored.length).toBe(50_000);
+    });
+
+    it('makes room to save when cached items have filled the storage', () => {
+      const quota = installStorageQuota(20_000);
+      try {
+        for (let i = 0; i < 4; i++) {
+          setCachedItem(i, createStoryItem({ id: i }), [createComment({ id: i, text: 'x'.repeat(2_000) })]);
+        }
+        quota.fill();
+
+        markViewed(12345);
+
+        expect(JSON.parse(localStorage.getItem(VIEWED_KEY)!)).toEqual([12345]);
+      } finally {
+        quota.restore();
+      }
     });
   });
 

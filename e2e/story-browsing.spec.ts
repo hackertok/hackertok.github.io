@@ -181,14 +181,12 @@ test.describe('Item Browsing - Desktop Back between feeds', () => {
     await expect(page).toHaveURL(/\/show$/);
     await expect(page.locator('[data-story-id="99999"]')).toBeVisible();
 
-    // The list stays mounted, so Back to Best resets it rather than remounting.
+    // Best's list mounts again and restores the session the story saved.
     await page.goBack();
     await expect(page).toHaveURL(/\/best$/);
-    // reset() drops the session and re-arms hasMore, so the end marker only
-    // returns once the load after it finishes.
-    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('feed:session:best'))).toBeNull();
     await expect(page.getByText("You've reached the end")).toBeVisible();
     await expect(cards).toHaveCount(3);
+    expect(await page.evaluate(() => sessionStorage.getItem('feed:session:best'))).not.toBeNull();
   });
 });
 

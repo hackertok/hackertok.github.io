@@ -80,7 +80,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
         )}
         <span className="text-muted-foreground">·</span>
         {/* Time IS the permalink (HN convention). `state.isComment:
-            true` lets MobileItemDetailWrapper short-circuit straight
+            true` lets MobileStoryRoute short-circuit straight
             to SwipeCommentViewer without a resolver round-trip. */}
         <Link
           to={`/item/${comment.id}`}

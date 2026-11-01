@@ -219,11 +219,13 @@ export function StateView({ variant, title, description, action, compact, classN
   const Scene = SCENES[variant];
 
   if (compact) {
+    // One label fits, so a passed-in description takes the default title's place.
+    const compactTitle = title ?? (description ? undefined : defaults.title);
     return (
       <div className={className ?? 'flex items-center justify-center gap-3 py-6 text-center'}>
         <Scene compact />
-        {resolvedTitle && <span className="text-muted-foreground text-sm">{resolvedTitle}</span>}
-        {!resolvedTitle && resolvedDesc && <span className="text-muted-foreground text-sm">{resolvedDesc}</span>}
+        {compactTitle && <span className="text-muted-foreground text-sm">{compactTitle}</span>}
+        {!compactTitle && resolvedDesc && <span className="text-muted-foreground text-sm">{resolvedDesc}</span>}
         {action && <ActionElement action={action} />}
       </div>
     );

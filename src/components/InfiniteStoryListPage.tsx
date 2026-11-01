@@ -152,7 +152,6 @@ export function InfiniteStoryListPage({
               <StateView
                 variant="error"
                 compact
-                description={error}
                 action={{ label: 'Retry', onClick: retryLoadMore }}
                 className="flex items-center justify-center gap-3 py-4 text-center"
               />

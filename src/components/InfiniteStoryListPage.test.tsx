@@ -183,10 +183,8 @@ describe('InfiniteStoryListPage', () => {
       // Pagination failure — the list stays visible, the error sits in
       // the footer slot instead of replacing the layout. Lighter
       // affordance ("Retry", not "Try Again") to keep the fix-it
-      // surface secondary to the cards. StateView's compact branch
-      // hides the verbose description when a title resolves (which
-      // it always does — DEFAULTS.error.title is "Something went
-      // wrong"), so we assert the visible markers, not the raw error.
+      // surface secondary to the cards. It shows StateView's default
+      // title, "Something went wrong", rather than the raw error.
       const stories = [createStoryItem({ id: 1, title: 'Loaded story' })];
 
       renderPage({
@@ -195,6 +193,7 @@ describe('InfiniteStoryListPage', () => {
 
       expect(screen.getByRole('link', { name: 'Loaded story' })).toBeInTheDocument();
       expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
+      expect(screen.queryByText('Page 2 failed')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     });
 

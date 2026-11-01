@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { setLocalStorageItem } from './itemCache';
 
 /** Track viewed items in localStorage. */
 
@@ -55,9 +56,7 @@ export function markViewed(itemId: number | string): void {
     if (first !== undefined) set.delete(first);
   }
   
-  try {
-    localStorage.setItem(VIEWED_KEY, JSON.stringify([...set]));
-  } catch { /* best-effort */ }
+  setLocalStorageItem(VIEWED_KEY, JSON.stringify([...set]));
   notifyListeners();
 }
 
@@ -134,9 +133,7 @@ function createTimeMap(storageKey: string) {
       return cache;
     },
     save(): void {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(cache));
-      } catch { /* best-effort */ }
+      setLocalStorageItem(storageKey, JSON.stringify(cache));
     },
     reset(): void {
       cache = null;
