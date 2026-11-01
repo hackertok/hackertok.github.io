@@ -26,6 +26,8 @@ interface UseItemWithCommentsResult {
   isNotFound: boolean;
   commentsError: string | null;
   refresh: () => Promise<void>;
+  /** Refetch the comments only; a failure stays a `commentsError`. */
+  retryComments: () => Promise<void>;
 }
 
 // Swipe-position snapshots store stories without `text` (see swipePosition.ts),
@@ -69,6 +71,10 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
 
   // Ref to the main effect's AbortController so the reconnect handler can abort stale fetches
   const controllerRef = useRef<AbortController | null>(null);
+  // Releases the main effect's priority registration. The reconnect handler
+  // calls it: the fetch it aborts no longer can, and a panel that turns
+  // deferred skips the effect cleanup.
+  const releasePriorityRef = useRef<(() => void) | null>(null);
 
   const getStableOptions = useEffectEvent(() => ({
     isPriority,
@@ -149,6 +155,13 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       registerPriorityFetch();
       didRegister = true;
     }
+    const releasePriority = () => {
+      if (didRegister) {
+        unregisterPriorityFetch();
+        didRegister = false;
+      }
+    };
+    releasePriorityRef.current = releasePriority;
 
     async function loadItem() {
       if (initialItem) {
@@ -174,10 +187,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
           setCommentsLoading(false);
           
           // Unregister priority on item fetch failure so prefetchers aren't blocked
-          if (didRegister) {
-            unregisterPriorityFetch();
-            didRegister = false;
-          }
+          releasePriority();
         }
         return null;
       }
@@ -206,10 +216,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
           
           // Unregister priority so section prefetch and other lower-priority
           // fetches can proceed.
-          if (didRegister) {
-            unregisterPriorityFetch();
-            didRegister = false;
-          }
+          releasePriority();
         }
       } catch (err) {
         if (!controller.signal.aborted && !(err instanceof Error && err.name === 'AbortError')) {
@@ -219,10 +226,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
           console.warn('Failed to load comments:', err);
           
           // Unregister priority even on failure so prefetchers aren't blocked forever
-          if (didRegister) {
-            unregisterPriorityFetch();
-            didRegister = false;
-          }
+          releasePriority();
         }
       }
     }
@@ -242,6 +246,9 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
           await loadComments(itemData, false);
         }
       }
+      // A comment item fetches nothing more. After an abort, whoever
+      // aborted releases it.
+      if (!controller.signal.aborted) releasePriority();
     }
 
     void load();
@@ -254,9 +261,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       // Cleanup from itemId change, unmount, or becoming non-deferred.
       controller.abort();
       controllerRef.current = null;
-      if (didRegister) {
-        unregisterPriorityFetch();
-      }
+      releasePriority();
     };
   }, [itemId, deferComments]); // All other values read via Effect Events
 
@@ -287,6 +292,9 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
 
     // Abort the hanging fetch so its promise settles (AbortError, swallowed by the effect)
     controllerRef.current?.abort();
+    // Read now: by the time this fetch settles, the main effect may have
+    // re-run for another item.
+    const releasePriority = releasePriorityRef.current;
 
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -306,7 +314,8 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
         if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
         setCommentsLoading(false);
         setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
-      });
+      })
+      .finally(() => releasePriority?.());
 
     return () => {
       controller.abort();
@@ -326,25 +335,50 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     setItemLoading(true);
     setCommentsLoading(true);
     
+    let itemData: Item;
     try {
-      const itemData = await fetchItemOnly(itemId);
+      itemData = await fetchItemOnly(itemId);
       setItem(itemData);
-      
-      // Comment items use a different fetch path (useCommentDetail via Algolia /items)
-      if (itemData.type !== 'comment') {
-        const commentsData = await fetchCommentsForItem(itemId);
-        setComments(commentsData);
-        setCachedItem(itemId, itemData, commentsData);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setIsNotFound(err instanceof NotFoundError);
-      throw err;
-    } finally {
       setItemLoading(false);
       setCommentsLoading(false);
+      throw err;
     }
+    setItemLoading(false);
+
+    // Comment items use a different fetch path (useCommentDetail via Algolia /items)
+    if (itemData.type !== 'comment') {
+      try {
+        const commentsData = await fetchCommentsForItem(itemId);
+        setComments(commentsData);
+        setCachedItem(itemId, itemData, commentsData);
+      } catch (err) {
+        // The item loaded, so the page can show it with the comments error.
+        setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
+      }
+    }
+    setCommentsLoading(false);
   }, [itemId]);
+
+  // Behind the comments section's retry. `commentsError` stays set until the
+  // fetch settles: the section shows its skeleton for it, and clearing it
+  // would show "No comments yet." meanwhile. It rejects on failure so
+  // useAutoRetry counts the attempt.
+  const retryComments = useCallback(async () => {
+    try {
+      const { item: fetchedItem, comments: commentsData } = await fetchItemWithComments(itemId);
+      setItem(current => withFetchedFields(current, fetchedItem));
+      setComments(commentsData);
+      setCommentsError(null);
+      const fullItem = withFetchedFields(item, fetchedItem);
+      if (fullItem) setCachedItem(itemId, fullItem, commentsData, 3);
+    } catch (err) {
+      setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
+      throw err;
+    }
+  }, [itemId, item]);
 
   return { 
     item, 
@@ -355,6 +389,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     error,
     isNotFound,
     commentsError,
-    refresh
+    refresh,
+    retryComments
   };
 }

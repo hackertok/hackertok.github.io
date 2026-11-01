@@ -128,8 +128,8 @@ describe('useInfiniteStories', () => {
     expect(result.current.stories).toHaveLength(50);
   });
 
-  it('does not repeat stories after going Back to a feed whose session was saved', async () => {
-    // StoryList stays mounted across feed routes and calls reset() when `type` changes.
+  it('does not repeat stories after reset() on a feed whose session was saved', async () => {
+    // reset() starts the feed over from its cache, with the cursor at zero.
     const { result, rerender } = renderHook(
       ({ type }: { type: FeedType }) => useInfiniteStories(type),
       { initialProps: { type: 'best' } },

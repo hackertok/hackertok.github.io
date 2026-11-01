@@ -110,6 +110,24 @@ describe('StateView', () => {
       // And the title text is still surfaced as an inline label.
       expect(screen.getByText('Comment unavailable')).toBeInTheDocument();
     });
+
+    it('shows a passed-in description instead of the default title', () => {
+      render(<StateView variant="error" compact description="Failed to load comments" />);
+      expect(screen.getByText('Failed to load comments')).toBeInTheDocument();
+      expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
+    });
+
+    it('shows a passed-in title over a passed-in description', () => {
+      render(<StateView variant="error" compact title="Boom" description="Details" />);
+      expect(screen.getByText('Boom')).toBeInTheDocument();
+      expect(screen.queryByText('Details')).not.toBeInTheDocument();
+    });
+
+    it('shows the default title when nothing is passed', () => {
+      render(<StateView variant="error" compact />);
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      expect(screen.queryByText(/couldn't load this content/)).not.toBeInTheDocument();
+    });
   });
 
   describe('action element', () => {
