@@ -783,7 +783,8 @@ export function formatTimeAgo(timestamp: number): string {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  const months = Math.floor(days / 30);
+  // 30-day months reach 12 at day 360, five days short of a year.
+  const months = Math.min(Math.floor(days / 30), 11);
   const years = Math.floor(days / 365);
   
   if (years > 0) return `${years} year${years > 1 ? 's' : ''} ago`;

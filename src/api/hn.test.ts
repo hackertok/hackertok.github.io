@@ -121,6 +121,13 @@ describe('hn API utilities', () => {
       expect(formatTimeAgo(now - 90 * 24 * 60 * 60 * 1000)).toBe('3 months ago');
     });
 
+    it('stays at 11 months until a full year has passed', () => {
+      const now = Date.now();
+      expect(formatTimeAgo(now - 360 * 24 * 60 * 60 * 1000)).toBe('11 months ago');
+      expect(formatTimeAgo(now - 364 * 24 * 60 * 60 * 1000)).toBe('11 months ago');
+      expect(formatTimeAgo(now - 365 * 24 * 60 * 60 * 1000)).toBe('1 year ago');
+    });
+
     it('formats years correctly', () => {
       const now = Date.now();
       expect(formatTimeAgo(now - 365 * 24 * 60 * 60 * 1000)).toBe('1 year ago');
