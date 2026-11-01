@@ -65,7 +65,7 @@ function normalizeFirebaseItem(fbItem: FirebaseItem): Item {
     return {
       ...base,
       type: 'comment' as const,
-      text: fbItem.text ?? '',
+      text: firebaseCommentText(fbItem) ?? '',
       parent: fbItem.parent ?? 0,
     };
   }
@@ -690,9 +690,39 @@ export async function fetchItemWithComments(id: number | string, signal: AbortSi
 export async function fetchAlgoliaItem(id: number | string, signal?: AbortSignal): Promise<AlgoliaItemResponse> {
   const response = await fetch(`${ALGOLIA_API}/items/${id}`, { signal });
   if (!response.ok) {
-    throw new Error(`Failed to fetch item ${id}: ${response.status}`);
+    const message = `Failed to fetch item ${id}: ${response.status}`;
+    throw response.status === 404 ? new NotFoundError(message) : new Error(message);
   }
   return response.json() as Promise<AlgoliaItemResponse>;
+}
+
+/**
+ * A comment with its reply tree, in Algolia's item shape. Algolia 404s
+ * flagged and deleted comments (and ones it hasn't indexed yet), so those
+ * come from Firebase, with the replies Algolia has.
+ */
+export async function fetchCommentItem(id: number | string, signal?: AbortSignal): Promise<AlgoliaItemResponse> {
+  try {
+    return await fetchAlgoliaItem(id, signal);
+  } catch (err) {
+    if (!(err instanceof NotFoundError)) throw err;
+  }
+
+  const item = await fetchFirebaseItem(id, signal);
+  const replies = (await Promise.all(
+    (item.kids ?? []).map(kid => fetchAlgoliaItem(kid, signal).catch(() => null)),
+  )).filter(reply => reply !== null);
+
+  return {
+    id: item.id,
+    type: item.type ?? 'comment',
+    author: item.by ?? null,
+    text: firebaseCommentText(item) ?? null,
+    created_at_i: item.time ?? 0,
+    parent_id: item.parent ?? null,
+    story_id: replies[0]?.story_id ?? null,
+    children: replies.map(reply => ({ ...reply, parent_id: item.id })),
+  };
 }
 
 export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comment[] {

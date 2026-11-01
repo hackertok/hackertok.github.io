@@ -990,6 +990,8 @@ describe('hn API utilities', () => {
     it('throws on 404 for unknown items', async () => {
       await expect(fetchAlgoliaItem(999999999))
         .rejects.toThrow(/404/);
+      await expect(fetchAlgoliaItem(999999999))
+        .rejects.toBeInstanceOf(NotFoundError);
     });
   });
 

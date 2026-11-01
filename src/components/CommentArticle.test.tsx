@@ -73,6 +73,13 @@ describe('CommentArticle', () => {
     expect(Number.isNaN(Date.parse(isoAttr))).toBe(false);
   });
 
+  it('shows a deleted comment as [deleted], not as an unknown author', () => {
+    renderArticle({ comment: { ...mockComment, author: '', text: '' } });
+
+    expect(screen.getByText('[deleted]')).toBeInTheDocument();
+    expect(screen.queryByText('unknown')).not.toBeInTheDocument();
+  });
+
   it('renders sanitized comment HTML', () => {
     // sanitizeHtml + dangerouslySetInnerHTML: <p> must survive as a real
     // paragraph (not escaped text or an inert div).
