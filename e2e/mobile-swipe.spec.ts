@@ -412,6 +412,24 @@ test.describe('Mobile Swipe Viewer', () => {
     expect(ids.filter((id) => mockTopItemIds.includes(id))).toEqual([]);
   });
 
+  test('a feed opened from its tab starts at the top, not where the last story was scrolled to', async ({ page }) => {
+    await page.goto('/#/');
+    await waitForSwipeReady(page, 6);
+    await expect(page).toHaveURL(/\/item\/12345/, { timeout: 5000 });
+
+    // Both stories taller than the viewport, so a short one can't clamp the
+    // page back to the top on its own.
+    await page.addStyleTag({ content: '[data-testid="swipe-panel"].active { min-height: 3000px !important; }' });
+    await page.evaluate(() => window.scrollTo({ top: 1000, behavior: 'instant' }));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(1000);
+
+    await page.getByRole('link', { name: 'best', exact: true }).click();
+
+    await expect(page).toHaveURL(/\/item\/33001/, { timeout: 5000 });
+    await expect(getActiveSwipePanel(page)).toHaveAttribute('data-item-id', '33001');
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
   test('a feed refresh that lands after a swipe keeps the story on screen', async ({ page }) => {
     // An hour-old cached Top feed in the reverse of the live order, and Firebase
     // reads that take 1.5s, so the refresh lands after the swipe.
