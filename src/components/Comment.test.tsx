@@ -117,6 +117,24 @@ describe('Comment', () => {
       },
     );
 
+    it('renders a deleted comment as a [deleted] row that keeps its replies', () => {
+      const deleted = createComment({
+        id: 300,
+        author: '',
+        text: '',
+        deleted: true,
+        children: [createComment({ id: 301, author: 'replier', text: '<p>Still here</p>' })],
+      });
+      render(<Comment comment={deleted} />);
+
+      expect(screen.getByText('[deleted]')).toBeInTheDocument();
+      expect(screen.queryByText('unknown')).not.toBeInTheDocument();
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /1 reply/ }));
+      expect(screen.getByText('Still here')).toBeInTheDocument();
+    });
+
     // OP badge must be a SIBLING (not child) of the author span/link so
     // the link's accessible name stays exactly the handle.
     it('renders an OP badge when storyAuthor matches comment.author', () => {

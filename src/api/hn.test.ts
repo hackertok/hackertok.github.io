@@ -1036,10 +1036,10 @@ describe('hn API utilities', () => {
   });
 
   describe('fetchCommentsForItem', () => {
-    it('drops orphaned comments whose parent is dead (not in Algolia)', async () => {
+    describe('replies to a comment search leaves out', () => {
       const itemId = 9000;
 
-      // Item has 3 root-level kids: 101 (alive), 102 (dead), 103 (alive)
+      // Item has 3 root-level kids: 101 (alive), 102 (flagged or deleted), 103 (alive)
       const firebaseItem: FirebaseItem = {
         id: itemId,
         title: 'Test Story',
@@ -1051,42 +1051,90 @@ describe('hn API utilities', () => {
         type: 'story',
       };
 
-      // Comment 102 is dead — Algolia won't return it.
-      // Comments 201, 202 are children of the dead comment 102.
+      // Algolia doesn't return 102, but does return its replies 201 and 202.
       const algoliaHits = [
         { objectID: '101', author: 'alice', comment_text: 'Alive root', created_at_i: 1700000100, parent_id: itemId },
         { objectID: '103', author: 'bob', comment_text: 'Also alive root', created_at_i: 1700000200, parent_id: itemId },
-        { objectID: '201', author: 'charlie', comment_text: 'Reply to dead parent', created_at_i: 1700000300, parent_id: 102 },
-        { objectID: '202', author: 'dave', comment_text: 'Another reply to dead parent', created_at_i: 1700000400, parent_id: 102 },
+        { objectID: '201', author: 'charlie', comment_text: 'Reply to removed parent', created_at_i: 1700000300, parent_id: 102 },
+        { objectID: '202', author: 'dave', comment_text: 'Another reply to removed parent', created_at_i: 1700000400, parent_id: 102 },
       ];
 
-      // Mock hnSdk.readItem for the initial item fetch and kids ordering
-      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
-        if (Number(id) === itemId) return firebaseItem;
-        return null;
+      function mockThread(firebase: FirebaseItem[], hits: typeof algoliaHits = algoliaHits) {
+        vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+          if (Number(id) === itemId) return firebaseItem;
+          return firebase.find(item => item.id === Number(id)) ?? null;
+        });
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ hits, nbHits: hits.length }));
+      }
+
+      afterEach(() => {
+        vi.restoreAllMocks();
       });
 
-      // Mock fetch for Algolia search
-      const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-        new Response(JSON.stringify({ hits: algoliaHits, nbHits: algoliaHits.length }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      );
+      it('keeps replies to a flagged comment under its [flagged] row', async () => {
+        mockThread([
+          { id: 102, type: 'comment', by: 'eve', text: '[flagged]', dead: true, time: 1700000150, parent: itemId, kids: [202, 201] },
+        ]);
 
-      const comments = await fetchCommentsForItem(itemId);
+        const comments = await fetchCommentsForItem(itemId);
 
-      // Only the 2 alive root comments should appear; orphans 201/202 are dropped
-      expect(comments).toHaveLength(2);
-      expect(comments[0].id).toBe(101);
-      expect(comments[1].id).toBe(103);
+        expect(comments.map(c => c.id)).toEqual([101, 102, 103]);
+        expect(comments[1]).toMatchObject({ author: 'eve', text: '[flagged]', createdAt: 1700000150 * 1000 });
+        expect(comments[1].deleted).toBeUndefined();
+        // In the flagged comment's own kids order, not creation order.
+        expect(comments[1].children.map(c => c.id)).toEqual([202, 201]);
+      });
 
-      // Orphaned comments should NOT be promoted to root
-      const allIds = comments.map(c => c.id);
-      expect(allIds).not.toContain(201);
-      expect(allIds).not.toContain(202);
+      it('shows [flagged] for a killed comment whose text Firebase still has', async () => {
+        mockThread([
+          { id: 102, type: 'comment', by: 'eve', text: 'Praise the iLord.', dead: true, time: 1700000150, parent: itemId, kids: [201, 202] },
+        ]);
 
-      mockFetch.mockRestore();
+        const comments = await fetchCommentsForItem(itemId);
+
+        expect(comments[1]).toMatchObject({ id: 102, author: 'eve', text: '[flagged]' });
+      });
+
+      it('keeps replies to a deleted comment under a deleted row', async () => {
+        mockThread([
+          { id: 102, type: 'comment', deleted: true, time: 1700000150, parent: itemId, kids: [201, 202] },
+        ]);
+
+        const comments = await fetchCommentsForItem(itemId);
+
+        expect(comments.map(c => c.id)).toEqual([101, 102, 103]);
+        expect(comments[1]).toMatchObject({ deleted: true, author: '', text: '' });
+        expect(comments[1].children.map(c => c.id)).toEqual([201, 202]);
+      });
+
+      it('follows missing parents up to one search has', async () => {
+        // 301 replies to flagged 201, which replies to deleted 102.
+        mockThread(
+          [
+            { id: 201, type: 'comment', by: 'carol', text: '[flagged]', dead: true, time: 1700000300, parent: 102, kids: [301] },
+            { id: 102, type: 'comment', deleted: true, time: 1700000150, parent: itemId, kids: [201] },
+          ],
+          [
+            algoliaHits[0],
+            { objectID: '301', author: 'frank', comment_text: 'Deep reply', created_at_i: 1700000500, parent_id: 201 },
+          ],
+        );
+
+        const comments = await fetchCommentsForItem(itemId);
+
+        expect(comments.map(c => c.id)).toEqual([101, 102]);
+        expect(comments[1].children.map(c => c.id)).toEqual([201]);
+        expect(comments[1].children[0].children.map(c => c.id)).toEqual([301]);
+      });
+
+      it('drops the replies when Firebase does not have their parent either', async () => {
+        mockThread([]);
+
+        const comments = await fetchCommentsForItem(itemId);
+
+        expect(comments.map(c => c.id)).toEqual([101, 103]);
+        expect(comments.flatMap(c => c.children)).toEqual([]);
+      });
     });
 
     describe('a thread bigger than search returns', () => {

@@ -45,6 +45,8 @@ export interface Comment {
   createdAt: number;
   parentId: number;
   children: Comment[];
+  /** A deleted comment kept as a [deleted] row because it has live replies. */
+  deleted?: boolean;
 }
 
 export interface AlgoliaHit {

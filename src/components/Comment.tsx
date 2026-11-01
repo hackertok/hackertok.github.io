@@ -57,38 +57,44 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
       {/* Compact byline — lucide meta row is for the focal comment. */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-0.5 comment-byline">
         <span className="text-accent/80 text-base leading-none" aria-hidden="true">›</span>
-        {isOp ? (
-          <OpWrap>
-            <Link
-              to={`/user/${comment.author}`}
-              className="text-foreground hover:text-accent active:text-accent transition-colors"
-            >
-              {comment.author}
-            </Link>
-          </OpWrap>
-        ) : isKnownAuthor(comment.author) ? (
-          <Link
-            to={`/user/${comment.author}`}
-            className="text-foreground hover:text-accent active:text-accent transition-colors"
-          >
-            {comment.author}
-          </Link>
+        {comment.deleted ? (
+          <span>[deleted]</span>
         ) : (
-          <span className="text-foreground">
-            {comment.author || 'unknown'}
-          </span>
+          <>
+            {isOp ? (
+              <OpWrap>
+                <Link
+                  to={`/user/${comment.author}`}
+                  className="text-foreground hover:text-accent active:text-accent transition-colors"
+                >
+                  {comment.author}
+                </Link>
+              </OpWrap>
+            ) : isKnownAuthor(comment.author) ? (
+              <Link
+                to={`/user/${comment.author}`}
+                className="text-foreground hover:text-accent active:text-accent transition-colors"
+              >
+                {comment.author}
+              </Link>
+            ) : (
+              <span className="text-foreground">
+                {comment.author || 'unknown'}
+              </span>
+            )}
+            <span className="text-muted-foreground">·</span>
+            {/* Time IS the permalink (HN convention). `state.isComment:
+                true` lets MobileStoryRoute short-circuit straight
+                to SwipeCommentViewer without a resolver round-trip. */}
+            <Link
+              to={`/item/${comment.id}`}
+              state={{ isComment: true }}
+              className={metaPillClass}
+            >
+              <RelativeTime timestamp={comment.createdAt} />
+            </Link>
+          </>
         )}
-        <span className="text-muted-foreground">·</span>
-        {/* Time IS the permalink (HN convention). `state.isComment:
-            true` lets MobileStoryRoute short-circuit straight
-            to SwipeCommentViewer without a resolver round-trip. */}
-        <Link
-          to={`/item/${comment.id}`}
-          state={{ isComment: true }}
-          className={metaPillClass}
-        >
-          <RelativeTime timestamp={comment.createdAt} />
-        </Link>
       </div>
 
       {hasChildren ? (
