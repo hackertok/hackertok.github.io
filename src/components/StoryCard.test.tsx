@@ -122,6 +122,13 @@ describe('StoryCard', () => {
 
       expect(screen.getByRole('link', { name: /^0\s+comments$/ })).toBeInTheDocument();
     });
+
+    it('says "1 point" and "1 comment" for a count of one', () => {
+      render(<StoryCard story={{ ...mockStory, points: 1, commentCount: 1 }} />);
+
+      expect(screen.getByText(/^1\s+point$/)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /^1\s+comment$/ })).toBeInTheDocument();
+    });
   });
 
   describe('link behavior', () => {
