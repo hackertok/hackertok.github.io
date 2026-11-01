@@ -476,6 +476,8 @@ describe('SwipeStoryViewerCore — swipe-position restore', () => {
         document.dispatchEvent(new Event('visibilitychange'));
       });
     };
+    // Opening the feed scrolled to the top already; only the restore counts.
+    vi.mocked(window.scrollTo).mockClear();
     try {
       showTab('hidden');
       showTab('visible');
@@ -590,6 +592,24 @@ describe('SwipeStoryViewerCore — swipe-position restore', () => {
 
     expect(readSwipePosition({ viewer: { from: 'best' } })).toBeNull();
     expect(readSwipePosition({ viewer: { from: 'top' } })?.storyId).toBe(2);
+  });
+
+  it('opens a feed from its tab at the top of the page', () => {
+    const stories = [createStoryItem({ id: 1 }), createStoryItem({ id: 2 })];
+
+    render(<SwipeStoryViewerCore {...baseProps} stories={stories} backState={{ from: 'best' }} />);
+
+    expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+  });
+
+  it('leaves the page where it is when the viewer opens on a story', () => {
+    const stories = [createStoryItem({ id: 1 }), createStoryItem({ id: 2 })];
+
+    render(
+      <SwipeStoryViewerCore {...baseProps} stories={stories} initialItemId="1" backState={{ from: 'best' }} />,
+    );
+
+    expect(window.scrollTo).not.toHaveBeenCalled();
   });
 });
 

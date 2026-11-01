@@ -368,6 +368,12 @@ export function SwipeStoryViewerCore({
   useLayoutEffect(() => {
     if (opensFresh) clearSwipePosition(backState);
   }, [opensFresh, backState]);
+
+  // The page is still scrolled where the previous screen left it, and panels
+  // don't reset it.
+  useLayoutEffect(() => {
+    if (opensFresh) window.scrollTo(0, 0);
+  }, [opensFresh]);
   
   useEffect(() => {
     // Save position + scrollY when page is about to be hidden/cached
