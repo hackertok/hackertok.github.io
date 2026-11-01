@@ -714,6 +714,45 @@ describe('useDomainInfiniteStories', () => {
       expect(result.current.stories.map((s) => s.id)).toEqual([1, 2, 3]);
       expect(result.current.hasMore).toBe(false);
     });
+
+    // dev.to: search reports nbHits 150 with exhaustiveNbHits false, has
+    // thousands more, and returns nothing past its third page of 50.
+    const hits = (from: number, count: number) =>
+      Array.from({ length: count }, (_, i) => ({ ...body('example.com', [from + i]).hits[0], created_at_i: 10_000 - from - i }));
+
+    it('loads past a full last page when nbHits is an estimate', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+        const filter = new URL(fetchInputToUrl(input)).searchParams.get('numericFilters');
+        return Promise.resolve(Response.json(filter === null
+          ? { hits: hits(1, 50), nbHits: 50, nbPages: 1, page: 0, hitsPerPage: 50, exhaustiveNbHits: false }
+          : { hits: hits(50, 3), nbHits: 3, nbPages: 1, page: 0, hitsPerPage: 50, exhaustiveNbHits: false }));
+      });
+
+      const { result } = renderHook(() => useDomainInfiniteStories('example.com'));
+      await waitFor(() => expect(result.current.stories).toHaveLength(50));
+      expect(result.current.hasMore).toBe(true);
+
+      await act(async () => {
+        await result.current.loadMore();
+      });
+
+      const nextUrl = new URL(fetchInputToUrl(fetchSpy.mock.calls[1]?.[0]));
+      expect(nextUrl.searchParams.get('numericFilters')).toBe(`created_at_i<=${10_000 - 50}`);
+      expect(result.current.stories.map((s) => s.id)).toEqual([...hits(1, 50), ...hits(51, 2)].map((h) => Number(h.objectID)));
+      // A short page is the end, estimate or not.
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it('stops at a full last page when nbHits is exact', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        Response.json({ hits: hits(1, 50), nbHits: 50, nbPages: 1, page: 0, hitsPerPage: 50, exhaustiveNbHits: true }),
+      );
+
+      const { result } = renderHook(() => useDomainInfiniteStories('example.com'));
+      await waitFor(() => expect(result.current.stories).toHaveLength(50));
+
+      expect(result.current.hasMore).toBe(false);
+    });
   });
 
   describe('reset', () => {

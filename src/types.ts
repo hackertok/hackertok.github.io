@@ -77,6 +77,8 @@ export interface AlgoliaSearchResponse<T = AlgoliaHit> {
   nbPages: number;
   page: number;
   hitsPerPage: number;
+  /** False when `nbHits` is an estimate, which a query search can return. */
+  exhaustiveNbHits?: boolean;
 }
 
 export interface FirebaseItem {
