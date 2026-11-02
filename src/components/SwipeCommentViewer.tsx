@@ -87,8 +87,11 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
   // URL update on swipe — only after scroll position is initialized.
   // Uses scrollInitialized state (not ref) so it's batched with setCurrentIndex
   // and both take effect in the same render — preventing a stale currentIndex=0 navigation.
+  // The ref check covers the render after an external navigation: the effect
+  // above has just reset the ref, but this render's state still holds the old
+  // siblings, and navigating to one of them would undo that navigation.
   useEffect(() => {
-    if (!scrollInitialized) return;
+    if (!scrollInitialized || !hasInitializedScrollRef.current) return;
     if (siblingIds.length === 0) return;
     const commentId = siblingIds[currentIndex];
     if (!commentId) return;

@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { useEffect } from 'react';
+import { Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { SwipeCommentViewer } from './SwipeCommentViewer';
 import { http, HttpResponse } from 'msw';
@@ -233,6 +235,100 @@ describe('SwipeCommentViewer', () => {
     expect(panels[4].querySelector('.animate-pulse')).not.toBeNull();
     expect(panels[5].querySelector('.animate-pulse')).not.toBeNull();
     expect(panels[6].querySelector('.animate-pulse')).not.toBeNull();
+  });
+
+  // Renders the viewer on its route, with a Back button, and returns every
+  // pathname the route lands on.
+  function renderViewerRoute(pathnames: string[]) {
+    const paths: string[] = [];
+    function PathLog() {
+      const { pathname } = useLocation();
+      useEffect(() => {
+        paths.push(pathname);
+      }, [pathname]);
+      return null;
+    }
+    function BackButton() {
+      const navigate = useNavigate();
+      return <button type="button" onClick={() => void navigate(-1)}>Back</button>;
+    }
+    function ViewerRoute() {
+      return <SwipeCommentViewer initialCommentId={useParams().id!} />;
+    }
+
+    render(
+      <>
+        <PathLog />
+        <BackButton />
+        <Routes>
+          <Route path="/item/:id" element={<ViewerRoute />} />
+        </Routes>
+      </>,
+      { initialEntries: pathnames.map(pathname => ({ pathname, state: { isComment: true } })) },
+    );
+    return paths;
+  }
+
+  const activePanelId = () => document.querySelector('.swipe-snap-panel.active')?.getAttribute('data-item-id');
+
+  it('stays on the parent after its "parent" link, without going back to the reply', async () => {
+    const reply = { id: 2001, by: 'tptacek', text: 'Agreed.', time: Math.floor(Date.now() / 1000) - 900, parent: 1001, type: 'comment' } satisfies FirebaseItem;
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => (Number(id) === 2001 ? reply : defaultItems[Number(id)] ?? null));
+    server.use(
+      http.get(`${ALGOLIA_API}/items/2001`, () => HttpResponse.json({
+        id: 2001, type: 'comment', author: 'tptacek', text: 'Agreed.', created_at_i: reply.time,
+        parent_id: 1001, story_id: 12345, children: [],
+      })),
+    );
+
+    const paths = renderViewerRoute(['/item/2001']);
+
+    fireEvent.click(await screen.findByRole('link', { name: 'parent' }));
+
+    // 1001's siblings: [1001, 1002, 1003, 1004].
+    await waitFor(() => {
+      expect(screen.getAllByTestId('swipe-panel')).toHaveLength(4);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('patio11')).toBeInTheDocument();
+    });
+    expect(paths).toEqual(['/item/2001', '/item/1001']);
+  });
+
+  it('lands on the reply after Back from its parent, without rewriting history', async () => {
+    const time = Math.floor(Date.now() / 1000) - 200;
+    const replyIds = [3101, 3102, 3103];
+    const items: Record<number, FirebaseItem> = {
+      ...defaultItems,
+      1003: { ...defaultItems[1003], kids: replyIds },
+      ...Object.fromEntries(replyIds.map(id => [id, { id, by: `user${id}`, text: 'Reply.', time, parent: 1003, type: 'comment' }])),
+    };
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => items[Number(id)] ?? null);
+    server.use(
+      http.get(`${ALGOLIA_API}/items/:id`, ({ params }) => {
+        const id = Number(params.id);
+        if (!replyIds.includes(id)) return;
+        return HttpResponse.json({
+          id, type: 'comment', author: `user${id}`, text: 'Reply.', created_at_i: time,
+          parent_id: 1003, story_id: 12345, children: [],
+        });
+      }),
+    );
+
+    // On 1003, third of [1001, 1002, 1003, 1004], with its first reply behind it.
+    const paths = renderViewerRoute(['/item/3101', '/item/1003']);
+    await waitFor(() => {
+      expect(screen.getAllByTestId('swipe-panel')).toHaveLength(4);
+      expect(activePanelId()).toBe('1003');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('swipe-panel')).toHaveLength(3);
+      expect(activePanelId()).toBe('3101');
+    });
+    expect(paths).toEqual(['/item/1003', '/item/3101']);
   });
 
   it('sets data-item-id on each panel', async () => {
