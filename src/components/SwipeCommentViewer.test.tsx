@@ -5,6 +5,7 @@ import { SwipeCommentViewer } from './SwipeCommentViewer';
 import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import { hnSdk } from '../api/hnSdk';
+import { __resetFetchCachesForTests } from '../api/hn';
 import { ALGOLIA_API } from '../config/api';
 import type { FirebaseItem } from '../types';
 
@@ -27,6 +28,7 @@ const defaultItems: Record<number, FirebaseItem> = {
 
 describe('SwipeCommentViewer', () => {
   beforeEach(() => {
+    __resetFetchCachesForTests();
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => defaultItems[Number(id)] ?? null);
   });
 

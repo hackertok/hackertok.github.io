@@ -13,6 +13,7 @@ let bestStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null,
 let showStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
 let askStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
 let newStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
+let storyCommentsCache: { storyId: number; comments: Promise<ThreadComment[] | null>; timestamp: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /** @internal Testing helper to reset module-level caches between tests. */
@@ -21,6 +22,7 @@ export function __resetFetchCachesForTests() {
   showStoriesCache = { ids: null, timestamp: 0 };
   askStoriesCache = { ids: null, timestamp: 0 };
   newStoriesCache = { ids: null, timestamp: 0 };
+  storyCommentsCache = null;
 }
 
 function getDayRange(daysAgo = 0) {
@@ -355,15 +357,20 @@ export async function fetchFirebaseItem(id: number | string, signal?: AbortSigna
 }
 
 // Algolia is much faster than Firebase here — 1-2 requests instead of hundreds
-// of recursive item fetches.
-async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Promise<AlgoliaComment[]> {
-  const allComments: AlgoliaComment[] = [];
+// of recursive item fetches. `stopIfCapped` skips the remaining pages of a
+// thread bigger than search returns.
+async function searchItemComments(
+  itemId: number,
+  signal?: AbortSignal,
+  { stopIfCapped = false } = {},
+): Promise<{ comments: AlgoliaComment[]; isCapped: boolean }> {
+  const comments: AlgoliaComment[] = [];
   let page = 0;
   const hitsPerPage = 200; // Algolia max
   let isCapped = false;
   
   while (true) {
-    if (signal?.aborted) return allComments;
+    if (signal?.aborted) break;
     
     const url = `${ALGOLIA_API}/search?tags=comment,story_${itemId}&hitsPerPage=${hitsPerPage}&page=${page}`;
     const response = await fetch(url, { signal });
@@ -372,11 +379,11 @@ async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Pr
     }
     
     const data = await response.json() as AlgoliaSearchResponse<AlgoliaComment>;
-    allComments.push(...data.hits);
+    comments.push(...data.hits);
     // Search returns at most 1,000 hits and caps nbPages to match.
     if (page === 0) isCapped = data.nbHits > data.nbPages * hitsPerPage;
     
-    if (data.hits.length < hitsPerPage || allComments.length >= data.nbHits || page >= data.nbPages - 1) {
+    if ((isCapped && stopIfCapped) || data.hits.length < hitsPerPage || comments.length >= data.nbHits || page >= data.nbPages - 1) {
       break;
     }
     page++;
@@ -384,6 +391,12 @@ async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Pr
     // Safety limit to prevent infinite loops
     if (page > 10) break;
   }
+
+  return { comments, isCapped };
+}
+
+async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Promise<AlgoliaComment[]> {
+  const { comments: allComments, isCapped } = await searchItemComments(itemId, signal);
 
   // The item endpoint has the rest of a bigger thread. It also misses a few
   // comments that search has, so it adds to search's results.
@@ -723,6 +736,63 @@ export async function fetchCommentItem(id: number | string, signal?: AbortSignal
     story_id: replies[0]?.story_id ?? null,
     children: replies.map(reply => ({ ...reply, parent_id: item.id })),
   };
+}
+
+// A story's comments from search, with the flagged and deleted parents it
+// leaves out. Null for a thread bigger than search returns. Comments next to
+// each other in the swipe viewer share one read, so no caller's signal ends it.
+function fetchStoryComments(storyId: number): Promise<ThreadComment[] | null> {
+  if (storyCommentsCache?.storyId === storyId && Date.now() - storyCommentsCache.timestamp < CACHE_TTL) {
+    return storyCommentsCache.comments;
+  }
+
+  const comments = (async () => {
+    const { comments: found, isCapped } = await searchItemComments(storyId, undefined, { stopIfCapped: true });
+    if (isCapped) return null;
+    const missingParents = await fetchMissingParents(found, storyId);
+    return [...found, ...missingParents.map(threadCommentFromFirebase)];
+  })();
+  const entry = { storyId, comments, timestamp: Date.now() };
+  storyCommentsCache = entry;
+  comments.catch(() => {
+    if (storyCommentsCache === entry) storyCommentsCache = null;
+  });
+  return comments;
+}
+
+// For a comment with no replies in the item tree. Most have none at all. The
+// rest mostly have only flagged or deleted replies with nothing under them,
+// which aren't shown. A live reply can still be in search without being in
+// the item tree.
+async function hasRepliesOutsideItemTree(id: number, signal?: AbortSignal): Promise<boolean> {
+  const { kids = [] } = await fetchFirebaseItem(id, signal);
+  if (kids.length === 0) return false;
+  const replies = await readItemsBatched(kids, signal);
+  return replies.some(reply => (reply.kids?.length ?? 0) > 0 || (!reply.dead && !reply.deleted));
+}
+
+/**
+ * A comment's replies, with the flagged and deleted ones that have live
+ * replies. Algolia's item tree leaves those out along with their replies, so
+ * they come from the story's comments, as in the story thread.
+ */
+export async function fetchCommentReplies(item: AlgoliaItemResponse, signal?: AbortSignal): Promise<Comment[]> {
+  if (item.story_id == null) return normalizeAlgoliaItemChildren(item.children ?? []);
+  const mayHaveMore = !!item.children?.length || await hasRepliesOutsideItemTree(item.id, signal);
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+  if (!mayHaveMore) return [];
+
+  const storyComments = await fetchStoryComments(item.story_id);
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+  if (!storyComments) return normalizeAlgoliaItemChildren(item.children ?? []);
+
+  const replies = flattenAlgoliaItemChildren(item.children ?? []);
+  const seen = new Set(replies.map(c => c.objectID));
+  return buildCommentTree([...replies, ...storyComments.filter(c => !seen.has(c.objectID))], item.id);
 }
 
 export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comment[] {

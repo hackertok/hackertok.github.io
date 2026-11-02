@@ -15,12 +15,13 @@ import {
   fetchItemOnly,
   fetchAlgoliaItem,
   fetchCommentsForItem,
+  fetchCommentReplies,
   normalizeAlgoliaItemChildren,
   NotFoundError,
   __resetFetchCachesForTests,
 } from './hn';
 import { hnSdk } from './hnSdk';
-import type { FirebaseItem } from '../types';
+import type { AlgoliaItemResponse, FirebaseItem } from '../types';
 
 const mockFirebaseItem: FirebaseItem = {
   id: 12345,
@@ -1220,6 +1221,140 @@ describe('hn API utilities', () => {
         expect(mockFetch).toHaveBeenCalledTimes(1);
         expect(urlOf(mockFetch.mock.calls[0][0])).toContain('/search?');
       });
+    });
+  });
+
+  describe('fetchCommentReplies', () => {
+    const storyId = 9200;
+
+    // Comment 101 as Algolia's item tree has it: flagged 202 and deleted 302
+    // are left out, and so are their replies.
+    const item: AlgoliaItemResponse = {
+      id: 101, type: 'comment', author: 'alice', text: 'Root', created_at_i: 1700000100,
+      parent_id: storyId, story_id: storyId,
+      children: [{ id: 201, author: 'bob', text: 'Live reply', created_at_i: 1700000200, parent_id: 101, children: [] }],
+    };
+    const searchHits = [
+      { objectID: '101', author: 'alice', comment_text: 'Root', created_at_i: 1700000100, parent_id: storyId },
+      { objectID: '201', author: 'bob', comment_text: 'Live reply', created_at_i: 1700000200, parent_id: 101 },
+      { objectID: '301', author: 'dave', comment_text: 'Reply to a flagged comment', created_at_i: 1700000400, parent_id: 202 },
+      { objectID: '401', author: 'frank', comment_text: 'Reply to a deleted comment', created_at_i: 1700000600, parent_id: 302 },
+      { objectID: '102', author: 'gina', comment_text: 'Another top-level comment', created_at_i: 1700000700, parent_id: storyId },
+    ];
+    const firebaseItems: FirebaseItem[] = [
+      { id: 201, type: 'comment', by: 'bob', text: 'Live reply', time: 1700000200, parent: 101, kids: [302] },
+      { id: 202, type: 'comment', by: 'carol', text: 'Killed text', dead: true, time: 1700000300, parent: 101, kids: [301] },
+      { id: 302, type: 'comment', deleted: true, time: 1700000500, parent: 201, kids: [401] },
+      { id: 401, type: 'comment', by: 'frank', text: 'Reply to a deleted comment', time: 1700000600, parent: 302 },
+      { id: 102, type: 'comment', by: 'gina', text: 'Another top-level comment', time: 1700000700, parent: storyId, kids: [203] },
+      { id: 203, type: 'comment', by: 'hank', text: 'Killed, no replies', dead: true, time: 1700000800, parent: 102 },
+    ];
+    // 201's only reply is deleted 302, so the item tree has none for it.
+    const liveReply: AlgoliaItemResponse = { ...item, id: 201, author: 'bob', parent_id: 101, children: [] };
+    // 102's only reply is flagged 203, which has none of its own.
+    const flaggedLeafParent: AlgoliaItemResponse = { ...item, id: 102, author: 'gina', children: [] };
+
+    function mockStory(search: { nbHits: number; nbPages: number } = { nbHits: searchHits.length, nbPages: 1 }) {
+      const readItem = vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => firebaseItems.find(fb => fb.id === Number(id)) ?? null);
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+        Response.json({ hits: searchHits, page: 0, hitsPerPage: 200, ...search }));
+      return { readItem, fetchSpy };
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('adds flagged and deleted replies with the replies under them', async () => {
+      mockStory();
+
+      const replies = await fetchCommentReplies(item);
+
+      expect(replies.map(c => c.id)).toEqual([201, 202]);
+      expect(replies[1]).toMatchObject({ author: 'carol', text: '[flagged]', parentId: 101 });
+      expect(replies[1].children.map(c => c.id)).toEqual([301]);
+      expect(replies[0].children).toHaveLength(1);
+      expect(replies[0].children[0]).toMatchObject({ id: 302, deleted: true, author: '' });
+      expect(replies[0].children[0].children.map(c => c.id)).toEqual([401]);
+    });
+
+    it('keeps the item tree replies for a thread bigger than search returns', async () => {
+      const { readItem, fetchSpy } = mockStory({ nbHits: 1500, nbPages: 5 });
+
+      const replies = await fetchCommentReplies(item);
+
+      expect(replies.map(c => c.id)).toEqual([201]);
+      expect(replies[0].children).toEqual([]);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(readItem).not.toHaveBeenCalled();
+    });
+
+    it('looks up the replies of a comment whose replies are all flagged or deleted', async () => {
+      mockStory();
+
+      const replies = await fetchCommentReplies(liveReply);
+
+      expect(replies.map(c => c.id)).toEqual([302]);
+      expect(replies[0]).toMatchObject({ deleted: true });
+      expect(replies[0].children.map(c => c.id)).toEqual([401]);
+    });
+
+    it('skips the story search for a comment with no replies', async () => {
+      const { readItem, fetchSpy } = mockStory();
+
+      const replies = await fetchCommentReplies({ ...item, id: 401, author: 'frank', parent_id: 302, children: [] });
+
+      expect(replies).toEqual([]);
+      expect(readItem).toHaveBeenCalledWith(401);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('skips the story search when the only replies are flagged ones without replies', async () => {
+      const { readItem, fetchSpy } = mockStory();
+
+      const replies = await fetchCommentReplies(flaggedLeafParent);
+
+      expect(replies).toEqual([]);
+      expect(readItem.mock.calls.map(([id]) => Number(id))).toEqual([102, 203]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('stops before the story search once the caller is gone', async () => {
+      const { readItem, fetchSpy } = mockStory();
+      const controller = new AbortController();
+      readItem.mockImplementation(async (id) => {
+        controller.abort();
+        return firebaseItems.find(fb => fb.id === Number(id)) ?? null;
+      });
+
+      await expect(fetchCommentReplies(liveReply, controller.signal)).rejects.toThrow('Aborted');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("reads a story's comments once for comments on the same story", async () => {
+      const { readItem, fetchSpy } = mockStory();
+
+      const [rootReplies, liveReplyReplies] = await Promise.all([
+        fetchCommentReplies(item),
+        fetchCommentReplies(liveReply),
+      ]);
+
+      expect(rootReplies.map(c => c.id)).toEqual([201, 202]);
+      expect(liveReplyReplies.map(c => c.id)).toEqual([302]);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      // 201 and its reply 302 to see whether to search, then each missing parent once.
+      expect(readItem.mock.calls.map(([id]) => Number(id)).sort()).toEqual([201, 202, 302, 302]);
+    });
+
+    it('reads the story again after a failed read', async () => {
+      const { fetchSpy } = mockStory();
+      fetchSpy.mockResolvedValueOnce(new Response(null, { status: 503 }));
+
+      await expect(fetchCommentReplies(item)).rejects.toThrow(/503/);
+      const replies = await fetchCommentReplies(item);
+
+      expect(replies.map(c => c.id)).toEqual([201, 202]);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
     });
   });
 });

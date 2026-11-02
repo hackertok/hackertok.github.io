@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { useCommentDetail } from './useCommentDetail';
+import { __resetFetchCachesForTests } from '../api/hn';
 import { hnSdk } from '../api/hnSdk';
 import { server } from '../mocks/server';
 import { ALGOLIA_API } from '../config/api';
@@ -20,6 +21,7 @@ const mockStoryItem: FirebaseItem = {
 
 describe('useCommentDetail', () => {
   beforeEach(() => {
+    __resetFetchCachesForTests();
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
       if (Number(id) === 12345) return mockStoryItem;
       return null;
@@ -151,6 +153,113 @@ describe('useCommentDetail', () => {
     expect(result.current.error).toBeNull();
     await waitFor(() => {
       expect(result.current.itemTitleLoading).toBe(false);
+    });
+  });
+
+  describe('a flagged reply, which Algolia leaves out of the item tree', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const flaggedReply: FirebaseItem = {
+      id: 2002, type: 'comment', by: 'eve', text: 'Killed text', dead: true, time: now - 800, parent: 1001, kids: [3001],
+    };
+
+    function mockStoryComments(response: () => Response | Promise<Response>, firebaseItems: FirebaseItem[] = [flaggedReply]) {
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, ({ request }) =>
+          new URL(request.url).searchParams.get('tags') === 'comment,story_12345' ? response() : HttpResponse.json({ hits: [], nbHits: 0, nbPages: 0 })),
+      );
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 12345) return mockStoryItem;
+        return firebaseItems.find(item => item.id === Number(id)) ?? null;
+      });
+    }
+
+    it('adds it with its replies once the story comments load', async () => {
+      mockStoryComments(() => HttpResponse.json({
+        hits: [
+          { objectID: '1001', author: 'patio11', comment_text: 'Root', created_at_i: now - 1800, parent_id: 12345 },
+          { objectID: '2001', author: 'tptacek', comment_text: 'Live reply', created_at_i: now - 900, parent_id: 1001 },
+          { objectID: '3001', author: 'mallory', comment_text: 'Reply to a flagged comment', created_at_i: now - 700, parent_id: 2002 },
+        ],
+        nbHits: 3,
+        nbPages: 1,
+      }));
+
+      const { result } = renderHook(() => useCommentDetail(1001));
+
+      await waitFor(() => {
+        expect(result.current.replies.map(c => c.id)).toEqual([2001, 2002]);
+      });
+      expect(result.current.replies[1]).toMatchObject({ author: 'eve', text: '[flagged]' });
+      expect(result.current.replies[1].children.map(c => c.id)).toEqual([3001]);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("keeps Algolia's replies when the story comments fail to load", async () => {
+      let served = false;
+      mockStoryComments(() => {
+        served = true;
+        return new HttpResponse(null, { status: 503 });
+      });
+
+      const { result } = renderHook(() => useCommentDetail(1001));
+
+      await waitFor(() => {
+        expect(served).toBe(true);
+        expect(result.current.moreRepliesLoading).toBe(false);
+      });
+      expect(result.current.replies.map(c => c.id)).toEqual([2001]);
+      expect(result.current.error).toBeNull();
+    });
+
+    it("waits for them when they're a comment's only replies", async () => {
+      let serve!: () => void;
+      const served = new Promise<void>(resolve => { serve = resolve; });
+      mockStoryComments(async () => {
+        await served;
+        return HttpResponse.json({
+          hits: [
+            { objectID: '1002', author: 'jgrahamc', comment_text: 'Root', created_at_i: now - 1200, parent_id: 12345 },
+            { objectID: '3001', author: 'mallory', comment_text: 'Reply to a flagged comment', created_at_i: now - 700, parent_id: 2002 },
+          ],
+          nbHits: 2,
+          nbPages: 1,
+        });
+      }, [
+        { id: 1002, type: 'comment', by: 'jgrahamc', text: 'Root', time: now - 1200, parent: 12345, kids: [2002] },
+        { ...flaggedReply, parent: 1002 },
+      ]);
+
+      const { result } = renderHook(() => useCommentDetail(1002));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+      expect(result.current.replies).toEqual([]);
+      expect(result.current.moreRepliesLoading).toBe(true);
+
+      serve();
+      await waitFor(() => {
+        expect(result.current.moreRepliesLoading).toBe(false);
+      });
+      expect(result.current.replies.map(c => c.id)).toEqual([2002]);
+      expect(result.current.replies[0].children.map(c => c.id)).toEqual([3001]);
+    });
+
+    it('settles a comment with no replies without reading the story', async () => {
+      let served = false;
+      mockStoryComments(() => {
+        served = true;
+        return HttpResponse.json({ hits: [], nbHits: 0, nbPages: 0 });
+      }, [{ id: 1003, type: 'comment', by: 'dang', text: 'Root', time: now - 600, parent: 12345 }]);
+
+      const { result } = renderHook(() => useCommentDetail(1003));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+        expect(result.current.moreRepliesLoading).toBe(false);
+      });
+      expect(result.current.replies).toEqual([]);
+      expect(served).toBe(false);
     });
   });
 

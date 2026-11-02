@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchCommentItem, fetchFirebaseItem, normalizeAlgoliaItemChildren } from '../api/hn';
+import { fetchCommentItem, fetchCommentReplies, fetchFirebaseItem, normalizeAlgoliaItemChildren } from '../api/hn';
 import type { Comment } from '../types';
+
+function countComments(comments: Comment[]): number {
+  return comments.reduce((count, comment) => count + 1 + countComments(comment.children), 0);
+}
 
 interface CommentData {
   id: number;
@@ -13,6 +17,11 @@ interface CommentData {
 interface UseCommentDetailResult {
   comment: CommentData | null;
   replies: Comment[];
+  /**
+   * True while flagged and deleted replies, which Algolia's item tree
+   * leaves out, are being looked up. `replies` can still grow until then.
+   */
+  moreRepliesLoading: boolean;
   itemId: number | null;
   itemTitle: string | null;
   /** True while the parent story's title and author are being fetched. */
@@ -46,6 +55,7 @@ export function useCommentDetail(
       : null,
   );
   const [replies, setReplies] = useState<Comment[]>([]);
+  const [moreRepliesLoading, setMoreRepliesLoading] = useState(false);
   const [itemId, setItemId] = useState<number | null>(null);
   const [itemTitle, setItemTitle] = useState<string | null>(null);
   const [itemTitleLoading, setItemTitleLoading] = useState(false);
@@ -57,6 +67,7 @@ export function useCommentDetail(
   const load = useCallback(async (signal: AbortSignal) => {
     setError(null);
     setLoading(true);
+    setMoreRepliesLoading(false);
 
     try {
       const item = await fetchCommentItem(commentId, signal);
@@ -72,7 +83,24 @@ export function useCommentDetail(
       setItemId(item.story_id ?? null);
       setReplies(normalizeAlgoliaItemChildren(item.children ?? []));
       setItemTitleLoading(!!item.story_id);
+      setMoreRepliesLoading(!!item.story_id);
       setLoading(false);
+
+      // Algolia's item tree leaves out flagged and deleted replies along with
+      // the replies under them. Those fill in once the story's comments are read.
+      if (item.story_id) {
+        void fetchCommentReplies(item, signal).then(
+          all => {
+            if (signal.aborted) return;
+            setReplies(shown => (countComments(all) > countComments(shown) ? all : shown));
+            setMoreRepliesLoading(false);
+          },
+          () => {
+            // Algolia's replies stay.
+            if (!signal.aborted) setMoreRepliesLoading(false);
+          },
+        );
+      }
 
       // Fetch parent title + author in background (non-blocking).
       // The author drives OP detection; landing ~100-300ms after the
@@ -118,5 +146,5 @@ export function useCommentDetail(
     };
   }, [load]);
 
-  return { comment, replies, itemId, itemTitle, itemTitleLoading, itemAuthor, loading, error, retry };
+  return { comment, replies, moreRepliesLoading, itemId, itemTitle, itemTitleLoading, itemAuthor, loading, error, retry };
 }
