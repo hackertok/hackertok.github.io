@@ -20,6 +20,7 @@ interface ItemArticleProps {
 export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-border' }: ItemArticleProps) {
   const viewed = useIsViewed(item.id);
   const hostname = getHostname(item.url);
+  const commentCount = item.type !== 'job' ? (item.commentCount ?? 0) : 0;
 
   // Gate the outbound href to http(s) so javascript:/data: URLs can't reach the
   // DOM; anything else degrades to plain text. Keep it ONE `startsWith` — a `||`
@@ -57,7 +58,7 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground mb-2">
         <span className={metaItemClass}>
           <ChevronUp aria-hidden className="size-3.5" />
-          <span>{item.points ?? 0} points</span>
+          <span>{item.points ?? 0} {item.points === 1 ? 'point' : 'points'}</span>
         </span>
 
         {hostname && (
@@ -76,7 +77,7 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
 
         <span className={metaItemClass}>
           <MessageSquare aria-hidden className="size-3.5" />
-          <span>{item.type !== 'job' ? (item.commentCount ?? 0) : 0} comments</span>
+          <span>{commentCount} {commentCount === 1 ? 'comment' : 'comments'}</span>
         </span>
 
         <ShareButton title={item.title} url={itemPermalink(item.id)} />

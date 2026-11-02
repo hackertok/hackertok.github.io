@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchAlgoliaItem, fetchFirebaseItem, normalizeAlgoliaItemChildren } from '../api/hn';
+import { fetchCommentItem, fetchFirebaseItem, normalizeAlgoliaItemChildren } from '../api/hn';
 import type { Comment } from '../types';
 
 interface CommentData {
@@ -59,7 +59,7 @@ export function useCommentDetail(
     setLoading(true);
 
     try {
-      const item = await fetchAlgoliaItem(commentId, signal);
+      const item = await fetchCommentItem(commentId, signal);
       if (signal.aborted) return;
 
       setComment({

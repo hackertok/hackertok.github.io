@@ -216,5 +216,21 @@ describe('ItemDetail', () => {
       // CommentDetail (not ItemArticle).
       expect(screen.queryByText(/points/)).not.toBeInTheDocument();
     });
+
+    it('shows [flagged] for a killed comment before its own request returns', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => (
+        Number(id) === 1001
+          ? { id: 1001, by: 'patio11', text: 'Praise the iLord.', dead: true, time: Math.floor(Date.now() / 1000) - 1800, parent: 12345, type: 'comment' }
+          : defaultItem
+      ));
+      server.use(
+        http.get(`${ALGOLIA_API}/items/:id`, () => new Promise<never>(() => { /* never resolves */ })),
+      );
+
+      renderItemDetail(1001);
+
+      expect(await screen.findByText('[flagged]')).toBeInTheDocument();
+      expect(screen.queryByText('Praise the iLord.')).not.toBeInTheDocument();
+    });
   });
 });

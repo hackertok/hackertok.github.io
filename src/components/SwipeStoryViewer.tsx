@@ -513,9 +513,17 @@ export function SwipeStoryViewerCore({
   
   usePrefetchItems(currentIndex, mergedStories, 6);
   
+  // A restore or Back mounts on index 0 and scroll-init jumps to its story
+  // before paint, so until currentIndex reaches that story, the panel it
+  // shows was never seen.
+  const [landingStoryId, setLandingStoryId] = useState(() => (anchorStoryId == null ? initialItemIdNum ?? null : null));
+  const landingIndex = landingStoryId == null ? -1 : mergedStories.findIndex(s => s.id === landingStoryId);
+  if (landingIndex >= 0 && landingIndex === currentIndex) setLandingStoryId(null);
+  const isBeforeLanding = landingIndex > 0 && landingIndex !== currentIndex;
+
   // Each panel IS the story detail on mobile — track how long the active story
   // is looked at and hide it for a window scaled to that dwell time.
-  useViewDwell(currentStory?.id);
+  useViewDwell(isBeforeLanding ? undefined : currentStory?.id);
 
   useLayoutEffect(() => {
     onReachedStoriesChange?.(mergedStories.slice(0, currentIndex + 1).map(story => story.id));

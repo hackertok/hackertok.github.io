@@ -114,6 +114,13 @@ describe('ItemArticle', () => {
       expect(screen.getByText(/^0\s+comments$/)).toBeInTheDocument();
     });
 
+    it('says "1 point" and "1 comment" for a count of one', () => {
+      render(<ItemArticle item={story({ points: 1, commentCount: 1 })} />);
+
+      expect(screen.getByText(/^1\s+point$/)).toBeInTheDocument();
+      expect(screen.getByText(/^1\s+comment$/)).toBeInTheDocument();
+    });
+
     it('forces "0 comments" on job posts even when API reports a non-zero count', () => {
       // type: 'job' never accepts comments, but the API sometimes ships
       // a stale descendants count anyway. The render coerces to 0 so we

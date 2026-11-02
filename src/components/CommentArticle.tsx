@@ -43,6 +43,7 @@ export function CommentArticle({
   storyAuthor = '',
 }: CommentArticleProps) {
   const isOp = isKnownAuthor(storyAuthor) && comment.author === storyAuthor;
+  const isDeleted = !comment.author && !comment.text;
   const sanitizedText = useMemo(
     () => comment.text ? sanitizeHtml(comment.text) : '',
     [comment.text],
@@ -53,7 +54,11 @@ export function CommentArticle({
       <article className={`${articleClassName} pb-4 border-b border-border`}>
         {/* Meta row: author, time, parent, thread-title. Icons aria-hidden. */}
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground mb-3">
-          <AuthorByline author={comment.author} isOp={isOp} />
+          {isDeleted ? (
+            <span className={metaItemClass}>[deleted]</span>
+          ) : (
+            <AuthorByline author={comment.author} isOp={isOp} />
+          )}
 
           <span className={metaItemClass}>
             <Clock aria-hidden className="size-3.5" />

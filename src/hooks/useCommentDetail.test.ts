@@ -118,6 +118,22 @@ describe('useCommentDetail', () => {
     expect(result.current.comment).toBeNull();
   });
 
+  it('keeps an Algolia server error as an error without asking Firebase', async () => {
+    server.use(
+      http.get(`${ALGOLIA_API}/items/:id`, () => new HttpResponse(null, { status: 500 })),
+    );
+    const readItem = vi.spyOn(hnSdk, 'readItem');
+
+    const { result } = renderHook(() => useCommentDetail(1001));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.error).toMatch(/500/);
+    expect(readItem).not.toHaveBeenCalledWith(1001);
+  });
+
   it('degrades gracefully when item title fetch fails', async () => {
     // Only the SDK item fetch fails — Algolia (comment + replies) still succeeds.
     vi.spyOn(hnSdk, 'readItem').mockRejectedValue(new Error('SDK error'));

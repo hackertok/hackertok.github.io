@@ -191,7 +191,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-sm text-muted-foreground">
           <span className={metaItemClass}>
             <ChevronUp aria-hidden className="size-3.5" />
-            <span>{story.points ?? 0} points</span>
+            <span>{story.points ?? 0} {story.points === 1 ? 'point' : 'points'}</span>
           </span>
 
           {hostname && (
@@ -219,7 +219,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
             className={metaPillClass}
           >
             <MessageSquare aria-hidden className="size-3.5" />
-            {story.commentCount ?? 0} comments
+            {story.commentCount ?? 0} {story.commentCount === 1 ? 'comment' : 'comments'}
           </Link>
         </div>
       </div>

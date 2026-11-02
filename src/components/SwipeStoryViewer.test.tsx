@@ -8,6 +8,7 @@ import {
   clearViewedTimes,
   clearSessionViewed,
   addToSessionViewed,
+  getSessionViewedIds,
   VIEWED_DETAIL_TIMES_KEY,
 } from '../utils/viewedItems';
 import { saveSwipePosition, readSwipePosition } from '../utils/swipePosition';
@@ -662,5 +663,90 @@ describe('SwipeStoryViewerCore — end-of-feed panel', () => {
 
     expect(screen.queryByTestId('swipe-panel-loading')).not.toBeInTheDocument();
     expect(activePanel()?.getAttribute('data-item-id')).toBe('2');
+  });
+});
+
+describe('SwipeStoryViewerCore — viewed marks on landing', () => {
+  const baseProps = {
+    loading: false,
+    error: null,
+    hasMore: false,
+    loadMore: vi.fn().mockResolvedValue(undefined),
+  };
+
+  beforeEach(() => {
+    clearViewed();
+    clearViewedTimes();
+    clearSessionViewed();
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const markedIds = () =>
+    Object.keys(JSON.parse(localStorage.getItem(VIEWED_DETAIL_TIMES_KEY) ?? '{}') as Record<string, number>).map(Number);
+
+  it('marks only the restored story, not the first one it jumps past', () => {
+    const stories = Array.from({ length: 21 }, (_, i) => createStoryItem({ id: 100 + i }));
+    saveSwipePosition({ viewer: { from: 'best' }, storyId: 110, index: 10, scrollY: 0, stories });
+
+    render(<SwipeStoryViewerCore {...baseProps} stories={[]} initialItemId="110" backState={{ from: 'best' }} />);
+
+    expect(activePanel()?.getAttribute('data-item-id')).toBe('110');
+    expect(markedIds()).toEqual([110]);
+    expect([...getSessionViewedIds()]).toEqual([110]);
+  });
+
+  it('marks only the story Back returns to, not a new first story', () => {
+    const stories = [1, 2, 3, 4, 5].map(id => createStoryItem({ id }));
+
+    render(
+      <SwipeStoryViewerCore {...baseProps} stories={stories} initialItemId="4" backState={{ from: 'top' }} />,
+      { initialEntries: [{ pathname: '/item/4', state: { from: 'top' } }] },
+    );
+
+    expect(activePanel()?.getAttribute('data-item-id')).toBe('4');
+    expect(markedIds()).toEqual([4]);
+  });
+
+  it('marks the story Back returns to when the feed arrives after mount', () => {
+    const stories = [1, 2, 3, 4, 5].map(id => createStoryItem({ id }));
+    const backState: LocationState = { from: 'top' };
+    const props = { ...baseProps, initialItemId: '4', backState };
+    const entries = { initialEntries: [{ pathname: '/item/4', state: { from: 'top' } }] };
+
+    const { rerender } = render(<SwipeStoryViewerCore {...props} stories={[]} loading />, entries);
+    rerender(<SwipeStoryViewerCore {...props} stories={stories} />);
+
+    expect(activePanel()?.getAttribute('data-item-id')).toBe('4');
+    expect(markedIds()).toEqual([4]);
+  });
+
+  it('marks the stories a reader swipes to after landing', () => {
+    vi.useFakeTimers();
+    const stories = [1, 2, 3, 4, 5].map(id => createStoryItem({ id }));
+
+    render(
+      <SwipeStoryViewerCore {...baseProps} stories={stories} initialItemId="2" backState={{ from: 'top' }} />,
+      { initialEntries: [{ pathname: '/item/2', state: { from: 'top' } }] },
+    );
+    // Touches are ignored while the landing jump settles.
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    swipeToNext();
+
+    expect(activePanel()?.getAttribute('data-item-id')).toBe('3');
+    expect(markedIds().sort((a, b) => a - b)).toEqual([2, 3]);
+  });
+
+  it('marks the first story when the viewer opens on it', () => {
+    const stories = [1, 2, 3].map(id => createStoryItem({ id }));
+
+    render(<SwipeStoryViewerCore {...baseProps} stories={stories} backState={{ from: 'top' }} />);
+
+    expect(markedIds()).toEqual([1]);
   });
 });

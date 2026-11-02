@@ -120,6 +120,58 @@ describe('FullScreenComment', () => {
     });
   });
 
+  describe('a comment Algolia 404s', () => {
+    const now = Math.floor(Date.now() / 1000);
+
+    function mockMissingFromAlgolia(commentId: number, firebase: FirebaseItem, replies: object[] = []) {
+      server.use(
+        http.get(`${ALGOLIA_API}/items/:id`, ({ params }) => {
+          const reply = replies.find(r => (r as { id: number }).id === Number(params.id));
+          return reply ? HttpResponse.json(reply) : HttpResponse.json({ status: 404 }, { status: 404 });
+        }),
+      );
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 12345) return mockItem;
+        return Number(id) === commentId ? firebase : null;
+      });
+    }
+
+    it('shows a flagged comment from Firebase with its replies', async () => {
+      mockMissingFromAlgolia(
+        7777,
+        { id: 7777, type: 'comment', by: 'flaggeduser', text: '[flagged]', dead: true, parent: 12345, kids: [7778], time: now - 600 },
+        [{ id: 7778, type: 'comment', author: 'dang', text: 'Please don&#x27;t.', created_at_i: now - 300, parent_id: 7777, story_id: 12345, children: [] }],
+      );
+
+      render(<FullScreenComment commentId={7777} />);
+
+      expect(await screen.findByText('[flagged]')).toBeInTheDocument();
+      expect(screen.getByText('flaggeduser')).toBeInTheDocument();
+      expect(screen.getByText('dang')).toBeInTheDocument();
+      expect(screen.getByText("Please don't.")).toBeInTheDocument();
+      expect(await screen.findByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' })).toHaveAttribute('href', '/item/12345');
+      expect(screen.queryByText('Failed to load comment')).not.toBeInTheDocument();
+    });
+
+    it('shows [flagged] for a killed comment whose text Firebase still has', async () => {
+      mockMissingFromAlgolia(7777, { id: 7777, type: 'comment', by: 'flaggeduser', text: 'Praise the iLord.', dead: true, parent: 12345, time: now - 600 });
+
+      render(<FullScreenComment commentId={7777} />);
+
+      expect(await screen.findByText('[flagged]')).toBeInTheDocument();
+      expect(screen.queryByText('Praise the iLord.')).not.toBeInTheDocument();
+    });
+
+    it('shows a deleted comment as deleted', async () => {
+      mockMissingFromAlgolia(8888, { id: 8888, type: 'comment', deleted: true, parent: 12345, time: now - 600 });
+
+      render(<FullScreenComment commentId={8888} />);
+
+      expect(await screen.findByText('Comment deleted')).toBeInTheDocument();
+      expect(screen.queryByText('Failed to load comment')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows "No replies yet" for comment with no children', async () => {
     server.use(
       http.get(`${ALGOLIA_API}/items/:id`, () => {

@@ -65,7 +65,7 @@ function normalizeFirebaseItem(fbItem: FirebaseItem): Item {
     return {
       ...base,
       type: 'comment' as const,
-      text: fbItem.text ?? '',
+      text: firebaseCommentText(fbItem) ?? '',
       parent: fbItem.parent ?? 0,
     };
   }
@@ -400,8 +400,8 @@ async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Pr
 
 function flattenAlgoliaItemChildren(children: AlgoliaItemChild[], into: AlgoliaComment[] = []): AlgoliaComment[] {
   for (const child of children) {
-    // Deleted comments have no author; their replies are left as orphans,
-    // which buildCommentTree drops just as it does for search results.
+    // The item tree leaves out flagged and deleted comments along with their
+    // replies, so those replies only come from search.
     if (child.author) {
       into.push({
         objectID: String(child.id),
@@ -416,13 +416,54 @@ function flattenAlgoliaItemChildren(children: AlgoliaItemChild[], into: AlgoliaC
   return into;
 }
 
+type ThreadComment = AlgoliaComment & { deleted?: boolean };
+
+// Search and the item tree leave out flagged and deleted comments but keep
+// their replies. HN shows those replies under a [flagged] or [deleted] row,
+// so the missing parents (and theirs, when also missing) come from Firebase.
+async function fetchMissingParents(comments: AlgoliaComment[], itemId: number, signal?: AbortSignal): Promise<FirebaseItem[]> {
+  const MAX_DEPTH = 10;
+  const known = new Set(comments.map(c => Number(c.objectID)));
+  const found: FirebaseItem[] = [];
+  let missing = [...new Set(comments.map(c => c.parent_id))].filter(id => id !== itemId && !known.has(id));
+
+  for (let depth = 0; depth < MAX_DEPTH && missing.length > 0 && !signal?.aborted; depth++) {
+    const next = new Set<number>();
+    for (const item of await readItemsBatched(missing, signal)) {
+      if (item.parent == null) continue;
+      known.add(item.id);
+      found.push(item);
+      if (item.parent !== itemId) next.add(item.parent);
+    }
+    missing = [...next].filter(id => !known.has(id));
+  }
+
+  return found;
+}
+
+// Firebase still has the text of older killed comments. HN shows [flagged].
+function firebaseCommentText(item: FirebaseItem): string | undefined {
+  return item.dead && item.text ? '[flagged]' : item.text;
+}
+
+function threadCommentFromFirebase(item: FirebaseItem): ThreadComment {
+  return {
+    objectID: String(item.id),
+    author: item.by ?? '',
+    comment_text: firebaseCommentText(item) ?? '',
+    created_at_i: item.time ?? 0,
+    parent_id: item.parent ?? 0,
+    deleted: item.deleted === true || !item.by,
+  };
+}
+
 // `kidsOrder` (from Firebase kids arrays) maintains HN's ranking order; falls
 // back to creation time when not available.
-function buildCommentTree(comments: AlgoliaComment[], itemId: number, kidsOrder = new Map<number, number[]>()): Comment[] {
+function buildCommentTree(comments: ThreadComment[], itemId: number, kidsOrder = new Map<number, number[]>()): Comment[] {
   const commentMap = new Map<number, Comment>();
   
-  comments.forEach((comment: AlgoliaComment) => {
-    if (comment.author) { // Skip deleted comments (no author)
+  comments.forEach((comment: ThreadComment) => {
+    if (comment.author || comment.deleted) {
       commentMap.set(parseInt(comment.objectID, 10), {
         id: parseInt(comment.objectID, 10),
         author: comment.author,
@@ -430,6 +471,7 @@ function buildCommentTree(comments: AlgoliaComment[], itemId: number, kidsOrder 
         createdAt: comment.created_at_i * 1000,
         parentId: comment.parent_id,
         children: [],
+        ...(comment.deleted && { deleted: true }),
       });
     }
   });
@@ -440,13 +482,8 @@ function buildCommentTree(comments: AlgoliaComment[], itemId: number, kidsOrder 
     if (comment.parentId === itemId) {
       rootComments.push(comment);
     } else {
-      const parent = commentMap.get(comment.parentId);
-      if (parent) {
-        parent.children.push(comment);
-      }
-      // Parent not in map → parent is dead/deleted. HN hides the entire
-      // subtree under a dead comment, so we drop the orphan (its children
-      // still attach to it in the map but the subtree is unreachable).
+      // Orphans whose parent Firebase couldn't supply either are dropped.
+      commentMap.get(comment.parentId)?.children.push(comment);
     }
   });
   
@@ -481,7 +518,7 @@ function buildCommentTree(comments: AlgoliaComment[], itemId: number, kidsOrder 
 }
 
 async function buildOrderedCommentTree(
-  comments: AlgoliaComment[],
+  searchComments: AlgoliaComment[],
   itemId: number,
   itemKids: number[] | undefined,
   signal?: AbortSignal,
@@ -491,6 +528,12 @@ async function buildOrderedCommentTree(
   if (itemKids) {
     kidsOrder.set(itemId, itemKids);
   }
+
+  const missingParents = await fetchMissingParents(searchComments, itemId, signal);
+  missingParents.forEach(parent => {
+    if (parent.kids) kidsOrder.set(parent.id, parent.kids);
+  });
+  const comments: ThreadComment[] = [...searchComments, ...missingParents.map(threadCommentFromFirebase)];
 
   const childrenCount = new Map<number, number>();
   comments.forEach((c: AlgoliaComment) => {
@@ -538,7 +581,7 @@ async function buildOrderedCommentTree(
       .map(([parentId]) => parentId);
   }
 
-  const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder, signal);
+  const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder.filter(id => !kidsOrder.has(id)), signal);
   nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
 
   return buildCommentTree(comments, itemId, kidsOrder);
@@ -551,38 +594,38 @@ export async function fetchItemOnly(id: number | string, signal?: AbortSignal): 
   return normalizeFirebaseItem(item);
 }
 
-// Required for HN's ranking order (not chronological). Batched to avoid
-// overwhelming the API.
-async function fetchKidsOrdering(commentIds: number[], signal?: AbortSignal): Promise<Map<number, number[]>> {
+// Batched to avoid overwhelming the API. Items that fail or don't exist are
+// left out.
+async function readItemsBatched(ids: number[], signal?: AbortSignal): Promise<FirebaseItem[]> {
   const BATCH_SIZE = 10; // Reduced from 20 to lower concurrent requests
-  const kidsOrder = new Map<number, number[]>();
-  
-  for (let i = 0; i < commentIds.length; i += BATCH_SIZE) {
-    if (signal?.aborted) return kidsOrder;
-    
-    const batch = commentIds.slice(i, i + BATCH_SIZE);
-    
-    const results = await Promise.all(
-      batch.map(async (id) => {
+  const items: FirebaseItem[] = [];
+
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    if (signal?.aborted) return items;
+
+    const batch = await Promise.all(
+      ids.slice(i, i + BATCH_SIZE).map(async (id) => {
         try {
-          const item = await hnSdk.readItem(id);
-          if (item?.kids) {
-            return { id: item.id, kids: item.kids };
-          }
-          return null;
+          return await hnSdk.readItem(id);
         } catch {
           return null;
         }
       })
     );
-    
-    results.forEach((result: { id: number; kids: number[] } | null) => {
-      if (result) {
-        kidsOrder.set(result.id, result.kids);
-      }
-    });
+    for (const item of batch) {
+      if (item) items.push(item);
+    }
   }
-  
+
+  return items;
+}
+
+// Required for HN's ranking order (not chronological).
+async function fetchKidsOrdering(commentIds: number[], signal?: AbortSignal): Promise<Map<number, number[]>> {
+  const kidsOrder = new Map<number, number[]>();
+  for (const item of await readItemsBatched(commentIds, signal)) {
+    if (item.kids) kidsOrder.set(item.id, item.kids);
+  }
   return kidsOrder;
 }
 
@@ -647,9 +690,39 @@ export async function fetchItemWithComments(id: number | string, signal: AbortSi
 export async function fetchAlgoliaItem(id: number | string, signal?: AbortSignal): Promise<AlgoliaItemResponse> {
   const response = await fetch(`${ALGOLIA_API}/items/${id}`, { signal });
   if (!response.ok) {
-    throw new Error(`Failed to fetch item ${id}: ${response.status}`);
+    const message = `Failed to fetch item ${id}: ${response.status}`;
+    throw response.status === 404 ? new NotFoundError(message) : new Error(message);
   }
   return response.json() as Promise<AlgoliaItemResponse>;
+}
+
+/**
+ * A comment with its reply tree, in Algolia's item shape. Algolia 404s
+ * flagged and deleted comments (and ones it hasn't indexed yet), so those
+ * come from Firebase, with the replies Algolia has.
+ */
+export async function fetchCommentItem(id: number | string, signal?: AbortSignal): Promise<AlgoliaItemResponse> {
+  try {
+    return await fetchAlgoliaItem(id, signal);
+  } catch (err) {
+    if (!(err instanceof NotFoundError)) throw err;
+  }
+
+  const item = await fetchFirebaseItem(id, signal);
+  const replies = (await Promise.all(
+    (item.kids ?? []).map(kid => fetchAlgoliaItem(kid, signal).catch(() => null)),
+  )).filter(reply => reply !== null);
+
+  return {
+    id: item.id,
+    type: item.type ?? 'comment',
+    author: item.by ?? null,
+    text: firebaseCommentText(item) ?? null,
+    created_at_i: item.time ?? 0,
+    parent_id: item.parent ?? null,
+    story_id: replies[0]?.story_id ?? null,
+    children: replies.map(reply => ({ ...reply, parent_id: item.id })),
+  };
 }
 
 export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comment[] {
@@ -710,7 +783,8 @@ export function formatTimeAgo(timestamp: number): string {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  const months = Math.floor(days / 30);
+  // 30-day months reach 12 at day 360, five days short of a year.
+  const months = Math.min(Math.floor(days / 30), 11);
   const years = Math.floor(days / 365);
   
   if (years > 0) return `${years} year${years > 1 ? 's' : ''} ago`;

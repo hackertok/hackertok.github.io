@@ -45,6 +45,8 @@ export interface Comment {
   createdAt: number;
   parentId: number;
   children: Comment[];
+  /** A deleted comment kept as a [deleted] row because it has live replies. */
+  deleted?: boolean;
 }
 
 export interface AlgoliaHit {
@@ -75,6 +77,8 @@ export interface AlgoliaSearchResponse<T = AlgoliaHit> {
   nbPages: number;
   page: number;
   hitsPerPage: number;
+  /** False when `nbHits` is an estimate, which a query search can return. */
+  exhaustiveNbHits?: boolean;
 }
 
 export interface FirebaseItem {

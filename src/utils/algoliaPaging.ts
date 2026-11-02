@@ -12,9 +12,11 @@ export function algoliaPageParams({ page, before }: AlgoliaPageCursor): string {
   return `&page=${page}${filter}`;
 }
 
-// Search returns at most 1,000 hits and caps nbPages to match. Results are
-// newest first, so past the last page the next request starts over at page 0
-// from the oldest hit so far. That hit comes back once; callers already dedup.
+// Search returns at most 1,000 hits and caps nbPages to match. A query search
+// can also stop counting early and size nbPages from an estimate, so a full
+// last page may not be the end either. Results are newest first, so past the
+// last page the next request starts over at page 0 from the oldest hit so far.
+// That hit comes back once; callers already dedup.
 export function nextAlgoliaPage(
   data: AlgoliaSearchResponse,
   hitsPerPage: number,
@@ -24,7 +26,8 @@ export function nextAlgoliaPage(
 
   const oldest = data.hits[data.hits.length - 1]?.created_at_i;
   const isCapped = data.nbHits > data.nbPages * hitsPerPage;
-  if (isCapped && oldest !== undefined && oldest !== cursor.before) {
+  const mayHaveMore = data.exhaustiveNbHits === false && data.hits.length >= hitsPerPage;
+  if ((isCapped || mayHaveMore) && oldest !== undefined && oldest !== cursor.before) {
     return { page: 0, before: oldest };
   }
   return null;
