@@ -207,6 +207,8 @@ test.describe('Domain Filter - Empty domain', () => {
 
     // Should show error message
     await expect(page.getByText('No domain specified')).toBeVisible();
+    await expect(page.getByText("Pick a story's site to see more submissions from it.")).toBeVisible();
+    await expect(page.getByText(/This item doesn't exist/)).toHaveCount(0);
 
     await setOfflineAndWaitForBar(page, context);
 
