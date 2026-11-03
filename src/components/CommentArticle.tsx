@@ -24,6 +24,8 @@ interface CommentArticleProps {
   /** The thread title is still being fetched (after `loading` clears). */
   itemTitleLoading?: boolean;
   loading: boolean;
+  /** Flagged and deleted replies are still being looked up, so no replies isn't final yet. */
+  moreRepliesLoading?: boolean;
   /** Set when the replies failed to load: their section offers a Retry that calls it. */
   onRetryReplies?: () => void;
   articleClassName?: string;
@@ -38,6 +40,7 @@ export function CommentArticle({
   itemTitle,
   itemTitleLoading = false,
   loading,
+  moreRepliesLoading = false,
   onRetryReplies,
   articleClassName = 'mb-4',
   storyAuthor = '',
@@ -130,12 +133,14 @@ export function CommentArticle({
       </article>
 
       <section>
-        {loading ? (
+        {loading || (moreRepliesLoading && replies.length === 0) ? (
           // Bridges CommentDetail's initialData progressive-rendering
           // gap: when `comment` is seeded, PageStage skips its skeleton
           // and `replies=[]` would otherwise flash "No replies yet."
           // for the ~100-500ms before the algolia fetch resolves. On
-          // cold load PageStage's overlay covers this branch.
+          // cold load PageStage's overlay covers this branch. A comment
+          // whose replies are all flagged or deleted has none from
+          // Algolia, so it waits for those too.
           <CommentSkeletonTree count={6} />
         ) : onRetryReplies ? (
           <StateView variant="error" compact description="Failed to load replies" action={{ label: 'Retry', onClick: onRetryReplies }} />

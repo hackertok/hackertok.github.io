@@ -42,7 +42,7 @@ export function CommentDetailSkeleton() {
 }
 
 export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
-  const { comment, replies, itemId, itemTitle, itemTitleLoading, itemAuthor, loading, error, retry } = useCommentDetail(commentId, initialData);
+  const { comment, replies, moreRepliesLoading, itemId, itemTitle, itemTitleLoading, itemAuthor, loading, error, retry } = useCommentDetail(commentId, initialData);
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as LocationState | null;
@@ -104,6 +104,7 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
             itemTitle={itemTitle}
             itemTitleLoading={itemTitleLoading}
             loading={loading || (!!error && isRetrying)}
+            moreRepliesLoading={moreRepliesLoading}
             onRetryReplies={error && !isRetrying ? retryNow : undefined}
             articleClassName="mb-6"
             storyAuthor={itemAuthor ?? ''}

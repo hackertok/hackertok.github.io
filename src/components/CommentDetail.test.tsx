@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { screen, waitFor, act } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { render } from '../test/test-utils';
@@ -6,6 +6,7 @@ import { Routes, Route } from 'react-router';
 import { CommentDetail } from './CommentDetail';
 import { server } from '../mocks/server';
 import { ALGOLIA_API } from '../config/api';
+import { __resetFetchCachesForTests } from '../api/hn';
 
 function renderCommentDetail(commentId: number | string, initialData?: { author: string; text: string; createdAt: number }) {
   return render(
@@ -17,6 +18,10 @@ function renderCommentDetail(commentId: number | string, initialData?: { author:
 }
 
 describe('CommentDetail', () => {
+  beforeEach(() => {
+    __resetFetchCachesForTests();
+  });
+
   // Content rendering (author, text, parent link, title link, replies) is tested
   // in FullScreenComment.test.tsx. These tests focus on CommentDetail-specific behavior:
   // routing integration, progressive rendering, skeleton, and document title.

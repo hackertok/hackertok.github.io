@@ -167,6 +167,34 @@ describe('CommentArticle', () => {
     });
   });
 
+  describe('replies while flagged and deleted ones are looked up', () => {
+    const replySkeleton = () => document.querySelector('section .animate-pulse');
+
+    it('keeps the skeleton instead of "No replies yet."', () => {
+      renderArticle({ moreRepliesLoading: true });
+
+      expect(replySkeleton()).toBeInTheDocument();
+      expect(screen.queryByText('No replies yet.')).not.toBeInTheDocument();
+    });
+
+    it('shows the replies it already has', () => {
+      renderArticle({
+        moreRepliesLoading: true,
+        replies: [{ id: 2001, author: 'tptacek', text: 'A reply.', createdAt: Date.now(), parentId: 1001, children: [] }],
+      });
+
+      expect(screen.getByText('tptacek')).toBeInTheDocument();
+      expect(replySkeleton()).not.toBeInTheDocument();
+    });
+
+    it('says "No replies yet." once the lookup is done', () => {
+      renderArticle({ moreRepliesLoading: false });
+
+      expect(screen.getByText('No replies yet.')).toBeInTheDocument();
+      expect(replySkeleton()).not.toBeInTheDocument();
+    });
+  });
+
   describe('author guard', () => {
     // 'unknown' / '' must not mint a dead /user/unknown or /user/ link —
     // fall back to a plain non-link byline. See isKnownAuthor.

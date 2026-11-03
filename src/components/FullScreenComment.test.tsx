@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import { ALGOLIA_API } from '../config/api';
 import { hnSdk } from '../api/hnSdk';
+import { __resetFetchCachesForTests } from '../api/hn';
 import type { FirebaseItem } from '../types';
 
 const mockItem: FirebaseItem = {
@@ -22,6 +23,7 @@ const mockItem: FirebaseItem = {
 
 describe('FullScreenComment', () => {
   beforeEach(() => {
+    __resetFetchCachesForTests();
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
       if (Number(id) === 12345) return mockItem;
       return null;
@@ -193,5 +195,47 @@ describe('FullScreenComment', () => {
     await waitFor(() => {
       expect(screen.getByText('No replies yet.')).toBeInTheDocument();
     });
+  });
+
+  it('keeps the replies skeleton, not "No replies yet.", until a flagged only reply loads', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const items: Record<number, FirebaseItem> = {
+      12345: mockItem,
+      6667: { id: 6667, type: 'comment', by: 'asker', text: 'Only a flagged reply.', parent: 12345, kids: [6668], time: now - 600 },
+      6668: { id: 6668, type: 'comment', by: 'troll', text: 'Killed text', dead: true, parent: 6667, kids: [6669], time: now - 500 },
+    };
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => items[Number(id)] ?? null);
+    let serve!: () => void;
+    const served = new Promise<void>(resolve => { serve = resolve; });
+    server.use(
+      http.get(`${ALGOLIA_API}/items/:id`, () => HttpResponse.json({
+        id: 6667, type: 'comment', author: 'asker', text: 'Only a flagged reply.', created_at_i: now - 600,
+        parent_id: 12345, story_id: 12345, children: [],
+      })),
+      http.get(`${ALGOLIA_API}/search`, async ({ request }) => {
+        if (new URL(request.url).searchParams.get('tags') !== 'comment,story_12345') return;
+        await served;
+        return HttpResponse.json({
+          hits: [
+            { objectID: '6667', author: 'asker', comment_text: 'Only a flagged reply.', created_at_i: now - 600, parent_id: 12345 },
+            { objectID: '6669', author: 'replier', comment_text: 'Reply to a flagged comment', created_at_i: now - 400, parent_id: 6668 },
+          ],
+          nbHits: 2,
+          nbPages: 1,
+        });
+      }),
+    );
+
+    render(<FullScreenComment commentId={6667} />);
+
+    const replies = (await screen.findByText('asker')).closest('article')!.nextElementSibling!;
+    expect(replies.querySelector('.animate-pulse')).not.toBeNull();
+    expect(screen.queryByText('No replies yet.')).not.toBeInTheDocument();
+
+    serve();
+    expect(await screen.findByText('[flagged]')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1 reply' })).toBeInTheDocument();
+    expect(replies.querySelector('.animate-pulse')).toBeNull();
+    expect(screen.queryByText('No replies yet.')).not.toBeInTheDocument();
   });
 });
