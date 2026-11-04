@@ -74,7 +74,9 @@ export function FullScreenComment({ commentId, onAuthorLoaded }: FullScreenComme
 
   // CRITICAL `!loading` gate: during cold load `comment` is null but
   // we want PageStage to show the skeleton, not flash deleted-state.
-  if (!loading && (!comment || (!comment.author && !comment.text))) {
+  // A deleted comment with replies still shows them, under a [deleted] byline.
+  const isDeletedLeaf = !!comment && !comment.author && !comment.text && replies.length === 0 && !moreRepliesLoading;
+  if (!loading && (!comment || isDeletedLeaf)) {
     return (
       <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
         <StateView variant="deleted" />

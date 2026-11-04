@@ -172,6 +172,22 @@ describe('FullScreenComment', () => {
       expect(await screen.findByText('Comment deleted')).toBeInTheDocument();
       expect(screen.queryByText('Failed to load comment')).not.toBeInTheDocument();
     });
+
+    it('shows a deleted comment with replies as [deleted], with its replies', async () => {
+      mockMissingFromAlgolia(
+        8888,
+        { id: 8888, type: 'comment', deleted: true, parent: 12345, kids: [8889], time: now - 600 },
+        [{ id: 8889, type: 'comment', author: 'dang', text: 'Still worth reading.', created_at_i: now - 300, parent_id: 8888, story_id: 12345, children: [] }],
+      );
+
+      render(<FullScreenComment commentId={8888} />);
+
+      expect(await screen.findByText('[deleted]')).toBeInTheDocument();
+      expect(screen.getByText('dang')).toBeInTheDocument();
+      expect(screen.getByText('Still worth reading.')).toBeInTheDocument();
+      expect(await screen.findByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' })).toHaveAttribute('href', '/item/12345');
+      expect(screen.queryByText('Comment deleted')).not.toBeInTheDocument();
+    });
   });
 
   it('shows "No replies yet" for comment with no children', async () => {

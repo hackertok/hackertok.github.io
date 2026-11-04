@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { screen, fireEvent, act } from '@testing-library/react';
+import { useCallback, useState } from 'react';
 import { Routes, Route } from 'react-router';
 import { render } from '../test/test-utils';
 import { createStoryItem } from '../test/factories';
@@ -238,6 +239,111 @@ describe('InfiniteStoryListPage', () => {
       renderPage({ result: makeResult({ stories, hasMore: true }) });
 
       expect(screen.queryByText(/reached the end/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('load-more trigger', () => {
+    // The shared mock never reports anything in view. This one reports the
+    // end of the list in view once and never again, as in a background tab,
+    // whose observer doesn't run.
+    class InViewOnceObserver {
+      readonly thresholds = [0];
+      readonly root = null;
+      readonly rootMargin = '';
+      readonly scrollMargin = '';
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        if (target.tagName === 'ARTICLE') return; // story cards
+        setTimeout(() => this.callback(
+          [{ target, isIntersecting: true, intersectionRatio: 1 } as unknown as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        ), 0);
+      }
+      unobserve() { /* noop */ }
+      disconnect() { /* noop */ }
+      takeRecords() { return []; }
+    }
+
+    const VIEWPORT_HEIGHT = 800;
+    const SharedObserver = globalThis.IntersectionObserver;
+    beforeEach(() => {
+      globalThis.IntersectionObserver = InViewOnceObserver;
+      vi.stubGlobal('innerHeight', VIEWPORT_HEIGHT);
+      vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(VIEWPORT_HEIGHT);
+    });
+    afterEach(() => {
+      globalThis.IntersectionObserver = SharedObserver;
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    const rectAt = (top: number) =>
+      ({ x: 0, y: top, top, left: 0, right: 0, bottom: top, width: 0, height: 0, toJSON: () => ({}) }) as DOMRect;
+
+    // Each page is one story, and the third page is the last.
+    function Feed({ onLoadMore, onPageLanded }: { onLoadMore: () => void; onPageLanded?: () => void }) {
+      const [stories, setStories] = useState(() => [createStoryItem({ id: 1, title: 'Story 1' })]);
+      const [loading, setLoading] = useState(false);
+      const loadMore = useCallback(async () => {
+        onLoadMore();
+        setLoading(true);
+        await new Promise(resolve => setTimeout(resolve, 10));
+        onPageLanded?.();
+        setStories(prev => [...prev, createStoryItem({ id: prev.length + 1, title: `Story ${prev.length + 1}` })]);
+        setLoading(false);
+      }, [onLoadMore, onPageLanded]);
+
+      return (
+        <InfiniteStoryListPage
+          result={{ stories, loading, error: null, hasMore: stories.length < 4, loadMore }}
+          resetKey="test-key"
+        />
+      );
+    }
+
+    function renderFeed(props: { onLoadMore: () => void; onPageLanded?: () => void }) {
+      return render(
+        <Routes>
+          <Route path="/" element={<Feed {...props} />} />
+        </Routes>,
+      );
+    }
+
+    it('keeps loading pages while the end of the list stays in view', async () => {
+      const onLoadMore = vi.fn();
+
+      renderFeed({ onLoadMore });
+
+      expect(await screen.findByRole('link', { name: 'Story 4' })).toBeInTheDocument();
+      expect(onLoadMore).toHaveBeenCalledTimes(3);
+    });
+
+    it('stops once a page pushes the end of the list out of view, though the observer has not said so', async () => {
+      const onLoadMore = vi.fn();
+      const getRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+
+      renderFeed({
+        onLoadMore,
+        onPageLanded: () => getRect.mockReturnValue(rectAt(VIEWPORT_HEIGHT + 1000)),
+      });
+
+      expect(await screen.findByRole('link', { name: 'Story 2' })).toBeInTheDocument();
+      await act(() => new Promise(resolve => setTimeout(resolve, 50)));
+      expect(onLoadMore).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('link', { name: 'Story 3' })).not.toBeInTheDocument();
+    });
+
+    it('keeps loading on an iPad zoomed in to the end of the list', async () => {
+      // Zoomed in 2×, iPad Safari's innerHeight is the half of the layout
+      // viewport on screen, here the bottom half, where the end of the list is.
+      const onLoadMore = vi.fn();
+      vi.stubGlobal('innerHeight', VIEWPORT_HEIGHT / 2);
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rectAt(VIEWPORT_HEIGHT - 100));
+
+      renderFeed({ onLoadMore });
+
+      expect(await screen.findByRole('link', { name: 'Story 4' })).toBeInTheDocument();
+      expect(onLoadMore).toHaveBeenCalledTimes(3);
     });
   });
 

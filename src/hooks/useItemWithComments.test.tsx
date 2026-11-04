@@ -82,6 +82,22 @@ describe('useItemWithComments', () => {
       expect(result.current.comments).toEqual(testComments);
     });
 
+    it('reads the cache when it mounts, not on every render', () => {
+      setCachedItem(12345, testItem, testComments, 3);
+      const cached = localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}12345`);
+      const parse = vi.spyOn(JSON, 'parse');
+      const cacheReads = () => parse.mock.calls.filter(([text]) => text === cached).length;
+
+      const { rerender } = renderHook(() => useItemWithComments(12345));
+      const readsOnMount = cacheReads();
+      rerender();
+      rerender();
+      rerender();
+
+      expect(readsOnMount).toBeGreaterThan(0);
+      expect(cacheReads()).toBe(readsOnMount);
+    });
+
     it('accepts initialItem prop to skip item fetch', async () => {
       const { result } = renderHook(() =>
         useItemWithComments(12345, { initialItem: testItem })
