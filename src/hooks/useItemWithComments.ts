@@ -57,7 +57,7 @@ function withFetchedFields(item: Item | null | undefined, fetched: Item): Item |
 }
 
 export function useItemWithComments(itemId: number | string, { initialItem = null, skipOrderingCompletion = false, isPriority = true, deferComments = false }: UseItemWithCommentsOptions = {}): UseItemWithCommentsResult {
-  const initialCache = getCachedItem(itemId);
+  const [initialCache] = useState(() => getCachedItem(itemId));
   
   // Lazy initialization from cache or initialItem for instant render
   const [item, setItem] = useState(() => withText(initialItem, initialCache?.item) ?? initialCache?.item ?? null);
