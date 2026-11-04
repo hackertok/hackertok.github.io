@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { StoryCard } from './StoryCard';
 import { Spinner } from './Spinner';
@@ -44,6 +44,8 @@ interface InfiniteStoryListPageProps {
   failTitle?: string;
 }
 
+const PRELOAD_MARGIN_PX = 200;
+
 /**
  * Shared infinite-scroll story list. Owns cascade slots,
  * load-more trigger, auto-retry, and PageStage.
@@ -61,8 +63,13 @@ export function InfiniteStoryListPage({
 
   const { ref, inView } = useInView({
     threshold: 0,
-    rootMargin: '200px',
+    rootMargin: `${PRELOAD_MARGIN_PX}px`,
   });
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const setSentinel = useCallback((node: HTMLDivElement | null) => {
+    sentinelRef.current = node;
+    ref(node);
+  }, [ref]);
 
   const { isOnline } = useNetworkStatus();
   const { isRetrying, resetRetry } = useAutoRetry({
@@ -72,9 +79,15 @@ export function InfiniteStoryListPage({
   });
 
   useEffect(() => {
-    if (inView && !loading && hasMore && !error) {
-      void loadMore().catch(() => { /* error state set internally */ });
-    }
+    if (!inView || loading || !hasMore || error) return;
+    // `inView` only changes when the observer reports, and it doesn't while
+    // the page isn't drawn (a background tab): after a page lands it can
+    // still be true with the end of the list far below. The observer measures
+    // against the layout viewport, `clientHeight`: on a zoomed-in iPad,
+    // `innerHeight` is only the part on screen.
+    const top = sentinelRef.current?.getBoundingClientRect().top;
+    if (top !== undefined && top > document.documentElement.clientHeight + PRELOAD_MARGIN_PX) return;
+    void loadMore().catch(() => { /* error state set internally */ });
   }, [inView, loading, hasMore, error, loadMore]);
 
   const retryLoadMore = useCallback(() => {
@@ -138,7 +151,7 @@ export function InfiniteStoryListPage({
           </div>
 
           {hasMore && stories.length > 0 && (
-            <div ref={ref} className="py-4">
+            <div ref={setSentinel} className="py-4">
               {loading && <Spinner />}
             </div>
           )}
