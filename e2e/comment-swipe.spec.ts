@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { setupApiMocks, FIREBASE_WS_PATTERN, createFirebaseWsHandler } from './fixtures/api-mocks';
 import {
+  dispatchSwipeGesture,
   expectActiveSwipePanelText,
   waitForSwipeReady,
   smoothScrollAndAwaitSettled,
@@ -271,6 +272,44 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     await page.goto('/#/item/5555');
 
     await expect(page.getByText('Comment deleted').first()).toBeVisible({ timeout: 10000 });
+  });
+
+  test('swipes past a deleted sibling with no replies', async ({ page }) => {
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({
+      itemOverrides: {
+        5555: {
+          id: 5555,
+          time: Math.floor(Date.now() / 1000) - 600,
+          parent: 12345,
+          type: 'comment',
+          deleted: true,
+        },
+        12345: {
+          id: 12345,
+          title: 'Rust Is the Future of JavaScript Infrastructure',
+          url: 'https://leerob.io/blog/rust',
+          by: 'leerob',
+          score: 284,
+          time: Math.floor(Date.now() / 1000) - 3600,
+          descendants: 5,
+          kids: [1001, 5555, 1002, 1003, 1004],
+          type: 'story',
+        },
+      },
+    }));
+
+    await page.goto('/#/item/1001');
+    await waitForSwipeReady(page, 5);
+    // 1003 is the swipe's second stop once 5555 is known to be skipped.
+    await expect(page.locator('[data-item-id="1003"] .comment-content').first()).toBeAttached({ timeout: 10000 });
+
+    const container = page.getByTestId('swipe-container');
+    const width = await container.evaluate((el) => el.getBoundingClientRect().width);
+    await dispatchSwipeGesture(container, { forward: true, width });
+
+    await waitForScrollAtIndex(page, 2);
+    await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
+    await expectActiveSwipePanelText(page, 'jgrahamc', { minPanels: 5 });
   });
 
   test('shows error state when comment fetch fails', async ({ page }) => {

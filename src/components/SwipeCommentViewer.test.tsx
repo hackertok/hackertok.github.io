@@ -368,6 +368,26 @@ describe('SwipeCommentViewer', () => {
     expect(window.scrollTo).not.toHaveBeenCalled();
   });
 
+  it('loads the swipe\'s next stops past a deleted sibling, and not the deleted one', async () => {
+    const items: Record<number, FirebaseItem> = {
+      ...defaultItems,
+      3001: { id: 3001, type: 'comment', deleted: true, parent: 12345, time: Math.floor(Date.now() / 1000) - 500 },
+      12345: { ...defaultItems[12345], kids: [1001, 3001, 1002, 1003, 1004] },
+    };
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => items[Number(id)] ?? null);
+
+    render(<SwipeCommentViewer initialCommentId="1001" />, {
+      initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],
+    });
+
+    // 1003 is three panels on, but the second stop.
+    const panel1003 = () => document.querySelector('[data-item-id="1003"]')!;
+    await waitFor(() => {
+      expect(panel1003().textContent).toContain(mockAlgoliaCommentItem1003.text);
+    });
+    expect(document.querySelector('[data-item-id="3001"] .animate-pulse')).not.toBeNull();
+  });
+
   it('stays on the comment it was opened on when its siblings load on a retry', async () => {
     let parentReads = 0;
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {

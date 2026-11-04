@@ -20,7 +20,10 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
 
   // Track a stable comment ID for fetching — only changes on external navigation, not on swipe URL updates
   const [siblingSourceId, setSiblingSourceId] = useState(initialCommentId);
-  const { siblingIds, currentIndex: initialIndex, loading, error, retry } = useSiblingComments(siblingSourceId);
+  const { siblingIds, hiddenIds, currentIndex: initialIndex, loading, error, retry } = useSiblingComments(siblingSourceId);
+  // Skipped rather than left out, so the panels keep their places while a
+  // swipe is under way.
+  const isSkipped = useCallback((index: number) => hiddenIds.has(siblingIds[index]), [hiddenIds, siblingIds]);
 
   const { isOnline } = useNetworkStatus();
   const { isRetrying } = useAutoRetry({
@@ -38,6 +41,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     itemCount: siblingIds.length,
     initialIndex,
     enabled: scrollInitialized,
+    isSkipped,
   });
 
   const hasInitializedScrollRef = useRef(false);
@@ -147,6 +151,17 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
 
   const VIRTUALIZE_BUFFER = 2;
 
+  // The shown panel and the swipe's next stops each way.
+  const windowIndexes = new Set([shownIndex]);
+  for (const step of [-1, 1]) {
+    let stops = 0;
+    for (let index = shownIndex + step; stops < VIRTUALIZE_BUFFER && index >= 0 && index < siblingIds.length; index += step) {
+      if (isSkipped(index)) continue;
+      windowIndexes.add(index);
+      stops++;
+    }
+  }
+
   // One container for the opening comment and the full list, and panels keyed
   // by id, so the comment on screen isn't mounted again when its siblings land.
   return (
@@ -156,8 +171,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
       data-testid="swipe-container"
     >
       {siblingIds.map((id, index) => {
-        const distance = Math.abs(index - shownIndex);
-        const isWithinWindow = distance <= VIRTUALIZE_BUFFER;
+        const isWithinWindow = windowIndexes.has(index);
 
         return (
           <div

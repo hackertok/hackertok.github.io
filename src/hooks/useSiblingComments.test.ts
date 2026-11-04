@@ -72,6 +72,60 @@ describe('useSiblingComments', () => {
     expect(result.current.currentIndex).toBe(1);
   });
 
+  describe('flagged and deleted siblings', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const thread: Record<number, FirebaseItem> = {
+      ...mockItems,
+      3001: { id: 3001, type: 'comment', deleted: true, parent: 12345, time: now - 500 },
+      3002: { id: 3002, type: 'comment', by: 'spammer', text: '[flagged]', dead: true, parent: 12345, time: now - 400 },
+      3003: { id: 3003, type: 'comment', deleted: true, parent: 12345, kids: [4001], time: now - 200 },
+      12345: { ...mockItems[12345], kids: [1001, 3001, 1002, 3002, 3003, 1003] },
+    };
+
+    beforeEach(() => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => thread[Number(id)] ?? null);
+    });
+
+    it('finds the ones with no replies, which the thread leaves out', async () => {
+      const { result } = renderHook(() => useSiblingComments(1002));
+
+      await waitFor(() => {
+        expect(result.current.hiddenIds).toEqual(new Set([3001, 3002]));
+      });
+      expect(result.current.siblingIds).toEqual([1001, 3001, 1002, 3002, 3003, 1003]);
+      expect(result.current.currentIndex).toBe(2);
+    });
+
+    it('never counts the one it was opened on', async () => {
+      const { result } = renderHook(() => useSiblingComments(3001));
+
+      await waitFor(() => {
+        expect(result.current.hiddenIds).toEqual(new Set([3002]));
+      });
+    });
+
+    it('has the siblings in before it reads them', async () => {
+      let releaseSiblings!: () => void;
+      const siblingsRead = new Promise<void>(resolve => { releaseSiblings = resolve; });
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) !== 1002 && Number(id) !== 12345) await siblingsRead;
+        return thread[Number(id)] ?? null;
+      });
+      const { result } = renderHook(() => useSiblingComments(1002));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+      expect(result.current.siblingIds).toEqual([1001, 3001, 1002, 3002, 3003, 1003]);
+      expect(result.current.hiddenIds.size).toBe(0);
+
+      releaseSiblings();
+      await waitFor(() => {
+        expect(result.current.hiddenIds).toEqual(new Set([3001, 3002]));
+      });
+    });
+  });
+
   it('returns single comment when parent_id is null', async () => {
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
       if (Number(id) === 7777) {

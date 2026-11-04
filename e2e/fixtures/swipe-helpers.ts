@@ -85,6 +85,51 @@ export async function expectActiveSwipePanelText(
 }
 
 /**
+ * Dispatch one swipe gesture on the swipe container, forward or back.
+ * Uses Event + Object.defineProperty to avoid `new Touch()` / `new TouchEvent()`
+ * which throw "Illegal constructor" in WebKit (Safari) and may be unavailable
+ * in Firefox desktop even with hasTouch:true.
+ */
+export async function dispatchSwipeGesture(container: Locator, { forward, width }: { forward: boolean; width: number }) {
+  await container.evaluate((el, { forward, width }) => {
+    const rect = el.getBoundingClientRect();
+    const centerX = rect.left + width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    // Swipe distance: 40% of panel width (exceeds the 25% commit threshold)
+    const swipeDistance = width * 0.4;
+    const endX = forward ? centerX - swipeDistance : centerX + swipeDistance;
+
+    const makeTouch = (clientX: number) => ({
+      identifier: 1,
+      target: el,
+      clientX,
+      clientY: centerY,
+      pageX: clientX,
+      pageY: centerY,
+      screenX: clientX,
+      screenY: centerY,
+      radiusX: 1,
+      radiusY: 1,
+      rotationAngle: 0,
+      force: 1,
+    });
+
+    const dispatchTouch = (type: string, touches: object[], changed?: object[]) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'touches', { value: touches });
+      Object.defineProperty(event, 'changedTouches', { value: changed ?? touches });
+      Object.defineProperty(event, 'targetTouches', { value: touches });
+      el.dispatchEvent(event);
+    };
+
+    dispatchTouch('touchstart', [makeTouch(centerX)]);
+    dispatchTouch('touchmove', [makeTouch(endX)]);
+    dispatchTouch('touchend', [], [makeTouch(endX)]);
+  }, { forward, width });
+}
+
+/**
  * Navigate the swipe viewer to a specific panel index by simulating touch
  * gesture events that trigger the hook's native gesture system.
  * Handles multi-step navigation (e.g., index 0 → 2 fires two gestures).
@@ -138,46 +183,7 @@ export async function smoothScrollAndAwaitSettled(container: Locator, targetLeft
     // initial scrollToIndex — the handler silently ignores the touch.
     let success = false;
     for (let attempt = 0; attempt < 3 && !success; attempt++) {
-      // Dispatch touch gesture for one step.
-      // Uses Event + Object.defineProperty to avoid `new Touch()` / `new TouchEvent()`
-      // which throw "Illegal constructor" in WebKit (Safari) and may be unavailable
-      // in Firefox desktop even with hasTouch:true.
-      await container.evaluate((el, { forward, width }) => {
-        const rect = el.getBoundingClientRect();
-        const centerX = rect.left + width / 2;
-        const centerY = rect.top + rect.height / 2;
-
-        // Swipe distance: 40% of panel width (exceeds the 25% commit threshold)
-        const swipeDistance = width * 0.4;
-        const endX = forward ? centerX - swipeDistance : centerX + swipeDistance;
-
-        const makeTouch = (clientX: number) => ({
-          identifier: 1,
-          target: el,
-          clientX,
-          clientY: centerY,
-          pageX: clientX,
-          pageY: centerY,
-          screenX: clientX,
-          screenY: centerY,
-          radiusX: 1,
-          radiusY: 1,
-          rotationAngle: 0,
-          force: 1,
-        });
-
-        const dispatchTouch = (type: string, touches: object[], changed?: object[]) => {
-          const event = new Event(type, { bubbles: true, cancelable: true });
-          Object.defineProperty(event, 'touches', { value: touches });
-          Object.defineProperty(event, 'changedTouches', { value: changed ?? touches });
-          Object.defineProperty(event, 'targetTouches', { value: touches });
-          el.dispatchEvent(event);
-        };
-
-        dispatchTouch('touchstart', [makeTouch(centerX)]);
-        dispatchTouch('touchmove', [makeTouch(endX)]);
-        dispatchTouch('touchend', [], [makeTouch(endX)]);
-      }, { forward: isForward, width: panelWidth });
+      await dispatchSwipeGesture(container, { forward: isForward, width: panelWidth });
 
       // Wait for the animation to complete (panel gets .active). Long enough
       // for WebKit under load: a gesture that lands late after a retry has
