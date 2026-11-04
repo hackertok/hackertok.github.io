@@ -32,6 +32,12 @@ interface UseSwipeScrollResult {
   currentIndex: number;
   currentIndexRef: React.MutableRefObject<number>;
   scrollToIndex: (index: number) => void;
+  /**
+   * Makes `index` the current panel where the page already is, and forgets
+   * the scroll positions saved for the others: for a new list of panels
+   * around the one on screen.
+   */
+  resetToIndex: (index: number) => void;
   isScrollingProgrammaticallyRef: React.MutableRefObject<boolean>;
 }
 
@@ -213,6 +219,13 @@ export function useSwipeScroll({
       isScrollingProgrammaticallyRef.current = false;
     }, 50);
   }, [activatePanelAndRestoreScroll]);
+
+  const resetToIndex = useCallback((index: number) => {
+    scrollMapRef.current.clear();
+    currentIndexRef.current = index;
+    setCurrentIndex(index);
+    activatePanel(index);
+  }, [activatePanel]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -819,6 +832,7 @@ export function useSwipeScroll({
     currentIndex,
     currentIndexRef,
     scrollToIndex,
+    resetToIndex,
     isScrollingProgrammaticallyRef,
   };
 }

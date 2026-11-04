@@ -33,7 +33,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
   const {
     containerRef,
     currentIndex,
-    scrollToIndex,
+    resetToIndex,
   } = useSwipeScroll({
     itemCount: siblingIds.length,
     initialIndex,
@@ -44,7 +44,11 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
   const isOurNavigationRef = useRef(false);
   const lastInitialCommentIdRef = useRef(initialCommentId);
 
-  const currentCommentId = siblingIds[currentIndex];
+  // Until its siblings are in, the list holds just the comment being opened.
+  // It shows meanwhile, and the swipe starts once they've loaded.
+  const isOpening = !scrollInitialized && siblingIds.length === 1;
+  const shownIndex = scrollInitialized ? currentIndex : initialIndex;
+  const currentCommentId = siblingIds[shownIndex];
 
   // Track comment authors as they load — used for document title
   const [authorsByCommentId, setAuthorsByCommentId] = useState<Record<number, string>>({});
@@ -71,19 +75,25 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     }
   }, [initialCommentId]);
 
-  // Scroll-init: scroll to correct position once siblings are loaded. A failed
-  // load leaves the list at the one comment, so this waits for the retry.
+  // A comment opens at its top, wherever the page before it was.
+  useLayoutEffect(() => {
+    if (isOpening) window.scrollTo(0, 0);
+  }, [isOpening]);
+
+  // Scroll-init: once the siblings are in, the swipe starts on the comment
+  // that has been showing, at the reader's place in it. A failed load leaves
+  // the list at that one comment, so the swipe waits for the retry.
   useLayoutEffect(() => {
     if (hasInitializedScrollRef.current) return;
     if (siblingIds.length === 0 || loading || error) return;
 
     const idx = siblingIds.indexOf(Number(initialCommentId));
-    const targetIdx = idx >= 0 ? idx : initialIndex;
 
     hasInitializedScrollRef.current = true;
     setScrollInitialized(true);
-    scrollToIndex(targetIdx);
-  }, [siblingIds, loading, error, initialCommentId, initialIndex, scrollToIndex]);
+    resetToIndex(idx >= 0 ? idx : initialIndex);
+    if (idx < 0) window.scrollTo(0, 0);
+  }, [siblingIds, loading, error, initialCommentId, initialIndex, resetToIndex]);
 
   // URL update on swipe — only after scroll position is initialized.
   // Uses scrollInitialized state (not ref) so it's batched with setCurrentIndex
@@ -127,16 +137,6 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     };
   }, []);
 
-  if (loading && siblingIds.length <= 1) {
-    return (
-      <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel active" data-testid="swipe-panel">
-          <FullScreenCommentSkeletonPanel />
-        </div>
-      </div>
-    );
-  }
-
   if (error && siblingIds.length <= 1 && !isRetrying) {
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
@@ -145,18 +145,10 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     );
   }
 
-  if (error && siblingIds.length <= 1 && isRetrying) {
-    return (
-      <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel active" data-testid="swipe-panel">
-          <FullScreenCommentSkeletonPanel />
-        </div>
-      </div>
-    );
-  }
-
   const VIRTUALIZE_BUFFER = 2;
 
+  // One container for the opening comment and the full list, and panels keyed
+  // by id, so the comment on screen isn't mounted again when its siblings land.
   return (
     <div
       ref={containerRef}
@@ -164,13 +156,13 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
       data-testid="swipe-container"
     >
       {siblingIds.map((id, index) => {
-        const distance = Math.abs(index - currentIndex);
+        const distance = Math.abs(index - shownIndex);
         const isWithinWindow = distance <= VIRTUALIZE_BUFFER;
 
         return (
           <div
             key={id}
-            className="swipe-snap-panel"
+            className={isOpening ? 'swipe-snap-panel active' : 'swipe-snap-panel'}
             data-testid="swipe-panel"
             data-item-id={id}
           >

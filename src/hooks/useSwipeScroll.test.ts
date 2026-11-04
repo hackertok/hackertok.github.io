@@ -362,6 +362,30 @@ describe('useSwipeScroll', () => {
     });
   });
 
+  // -- resetToIndex --
+
+  describe('resetToIndex', () => {
+    it('switches panel where the page is, and forgets the saved positions', () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      mockScrollY = 200;
+      act(() => { hookResult.scrollToIndex(1); });
+      mockScrollY = 300;
+      vi.mocked(window.scrollTo).mockClear();
+
+      act(() => { hookResult.resetToIndex(2); });
+
+      expect(hookResult.currentIndex).toBe(2);
+      expect(hasActive(2)).toBe(true);
+      expect(activePanelCount()).toBe(1);
+      expect(window.scrollTo).not.toHaveBeenCalled();
+
+      // Panel 0 was left at 200 before the reset.
+      act(() => { hookResult.scrollToIndex(0); });
+      expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+    });
+  });
+
   // -- Touch gestures --
 
   describe('touch gestures', () => {
