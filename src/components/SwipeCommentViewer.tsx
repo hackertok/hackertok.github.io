@@ -71,10 +71,11 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     }
   }, [initialCommentId]);
 
-  // Scroll-init: scroll to correct position once siblings are loaded
+  // Scroll-init: scroll to correct position once siblings are loaded. A failed
+  // load leaves the list at the one comment, so this waits for the retry.
   useLayoutEffect(() => {
     if (hasInitializedScrollRef.current) return;
-    if (siblingIds.length === 0 || loading) return;
+    if (siblingIds.length === 0 || loading || error) return;
 
     const idx = siblingIds.indexOf(Number(initialCommentId));
     const targetIdx = idx >= 0 ? idx : initialIndex;
@@ -82,7 +83,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     hasInitializedScrollRef.current = true;
     setScrollInitialized(true);
     scrollToIndex(targetIdx);
-  }, [siblingIds, loading, initialCommentId, initialIndex, scrollToIndex]);
+  }, [siblingIds, loading, error, initialCommentId, initialIndex, scrollToIndex]);
 
   // URL update on swipe — only after scroll position is initialized.
   // Uses scrollInitialized state (not ref) so it's batched with setCurrentIndex

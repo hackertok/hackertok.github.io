@@ -331,6 +331,24 @@ describe('SwipeCommentViewer', () => {
     expect(paths).toEqual(['/item/1003', '/item/3101']);
   });
 
+  it('stays on the comment it was opened on when its siblings load on a retry', async () => {
+    let parentReads = 0;
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+      if (Number(id) === 12345 && parentReads++ === 0) throw new Error('Network error');
+      return defaultItems[Number(id)] ?? null;
+    });
+
+    render(<SwipeCommentViewer initialCommentId="1003" />, {
+      initialEntries: [{ pathname: '/item/1003', state: { isComment: true } }],
+    });
+
+    // The retry waits out a 2s backoff.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('swipe-panel')).toHaveLength(4);
+      expect(activePanelId()).toBe('1003');
+    }, { timeout: 5000 });
+  }, 10000);
+
   it('sets data-item-id on each panel', async () => {
     render(<SwipeCommentViewer initialCommentId="1001" />, {
       initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],
