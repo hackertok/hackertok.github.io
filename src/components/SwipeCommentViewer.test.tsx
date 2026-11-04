@@ -388,22 +388,33 @@ describe('SwipeCommentViewer', () => {
     expect(document.querySelector('[data-item-id="3001"] .animate-pulse')).not.toBeNull();
   });
 
-  it('stays on the comment it was opened on when its siblings load on a retry', async () => {
+  it('stays on the comment it was opened on, without mounting it again, when its siblings load on a retry', async () => {
     let parentReads = 0;
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
       if (Number(id) === 12345 && parentReads++ === 0) throw new Error('Network error');
       return defaultItems[Number(id)] ?? null;
     });
+    let commentFetches = 0;
+    server.use(
+      http.get(`${ALGOLIA_API}/items/1003`, () => {
+        commentFetches++;
+        return HttpResponse.json(mockAlgoliaCommentItem1003);
+      }),
+    );
 
     render(<SwipeCommentViewer initialCommentId="1003" />, {
       initialEntries: [{ pathname: '/item/1003', state: { isComment: true } }],
     });
+    expect(await screen.findByText(mockAlgoliaCommentItem1003.text)).toBeInTheDocument();
+    const panel = document.querySelector('[data-item-id="1003"]');
 
     // The retry waits out a 2s backoff.
     await waitFor(() => {
       expect(screen.getAllByTestId('swipe-panel')).toHaveLength(4);
       expect(activePanelId()).toBe('1003');
     }, { timeout: 5000 });
+    expect(document.querySelector('[data-item-id="1003"]')).toBe(panel);
+    expect(commentFetches).toBe(1);
   }, 10000);
 
   it('sets data-item-id on each panel', async () => {

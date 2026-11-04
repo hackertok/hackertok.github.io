@@ -26,7 +26,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
   const isSkipped = useCallback((index: number) => hiddenIds.has(siblingIds[index]), [hiddenIds, siblingIds]);
 
   const { isOnline } = useNetworkStatus();
-  const { isRetrying } = useAutoRetry({
+  const { giveUp } = useAutoRetry({
     error,
     retryFn: retry,
     isOnline,
@@ -141,7 +141,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     };
   }, []);
 
-  if (error && siblingIds.length <= 1 && !isRetrying) {
+  if (error && siblingIds.length <= 1 && giveUp) {
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
         <StateView variant="error" title="Failed to load comments" description={error} action={{ label: 'Retry', onClick: () => void retry().catch(() => { /* error state set internally */ }) }} className="swipe-state-center" />
