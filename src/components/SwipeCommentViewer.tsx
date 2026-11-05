@@ -20,10 +20,13 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
 
   // Track a stable comment ID for fetching — only changes on external navigation, not on swipe URL updates
   const [siblingSourceId, setSiblingSourceId] = useState(initialCommentId);
-  const { siblingIds, currentIndex: initialIndex, loading, error, retry } = useSiblingComments(siblingSourceId);
+  const { siblingIds, hiddenIds, currentIndex: initialIndex, loading, error, retry } = useSiblingComments(siblingSourceId);
+  // Skipped rather than left out, so the panels keep their places while a
+  // swipe is under way.
+  const isSkipped = useCallback((index: number) => hiddenIds.has(siblingIds[index]), [hiddenIds, siblingIds]);
 
   const { isOnline } = useNetworkStatus();
-  const { isRetrying } = useAutoRetry({
+  const { giveUp } = useAutoRetry({
     error,
     retryFn: retry,
     isOnline,
@@ -33,18 +36,23 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
   const {
     containerRef,
     currentIndex,
-    scrollToIndex,
+    resetToIndex,
   } = useSwipeScroll({
     itemCount: siblingIds.length,
     initialIndex,
     enabled: scrollInitialized,
+    isSkipped,
   });
 
   const hasInitializedScrollRef = useRef(false);
   const isOurNavigationRef = useRef(false);
   const lastInitialCommentIdRef = useRef(initialCommentId);
 
-  const currentCommentId = siblingIds[currentIndex];
+  // Until its siblings are in, the list holds just the comment being opened.
+  // It shows meanwhile, and the swipe starts once they've loaded.
+  const isOpening = !scrollInitialized && siblingIds.length === 1;
+  const shownIndex = scrollInitialized ? currentIndex : initialIndex;
+  const currentCommentId = siblingIds[shownIndex];
 
   // Track comment authors as they load — used for document title
   const [authorsByCommentId, setAuthorsByCommentId] = useState<Record<number, string>>({});
@@ -71,18 +79,25 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     }
   }, [initialCommentId]);
 
-  // Scroll-init: scroll to correct position once siblings are loaded
+  // A comment opens at its top, wherever the page before it was.
+  useLayoutEffect(() => {
+    if (isOpening) window.scrollTo(0, 0);
+  }, [isOpening]);
+
+  // Scroll-init: once the siblings are in, the swipe starts on the comment
+  // that has been showing, at the reader's place in it. A failed load leaves
+  // the list at that one comment, so the swipe waits for the retry.
   useLayoutEffect(() => {
     if (hasInitializedScrollRef.current) return;
-    if (siblingIds.length === 0 || loading) return;
+    if (siblingIds.length === 0 || loading || error) return;
 
     const idx = siblingIds.indexOf(Number(initialCommentId));
-    const targetIdx = idx >= 0 ? idx : initialIndex;
 
     hasInitializedScrollRef.current = true;
     setScrollInitialized(true);
-    scrollToIndex(targetIdx);
-  }, [siblingIds, loading, initialCommentId, initialIndex, scrollToIndex]);
+    resetToIndex(idx >= 0 ? idx : initialIndex);
+    if (idx < 0) window.scrollTo(0, 0);
+  }, [siblingIds, loading, error, initialCommentId, initialIndex, resetToIndex]);
 
   // URL update on swipe — only after scroll position is initialized.
   // Uses scrollInitialized state (not ref) so it's batched with setCurrentIndex
@@ -126,17 +141,7 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     };
   }, []);
 
-  if (loading && siblingIds.length <= 1) {
-    return (
-      <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel active" data-testid="swipe-panel">
-          <FullScreenCommentSkeletonPanel />
-        </div>
-      </div>
-    );
-  }
-
-  if (error && siblingIds.length <= 1 && !isRetrying) {
+  if (error && siblingIds.length <= 1 && giveUp) {
     return (
       <div className="swipe-snap-container" data-testid="swipe-container">
         <StateView variant="error" title="Failed to load comments" description={error} action={{ label: 'Retry', onClick: () => void retry().catch(() => { /* error state set internally */ }) }} className="swipe-state-center" />
@@ -144,18 +149,21 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
     );
   }
 
-  if (error && siblingIds.length <= 1 && isRetrying) {
-    return (
-      <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel active" data-testid="swipe-panel">
-          <FullScreenCommentSkeletonPanel />
-        </div>
-      </div>
-    );
-  }
-
   const VIRTUALIZE_BUFFER = 2;
 
+  // The shown panel and the swipe's next stops each way.
+  const windowIndexes = new Set([shownIndex]);
+  for (const step of [-1, 1]) {
+    let stops = 0;
+    for (let index = shownIndex + step; stops < VIRTUALIZE_BUFFER && index >= 0 && index < siblingIds.length; index += step) {
+      if (isSkipped(index)) continue;
+      windowIndexes.add(index);
+      stops++;
+    }
+  }
+
+  // One container for the opening comment and the full list, and panels keyed
+  // by id, so the comment on screen isn't mounted again when its siblings land.
   return (
     <div
       ref={containerRef}
@@ -163,13 +171,12 @@ export function SwipeCommentViewer({ initialCommentId }: SwipeCommentViewerProps
       data-testid="swipe-container"
     >
       {siblingIds.map((id, index) => {
-        const distance = Math.abs(index - currentIndex);
-        const isWithinWindow = distance <= VIRTUALIZE_BUFFER;
+        const isWithinWindow = windowIndexes.has(index);
 
         return (
           <div
             key={id}
-            className="swipe-snap-panel"
+            className={isOpening ? 'swipe-snap-panel active' : 'swipe-snap-panel'}
             data-testid="swipe-panel"
             data-item-id={id}
           >

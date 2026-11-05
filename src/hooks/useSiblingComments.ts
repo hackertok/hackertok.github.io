@@ -1,8 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchFirebaseItem } from '../api/hn';
+import { fetchFirebaseItem, fetchHiddenCommentIds } from '../api/hn';
+
+const NO_IDS: ReadonlySet<number> = new Set();
 
 interface UseSiblingCommentsResult {
   siblingIds: number[];
+  /**
+   * The flagged and deleted siblings with no replies, which the thread leaves
+   * out. Every sibling is read for this, so it fills in after `siblingIds`.
+   */
+  hiddenIds: ReadonlySet<number>;
   currentIndex: number;
   loading: boolean;
   error: string | null;
@@ -11,6 +18,7 @@ interface UseSiblingCommentsResult {
 
 export function useSiblingComments(commentId: number | string): UseSiblingCommentsResult {
   const [siblingIds, setSiblingIds] = useState<number[]>([Number(commentId)]);
+  const [hiddenIds, setHiddenIds] = useState(NO_IDS);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +29,7 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
 
     // Reset to show at least this comment while loading
     setSiblingIds([numericId]);
+    setHiddenIds(NO_IDS);
     setCurrentIndex(0);
     setError(null);
     setLoading(true);
@@ -51,6 +60,15 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
         setCurrentIndex(0);
       }
       setLoading(false);
+
+      if (kids && kids.length > 1) {
+        void fetchHiddenCommentIds(kids, numericId, signal).then(
+          hidden => {
+            if (!signal.aborted) setHiddenIds(hidden);
+          },
+          () => { /* none are skipped */ },
+        );
+      }
     } catch (err) {
       if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
       setError(err instanceof Error ? err.message : String(err));
@@ -75,5 +93,5 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
     };
   }, [load]);
 
-  return { siblingIds, currentIndex, loading, error, retry };
+  return { siblingIds, hiddenIds, currentIndex, loading, error, retry };
 }

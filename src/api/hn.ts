@@ -356,6 +356,22 @@ export async function fetchFirebaseItem(id: number | string, signal?: AbortSigna
   return item;
 }
 
+/**
+ * The comments among `ids` that a thread leaves out: flagged and deleted ones
+ * with no replies. Never `keepId`, so a link to it still opens, nor one whose
+ * read fails.
+ */
+export async function fetchHiddenCommentIds(ids: number[], keepId: number, signal?: AbortSignal): Promise<Set<number>> {
+  const items = await Promise.all(ids.map(id => hnSdk.readItem(id).catch(() => null)));
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+  return new Set(ids.filter((id, i) => {
+    const item = items[i];
+    return id !== keepId && !!item && !item.kids?.length && (!!item.dead || !!item.deleted);
+  }));
+}
+
 // Algolia is much faster than Firebase here — 1-2 requests instead of hundreds
 // of recursive item fetches. `stopIfCapped` skips the remaining pages of a
 // thread bigger than search returns.

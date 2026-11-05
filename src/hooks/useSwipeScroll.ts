@@ -8,6 +8,7 @@ import {
 } from '../utils/releaseVelocity';
 
 const noop = () => undefined;
+const neverSkipped = () => false;
 
 /**
  * Settle curve for a committed swipe: starts at 1.5× its average speed
@@ -25,6 +26,8 @@ interface UseSwipeScrollOptions {
   itemCount: number;
   initialIndex?: number;
   enabled?: boolean;
+  /** Panels a swipe passes over, to the next one it can land on. */
+  isSkipped?: (index: number) => boolean;
 }
 
 interface UseSwipeScrollResult {
@@ -32,6 +35,12 @@ interface UseSwipeScrollResult {
   currentIndex: number;
   currentIndexRef: React.MutableRefObject<number>;
   scrollToIndex: (index: number) => void;
+  /**
+   * Makes `index` the current panel where the page already is, and forgets
+   * the scroll positions saved for the others: for a new list of panels
+   * around the one on screen.
+   */
+  resetToIndex: (index: number) => void;
   isScrollingProgrammaticallyRef: React.MutableRefObject<boolean>;
 }
 
@@ -39,6 +48,7 @@ export function useSwipeScroll({
   itemCount,
   initialIndex = 0,
   enabled = true,
+  isSkipped = neverSkipped,
 }: UseSwipeScrollOptions): UseSwipeScrollResult {
   const { enableSwipeMode, disableSwipeMode } = useScrollContainer();
 
@@ -62,6 +72,11 @@ export function useSwipeScroll({
   useLayoutEffect(() => {
     itemCountRef.current = itemCount;
   }, [itemCount]);
+
+  const isSkippedRef = useRef(isSkipped);
+  useLayoutEffect(() => {
+    isSkippedRef.current = isSkipped;
+  }, [isSkipped]);
 
   useLayoutEffect(() => {
     enableSwipeMode();
@@ -213,6 +228,13 @@ export function useSwipeScroll({
       isScrollingProgrammaticallyRef.current = false;
     }, 50);
   }, [activatePanelAndRestoreScroll]);
+
+  const resetToIndex = useCallback((index: number) => {
+    scrollMapRef.current.clear();
+    currentIndexRef.current = index;
+    setCurrentIndex(index);
+    activatePanel(index);
+  }, [activatePanel]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -518,9 +540,11 @@ export function useSwipeScroll({
             cachedPanelWidth = container.clientWidth || window.innerWidth;
             // Lock direction and determine target
             lockedDir = deltaX < 0 ? 'left' : 'right';
-            targetIndex = lockedDir === 'left'
-              ? currentIndexRef.current + 1
-              : currentIndexRef.current - 1;
+            const step = lockedDir === 'left' ? 1 : -1;
+            targetIndex = currentIndexRef.current + step;
+            while (targetIndex >= 0 && targetIndex < itemCountRef.current && isSkippedRef.current(targetIndex)) {
+              targetIndex += step;
+            }
             hasTarget = targetIndex >= 0 && targetIndex < itemCountRef.current;
           } else {
             // Vertical gesture — stop tracking
@@ -819,6 +843,7 @@ export function useSwipeScroll({
     currentIndex,
     currentIndexRef,
     scrollToIndex,
+    resetToIndex,
     isScrollingProgrammaticallyRef,
   };
 }

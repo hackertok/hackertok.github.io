@@ -129,10 +129,10 @@ function swipeGesture(el: Element, direction: 'left' | 'right', distance: number
 type HookResult = ReturnType<typeof useSwipeScroll>;
 let hookResult: HookResult = null!;
 
-function TestHarness({ itemCount = 3, initialIndex = 0, enabled = true }: {
-  itemCount?: number; initialIndex?: number; enabled?: boolean;
+function TestHarness({ itemCount = 3, initialIndex = 0, enabled = true, isSkipped }: {
+  itemCount?: number; initialIndex?: number; enabled?: boolean; isSkipped?: (index: number) => boolean;
 }) {
-  const result = useSwipeScroll({ itemCount, initialIndex, enabled });
+  const result = useSwipeScroll({ itemCount, initialIndex, enabled, isSkipped });
   // eslint-disable-next-line react-hooks/globals
   hookResult = result;
   return createElement('div', { ref: result.containerRef, 'data-testid': 'container' },
@@ -359,6 +359,30 @@ describe('useSwipeScroll', () => {
       vi.mocked(window.scrollTo).mockClear();
       act(() => { hookResult.scrollToIndex(0); });
       expect(window.scrollTo).toHaveBeenCalledWith(0, 200);
+    });
+  });
+
+  // -- resetToIndex --
+
+  describe('resetToIndex', () => {
+    it('switches panel where the page is, and forgets the saved positions', () => {
+      render(createElement(TestHarness), { wrapper: Wrapper });
+
+      mockScrollY = 200;
+      act(() => { hookResult.scrollToIndex(1); });
+      mockScrollY = 300;
+      vi.mocked(window.scrollTo).mockClear();
+
+      act(() => { hookResult.resetToIndex(2); });
+
+      expect(hookResult.currentIndex).toBe(2);
+      expect(hasActive(2)).toBe(true);
+      expect(activePanelCount()).toBe(1);
+      expect(window.scrollTo).not.toHaveBeenCalled();
+
+      // Panel 0 was left at 200 before the reset.
+      act(() => { hookResult.scrollToIndex(0); });
+      expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
     });
   });
 
@@ -668,6 +692,39 @@ describe('useSwipeScroll', () => {
 
       expect(hasActive(2)).toBe(true);
       expect(hookResult.currentIndex).toBe(2);
+    });
+
+    it('passes over skipped panels, both ways (reduced motion)', async () => {
+      reducedMotionValue = true;
+      const isSkipped = (index: number) => index === 1 || index === 2;
+      render(createElement(TestHarness, { itemCount: 4, isSkipped }), { wrapper: Wrapper });
+
+      swipeGesture(getContainer(), 'left', 150);
+      act(() => { vi.runAllTimers(); });
+      await act(async () => { /* flush */ });
+      expect(hookResult.currentIndex).toBe(3);
+      expect(hasActive(3)).toBe(true);
+      expect(activePanelCount()).toBe(1);
+
+      swipeGesture(getContainer(), 'right', 150);
+      act(() => { vi.runAllTimers(); });
+      await act(async () => { /* flush */ });
+      expect(hookResult.currentIndex).toBe(0);
+      expect(hasActive(0)).toBe(true);
+    });
+
+    it('stays when every panel ahead is skipped (reduced motion)', async () => {
+      reducedMotionValue = true;
+      const isSkipped = (index: number) => index > 0;
+      render(createElement(TestHarness, { isSkipped }), { wrapper: Wrapper });
+
+      swipeGesture(getContainer(), 'left', 150);
+      act(() => { vi.runAllTimers(); });
+      await act(async () => { /* flush */ });
+
+      expect(hasActive(0)).toBe(true);
+      expect(activePanelCount()).toBe(1);
+      expect(hookResult.currentIndex).toBe(0);
     });
 
     it('touchcancel is treated the same as touchend', async () => {

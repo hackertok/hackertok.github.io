@@ -8,6 +8,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import { hnSdk } from '../api/hnSdk';
 import { __resetFetchCachesForTests } from '../api/hn';
+import { mockAlgoliaCommentItem1003 } from '../mocks/handlers';
 import { ALGOLIA_API } from '../config/api';
 import type { FirebaseItem } from '../types';
 
@@ -330,6 +331,91 @@ describe('SwipeCommentViewer', () => {
     });
     expect(paths).toEqual(['/item/1003', '/item/3101']);
   });
+
+  it('shows the comment it was opened on while its siblings load, and keeps it when they land', async () => {
+    let releaseParent!: () => void;
+    const parentRead = new Promise<void>(resolve => { releaseParent = resolve; });
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+      if (Number(id) === 12345) await parentRead;
+      return defaultItems[Number(id)] ?? null;
+    });
+    let commentFetches = 0;
+    server.use(
+      http.get(`${ALGOLIA_API}/items/1003`, () => {
+        commentFetches++;
+        return HttpResponse.json(mockAlgoliaCommentItem1003);
+      }),
+    );
+
+    render(<SwipeCommentViewer initialCommentId="1003" />, {
+      initialEntries: [{ pathname: '/item/1003', state: { isComment: true } }],
+    });
+
+    expect(await screen.findByText(mockAlgoliaCommentItem1003.text)).toBeInTheDocument();
+    expect(screen.getAllByTestId('swipe-panel')).toHaveLength(1);
+    expect(activePanelId()).toBe('1003');
+
+    window.scrollTo = vi.fn();
+    releaseParent();
+
+    // Third of [1001, 1002, 1003, 1004].
+    await waitFor(() => {
+      expect(screen.getAllByTestId('swipe-panel')).toHaveLength(4);
+    });
+    expect(activePanelId()).toBe('1003');
+    expect(screen.getByText(mockAlgoliaCommentItem1003.text)).toBeInTheDocument();
+    expect(commentFetches).toBe(1);
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('loads the swipe\'s next stops past a deleted sibling, and not the deleted one', async () => {
+    const items: Record<number, FirebaseItem> = {
+      ...defaultItems,
+      3001: { id: 3001, type: 'comment', deleted: true, parent: 12345, time: Math.floor(Date.now() / 1000) - 500 },
+      12345: { ...defaultItems[12345], kids: [1001, 3001, 1002, 1003, 1004] },
+    };
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => items[Number(id)] ?? null);
+
+    render(<SwipeCommentViewer initialCommentId="1001" />, {
+      initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],
+    });
+
+    // 1003 is three panels on, but the second stop.
+    const panel1003 = () => document.querySelector('[data-item-id="1003"]')!;
+    await waitFor(() => {
+      expect(panel1003().textContent).toContain(mockAlgoliaCommentItem1003.text);
+    });
+    expect(document.querySelector('[data-item-id="3001"] .animate-pulse')).not.toBeNull();
+  });
+
+  it('stays on the comment it was opened on, without mounting it again, when its siblings load on a retry', async () => {
+    let parentReads = 0;
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+      if (Number(id) === 12345 && parentReads++ === 0) throw new Error('Network error');
+      return defaultItems[Number(id)] ?? null;
+    });
+    let commentFetches = 0;
+    server.use(
+      http.get(`${ALGOLIA_API}/items/1003`, () => {
+        commentFetches++;
+        return HttpResponse.json(mockAlgoliaCommentItem1003);
+      }),
+    );
+
+    render(<SwipeCommentViewer initialCommentId="1003" />, {
+      initialEntries: [{ pathname: '/item/1003', state: { isComment: true } }],
+    });
+    expect(await screen.findByText(mockAlgoliaCommentItem1003.text)).toBeInTheDocument();
+    const panel = document.querySelector('[data-item-id="1003"]');
+
+    // The retry waits out a 2s backoff.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('swipe-panel')).toHaveLength(4);
+      expect(activePanelId()).toBe('1003');
+    }, { timeout: 5000 });
+    expect(document.querySelector('[data-item-id="1003"]')).toBe(panel);
+    expect(commentFetches).toBe(1);
+  }, 10000);
 
   it('sets data-item-id on each panel', async () => {
     render(<SwipeCommentViewer initialCommentId="1001" />, {
