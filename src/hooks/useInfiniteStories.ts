@@ -170,7 +170,10 @@ export function useInfiniteStories(type: FeedType = 'top') {
             hasStaleCacheRef.current = false;
           }
           
-          positionRef.current = 1; // Next load will be yesterday
+          // Next load will be yesterday. By design, today's stories ranked
+          // past the top 20 are never shown: the feed is HN's front page,
+          // then each earlier (UTC) day's front page from Algolia.
+          positionRef.current = 1;
         } else {
           let attempts = 0;
           const maxAttempts = 5; // Try up to 5 days if current day has no stories
