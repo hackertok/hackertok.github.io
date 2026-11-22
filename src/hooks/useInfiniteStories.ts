@@ -371,9 +371,13 @@ export function useInfiniteStories(type: FeedType = 'top') {
       phase: phaseRef.current,
     });
     
-    // Also update the stories cache with current full list (for session reconstruction)
-    if (stories.length > 0) {
-      setCachedFeed(type, stories);
+    // Also update the stories cache with current full list (for session
+    // reconstruction). Keep the cached timestamp: the list is no newer than
+    // its last fetch, and re-stamping it would let a stale list pass as fresh.
+    // No cache entry means the list is over a day old, or storage failed.
+    const fetchedAt = getCachedFeed(type)?.timestamp;
+    if (stories.length > 0 && fetchedAt !== undefined) {
+      setCachedFeed(type, stories, fetchedAt);
     }
   }, [type, stories, hasMore]);
 
