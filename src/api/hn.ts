@@ -749,9 +749,21 @@ export async function fetchCommentItem(id: number | string, signal?: AbortSignal
     text: firebaseCommentText(item) ?? null,
     created_at_i: item.time ?? 0,
     parent_id: item.parent ?? null,
-    story_id: replies[0]?.story_id ?? null,
+    story_id: replies[0]?.story_id ?? await findStoryId(item.parent, signal),
     children: replies.map(reply => ({ ...reply, parent_id: item.id })),
   };
+}
+
+// The story a comment is on, up its parent chain: Firebase keeps flagged and
+// deleted comments, which Algolia 404s. Null when a read fails.
+async function findStoryId(parentId: number | undefined, signal?: AbortSignal): Promise<number | null> {
+  for (let id = parentId, hops = 0; id != null && hops < 100; hops++) {
+    const parent = await fetchFirebaseItem(id, signal).catch(() => null);
+    if (!parent) return null;
+    if (parent.type !== 'comment') return parent.id;
+    id = parent.parent;
+  }
+  return null;
 }
 
 // A story's comments from search, with the flagged and deleted parents it
@@ -789,8 +801,9 @@ async function hasRepliesOutsideItemTree(id: number, signal?: AbortSignal): Prom
 
 /**
  * A comment's replies, with the flagged and deleted ones that have live
- * replies. Algolia's item tree leaves those out along with their replies, so
- * they come from the story's comments, as in the story thread.
+ * replies, in HN's order. Algolia's item tree leaves those out along with
+ * their replies, so they come from the story's comments, as in the story
+ * thread. Both come in creation order, so the order comes from Firebase.
  */
 export async function fetchCommentReplies(item: AlgoliaItemResponse, signal?: AbortSignal): Promise<Comment[]> {
   if (item.story_id == null) return normalizeAlgoliaItemChildren(item.children ?? []);
@@ -800,15 +813,24 @@ export async function fetchCommentReplies(item: AlgoliaItemResponse, signal?: Ab
   }
   if (!mayHaveMore) return [];
 
+  // Null for a thread bigger than search returns, which keeps the item tree's replies.
   const storyComments = await fetchStoryComments(item.story_id);
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
   }
-  if (!storyComments) return normalizeAlgoliaItemChildren(item.children ?? []);
 
   const replies = flattenAlgoliaItemChildren(item.children ?? []);
   const seen = new Set(replies.map(c => c.objectID));
-  return buildCommentTree([...replies, ...storyComments.filter(c => !seen.has(c.objectID))], item.id);
+  const comments = [...replies, ...(storyComments ?? []).filter(c => !seen.has(c.objectID))];
+  const kidsOrder = await fetchKidsOrdering(parentsWithSiblings(buildCommentTree(comments, item.id), item.id), signal);
+  return buildCommentTree(comments, item.id, kidsOrder);
+}
+
+// The ids in a reply tree whose replies need ordering: those with more than one.
+function parentsWithSiblings(replies: Comment[], parentId: number, into: number[] = []): number[] {
+  if (replies.length > 1) into.push(parentId);
+  for (const reply of replies) parentsWithSiblings(reply.children, reply.id, into);
+  return into;
 }
 
 export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comment[] {

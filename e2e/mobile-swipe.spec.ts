@@ -431,15 +431,16 @@ test.describe('Mobile Swipe Viewer', () => {
   });
 
   test('a feed refresh that lands after a swipe keeps the story on screen', async ({ page }) => {
-    // An hour-old cached Top feed in the reverse of the live order, and Firebase
-    // reads that take 1.5s, so the refresh lands after the swipe.
+    // A minute-old cached Top feed in the reverse of the live order, which opens
+    // at once and still refreshes, and Firebase reads that take 1.5s, so the
+    // refresh lands after the swipe.
     await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ delayMs: 1500 }));
     await page.addInitScript((ids) => {
       const stories = [...ids].reverse().map((id) => ({
         id, type: 'story', title: `Cached story ${id}`, url: `https://example.com/${id}`,
         points: 1, author: 'someone', createdAt: Date.now() - 3_600_000, commentCount: 0,
       }));
-      localStorage.setItem('feed:top', JSON.stringify({ stories, timestamp: Date.now() - 3_600_000 }));
+      localStorage.setItem('feed:top', JSON.stringify({ stories, timestamp: Date.now() - 60_000 }));
     }, mockTopItemIds);
 
     await page.goto('/#/');
@@ -938,16 +939,17 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page).toHaveURL(/\/item\/1001/);
   });
 
-  test('shows not-available message for job items', async ({ page }) => {
-    // Job items (type: 'job') are not stories — SwipeStoryViewer shows an error.
-    // Flow: MobileItemResolver fetches item → type is 'job' (not 'comment') →
-    // renders SwipeStoryViewer → it fetches again → detects type === 'job' →
-    // sets injectedError('job') → renders error UI.
+  test('opens job items on the item page', async ({ page }) => {
+    // The swipe viewer only takes stories, and no feed lists jobs, so a direct
+    // link to one gets the item page, as on desktop.
     await page.goto('/#/item/55555');
 
-    await expect(page.getByText('This item is not a story')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole('link', { name: /back to home/i })).toBeVisible();
-    await expect(page).toHaveTitle(/Item not available.*HackerTok/);
+    await expect(page.getByRole('heading', { name: 'YC Startup Is Hiring Engineers' })).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveTitle(/YC Startup Is Hiring Engineers.*HackerTok/);
+    await expect(page.getByTestId('swipe-container')).toHaveCount(0);
+    // index.html adds swipe-mode before paint for any /item/:id.
+    await expect(page.locator('html')).not.toHaveClass(/swipe-mode/);
+    await expect(page.locator('body')).not.toHaveClass(/swipe-mode/);
   });
 
   test('restores swipe position on the main feed after a full page reload', async ({ page }) => {

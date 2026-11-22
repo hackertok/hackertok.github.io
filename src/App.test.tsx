@@ -46,6 +46,9 @@ vi.mock('./components/SwipeUserSubmissionsViewer', () => ({
     <div data-testid="user-viewer" data-username={username} data-item={initialItemId ?? ''} />
   ),
 }));
+vi.mock('./pages/ItemDetail', () => ({
+  ItemDetail: () => <div data-testid="item-detail" />,
+}));
 
 // The resolver fallback (Branch 5) calls fetchItemOnly; keep it pending so the
 // resolver stays on its skeleton — a deterministic signal that we did NOT take
@@ -185,6 +188,17 @@ describe('MobileStoryRoute — direct link', () => {
     const viewer = screen.getByTestId('feed-viewer');
     expect(viewer).toHaveAttribute('data-item', '12345');
     expect(viewer).toHaveAttribute('data-mounted-item', '88888');
+  });
+
+  it('opens a job on the item page, since the story viewer only takes stories', async () => {
+    vi.mocked(fetchItemOnly).mockResolvedValueOnce({
+      id: 77777, type: 'job', title: 'Acme Is Hiring', author: 'acme', createdAt: 0, points: 1,
+    });
+
+    renderWrapper(77777);
+
+    expect(await screen.findByTestId('item-detail')).toBeInTheDocument();
+    expect(screen.queryByTestId('feed-viewer')).toBeNull();
   });
 });
 

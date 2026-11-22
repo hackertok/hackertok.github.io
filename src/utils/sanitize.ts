@@ -307,11 +307,12 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 // Match URLs and emails in a single pass (module-level to avoid
 // recompilation). The URL branch ends with a character-class that
 // excludes common trailing punctuation so "Visit https://x.com."
-// links only "https://x.com".
+// links only "https://x.com". Parentheses count only in balanced pairs,
+// so "(see https://x.com/Foo_(bar))" links "https://x.com/Foo_(bar)".
 // The email branch requires alphanumeric segments separated by
 // dots/special chars — rejecting leading/trailing/consecutive dots
 // and bare-special-char local parts (e.g. `.@`, `..@`, `%@`).
-const LINKABLE = /(https?:\/\/[^\s<>]*[^\s<>.,;:!?'")\]}>]|[a-zA-Z0-9]+(?:[._%+-][a-zA-Z0-9]+)*@[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,})/g;
+const LINKABLE = /(https?:\/\/(?:[^\s<>()]|\([^\s<>()]*\))*(?:[^\s<>.,;:!?'"()\]}>]|\([^\s<>()]*\))|[a-zA-Z0-9]+(?:[._%+-][a-zA-Z0-9]+)*@[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*\.[a-zA-Z]{2,})/g;
 
 function autoLinkUrls(html: string): string {
   if (typeof document === 'undefined') return html;

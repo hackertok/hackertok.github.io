@@ -326,7 +326,7 @@ export const mockAlgoliaCommentItem1004 = {
   children: [],
 };
 
-// Job item — type=job triggers SwipeStoryViewer's "not a story" error path on mobile.
+// Job item — a direct link opens it on the item page on mobile too.
 export const mockJobItem = {
   id: 55555,
   type: 'job',
