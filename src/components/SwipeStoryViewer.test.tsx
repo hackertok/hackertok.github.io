@@ -765,6 +765,10 @@ describe('SwipeStoryViewer — opening a feed from an old cache', () => {
     }));
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('waits for the refresh instead of keeping the cached first story', async () => {
     vi.mocked(fetchTopStories).mockResolvedValue([13, ...cachedIds].map(id => createStoryItem({ id })));
     render(<SwipeStoryViewer type="top" />);
@@ -791,6 +795,23 @@ describe('SwipeStoryViewer — opening a feed from an old cache', () => {
       window.dispatchEvent(new Event('offline'));
     });
 
+    expect(activePanel()).toHaveAttribute('data-item-id', '1');
+  });
+
+  it('shows the cache after three seconds when the refresh stalls online', () => {
+    vi.useFakeTimers();
+    vi.mocked(fetchTopStories).mockReturnValue(new Promise(() => { /* never resolves */ }));
+    render(<SwipeStoryViewer type="top" />);
+
+    act(() => {
+      vi.advanceTimersByTime(2_999);
+    });
+    expect(screen.getByTestId('fsi-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('fsi')).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
     expect(activePanel()).toHaveAttribute('data-item-id', '1');
   });
 });

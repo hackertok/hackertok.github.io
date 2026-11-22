@@ -740,6 +740,7 @@ interface SwipeStoryViewerProps {
 }
 
 const NO_STORIES: StoryItem[] = [];
+const STALE_CACHE_WAIT_MS = 3000;
 
 /** Feed-backed swipe viewer wrapping SwipeStoryViewerCore. */
 export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps) {
@@ -749,12 +750,18 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
   // The refresh below keeps the story on screen, so a feed opened from a cache
   // over five minutes old would stay on its old first story, which the logo
   // then replaces. Opening a feed waits for the refresh instead, and shows the
-  // cache if the refresh fails or the app is offline, where it never settles.
-  // A story URL shows that story either way.
+  // cache if the refresh fails, the app is offline, or three seconds pass, as
+  // on a stalled connection, where Firebase waits with no timeout. A story URL
+  // shows that story either way.
   const [hidesStaleCache, setHidesStaleCache] = useState(
     () => initialItemId == null && isFromCache && !isCacheFresh(type),
   );
   if (hidesStaleCache && (!isFromCache || !!error || !isOnline)) setHidesStaleCache(false);
+  useEffect(() => {
+    if (!hidesStaleCache) return;
+    const timer = setTimeout(() => setHidesStaleCache(false), STALE_CACHE_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [hidesStaleCache]);
 
   // Prefetch other sections in background for instant tab switching
   usePrefetchSections(type);
