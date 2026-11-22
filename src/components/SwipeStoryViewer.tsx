@@ -10,6 +10,7 @@ import { useAutoRetry } from '../hooks/useAutoRetry';
 import { fetchItemOnly, NotFoundError } from '../api/hn';
 import { getFilteredViewedIds, getSessionViewedIds } from '../utils/viewedItems';
 import { readSwipePosition, saveSwipePosition, clearSwipePosition } from '../utils/swipePosition';
+import { isCacheFresh } from '../utils/feedCache';
 import { useViewDwell } from '../hooks/useViewDwell';
 import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
@@ -738,9 +739,22 @@ interface SwipeStoryViewerProps {
   initialItemId?: string;
 }
 
+const NO_STORIES: StoryItem[] = [];
+
 /** Feed-backed swipe viewer wrapping SwipeStoryViewerCore. */
 export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps) {
   const { stories, loading, error, hasMore, loadMore, isFromCache, isFromSession, keepOnRevalidate } = useInfiniteStories(type);
+  const { isOnline } = useNetworkStatus();
+
+  // The refresh below keeps the story on screen, so a feed opened from a cache
+  // over five minutes old would stay on its old first story, which the logo
+  // then replaces. Opening a feed waits for the refresh instead, and shows the
+  // cache if the refresh fails or the app is offline, where it never settles.
+  // A story URL shows that story either way.
+  const [hidesStaleCache, setHidesStaleCache] = useState(
+    () => initialItemId == null && isFromCache && !isCacheFresh(type),
+  );
+  if (hidesStaleCache && (!isFromCache || !!error || !isOnline)) setHidesStaleCache(false);
 
   // Prefetch other sections in background for instant tab switching
   usePrefetchSections(type);
@@ -759,8 +773,8 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
 
   return (
     <SwipeStoryViewerCore
-      stories={stories}
-      loading={loading}
+      stories={hidesStaleCache ? NO_STORIES : stories}
+      loading={loading || hidesStaleCache}
       error={error}
       hasMore={hasMore}
       loadMore={loadMore}

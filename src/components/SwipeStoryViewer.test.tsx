@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, screen, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { render } from '../test/test-utils';
-import { SwipeStoryViewerCore } from './SwipeStoryViewer';
+import { SwipeStoryViewer, SwipeStoryViewerCore } from './SwipeStoryViewer';
 import { createStoryItem } from '../test/factories';
 import {
   clearViewed,
@@ -12,7 +12,7 @@ import {
   VIEWED_DETAIL_TIMES_KEY,
 } from '../utils/viewedItems';
 import { saveSwipePosition, readSwipePosition } from '../utils/swipePosition';
-import { fetchItemOnly } from '../api/hn';
+import { fetchItemOnly, fetchTopStories } from '../api/hn';
 import type * as HnApi from '../api/hn';
 import type { LocationState } from '../types';
 
@@ -30,7 +30,10 @@ vi.mock('./FullScreenItem', () => ({
 vi.mock('../api/hn', async (importOriginal) => ({
   ...(await importOriginal<typeof HnApi>()),
   fetchItemOnly: vi.fn(() => new Promise(() => { /* never resolves */ })),
+  fetchTopStories: vi.fn(),
 }));
+
+vi.mock('../hooks/usePrefetchSections', () => ({ usePrefetchSections: vi.fn() }));
 
 // Swipes commit synchronously under reduced motion, without the Web Animations
 // API that jsdom lacks.
@@ -748,5 +751,46 @@ describe('SwipeStoryViewerCore — viewed marks on landing', () => {
     render(<SwipeStoryViewerCore {...baseProps} stories={stories} backState={{ from: 'top' }} />);
 
     expect(markedIds()).toEqual([1]);
+  });
+});
+
+describe('SwipeStoryViewer — opening a feed from an old cache', () => {
+  // An hour-old cache, whose first story is second on HN now.
+  const cachedIds = Array.from({ length: 12 }, (_, i) => i + 1);
+
+  beforeEach(() => {
+    localStorage.setItem('feed:top', JSON.stringify({
+      stories: cachedIds.map(id => createStoryItem({ id })),
+      timestamp: Date.now() - 3_600_000,
+    }));
+  });
+
+  it('waits for the refresh instead of keeping the cached first story', async () => {
+    vi.mocked(fetchTopStories).mockResolvedValue([13, ...cachedIds].map(id => createStoryItem({ id })));
+    render(<SwipeStoryViewer type="top" />);
+
+    expect(screen.getByTestId('fsi-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('fsi')).not.toBeInTheDocument();
+    await waitFor(() => expect(activePanel()).toHaveAttribute('data-item-id', '13'));
+  });
+
+  it('shows the cache when the refresh fails', async () => {
+    vi.mocked(fetchTopStories).mockRejectedValue(new Error('Failed to fetch'));
+    render(<SwipeStoryViewer type="top" />);
+
+    await waitFor(() => expect(activePanel()).toHaveAttribute('data-item-id', '1'));
+  });
+
+  it('shows the cache once the app goes offline, where the refresh never settles', () => {
+    vi.mocked(fetchTopStories).mockReturnValue(new Promise(() => { /* never resolves */ }));
+    render(<SwipeStoryViewer type="top" />);
+    expect(screen.getByTestId('fsi-skeleton')).toBeInTheDocument();
+    expect(screen.queryByTestId('fsi')).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+    });
+
+    expect(activePanel()).toHaveAttribute('data-item-id', '1');
   });
 });
