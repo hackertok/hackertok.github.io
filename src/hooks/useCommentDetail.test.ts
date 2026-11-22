@@ -121,6 +121,25 @@ describe('useCommentDetail', () => {
     expect(result.current.comment).toBeNull();
   });
 
+  it('finds the story of a flagged comment with no replies up its parent chain', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const items: FirebaseItem[] = [
+      mockStoryItem,
+      { id: 1001, type: 'comment', by: 'patio11', text: 'Root', time: now - 1800, parent: 12345, kids: [2001] },
+      { id: 2001, type: 'comment', by: 'tptacek', text: 'Reply', time: now - 900, parent: 1001, kids: [4001] },
+      { id: 4001, type: 'comment', by: 'eve', text: 'Killed text', dead: true, time: now - 300, parent: 2001 },
+    ];
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => items.find(item => item.id === Number(id)) ?? null);
+
+    const { result } = renderHook(() => useCommentDetail(4001));
+
+    await waitFor(() => {
+      expect(result.current.itemTitle).toBe('Rust Is the Future of JavaScript Infrastructure');
+    });
+    expect(result.current.itemId).toBe(12345);
+    expect(result.current.comment).toMatchObject({ id: 4001, parentId: 2001 });
+  });
+
   describe("HN's order, which Algolia's item tree doesn't keep", () => {
     const now = Math.floor(Date.now() / 1000);
     const reply = (id: number, parentId: number, age: number, children: object[] = []) =>

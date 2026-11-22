@@ -749,9 +749,21 @@ export async function fetchCommentItem(id: number | string, signal?: AbortSignal
     text: firebaseCommentText(item) ?? null,
     created_at_i: item.time ?? 0,
     parent_id: item.parent ?? null,
-    story_id: replies[0]?.story_id ?? null,
+    story_id: replies[0]?.story_id ?? await findStoryId(item.parent, signal),
     children: replies.map(reply => ({ ...reply, parent_id: item.id })),
   };
+}
+
+// The story a comment is on, up its parent chain: Firebase keeps flagged and
+// deleted comments, which Algolia 404s. Null when a read fails.
+async function findStoryId(parentId: number | undefined, signal?: AbortSignal): Promise<number | null> {
+  for (let id = parentId, hops = 0; id != null && hops < 100; hops++) {
+    const parent = await fetchFirebaseItem(id, signal).catch(() => null);
+    if (!parent) return null;
+    if (parent.type !== 'comment') return parent.id;
+    id = parent.parent;
+  }
+  return null;
 }
 
 // A story's comments from search, with the flagged and deleted parents it
