@@ -722,7 +722,7 @@ export function SwipeStoryViewerCore({
           `.active` sets display:block, so the centering lives on an inner box. */}
       {showErrorPanel && (
         <div className="swipe-snap-panel" data-testid="swipe-panel">
-          <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
+          <div className="full-screen-state">
             <StateView
               variant="error"
               title="Failed to load item"

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { setupApiMocks } from './fixtures/api-mocks';
+import { createFirebaseWsHandler, FIREBASE_WS_PATTERN, setupApiMocks } from './fixtures/api-mocks';
+import { expectLocatorCenteredBetweenChrome, setOfflineAndWaitForBar } from './fixtures/layout-helpers';
 
 test.describe('Item Detail', () => {
   test.beforeEach(async ({ page }) => {
@@ -263,5 +264,29 @@ test.describe('Item Detail - Desktop', () => {
     await expect(page).toHaveURL(/\/#\/$/);
     await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
     await expect(page.getByText('SQLite Does Not Do Full FSYNC by Default').first()).toBeVisible();
+  });
+});
+
+test.describe('Item Detail - Poll option on a phone', () => {
+  test.use({ viewport: { width: 375, height: 667 }, hasTouch: true });
+
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    // Registered last, so it wins over setupApiMocks' handler.
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({
+      itemOverrides: {
+        126810: { id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, poll: 126809, type: 'pollopt' },
+      },
+    }));
+  });
+
+  test('centers the notice between the header and the offline bar', async ({ page, context }) => {
+    await page.goto('/#/item/126810');
+    const heading = page.getByRole('heading', { name: "Poll options aren't supported" });
+    await expect(heading).toBeVisible({ timeout: 10_000 });
+
+    await setOfflineAndWaitForBar(page, context);
+
+    await expectLocatorCenteredBetweenChrome(heading.locator('xpath=..'));
   });
 });

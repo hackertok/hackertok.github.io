@@ -73,7 +73,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
 
   if (error && !isRetrying) {
     return (
-      <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
+      <div className="full-screen-state">
         <StateView
           variant={isNotFound ? 'not-found' : 'error'}
           title={isNotFound ? undefined : 'Failed to load item'}
@@ -90,7 +90,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
 
   if (!itemLoading && (!item || item.type === 'comment')) {
     return (
-      <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
+      <div className="full-screen-state">
         <StateView variant="not-found" />
       </div>
     );
@@ -98,7 +98,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
 
   if (!itemLoading && item && isPollOption(item)) {
     return (
-      <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
+      <div className="full-screen-state">
         <PollOptionNotSupported />
       </div>
     );
