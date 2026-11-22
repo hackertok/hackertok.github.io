@@ -133,7 +133,7 @@ function parseHn(parsed: URL): RouteTarget | null {
 
 function parseSelf(parsed: URL): RouteTarget | null {
   // Two URL forms exist in the wild because of the redirect script in
-  // index.html / public/404.html:
+  // index.html / 404.html:
   //   - hash form (canonical):   https://hackertok.github.io/#/item/47816960
   //   - non-hash form:           https://hackertok.github.io/item/47816960
   // Normalize to a single `inAppPath` and match path-segment regexes.

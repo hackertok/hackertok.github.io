@@ -32,10 +32,11 @@ export function getCachedFeed(type: FeedType): { stories: StoryItem[]; timestamp
   }
 }
 
-export function setCachedFeed(type: FeedType, stories: StoryItem[]): void {
+/** `timestamp` is when the list was fetched; it decides freshness. */
+export function setCachedFeed(type: FeedType, stories: StoryItem[], timestamp = Date.now()): void {
   try {
     const key = `${FEED_CACHE_KEY_PREFIX}${type}`;
-    const data = { stories, timestamp: Date.now() };
+    const data = { stories, timestamp };
     setLocalStorageItem(key, JSON.stringify(data));
   } catch { /* best-effort */ }
 }

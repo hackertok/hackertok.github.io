@@ -151,6 +151,16 @@ describe('useInfiniteStories', () => {
     expect(ids).toHaveLength(50);
   });
 
+  it('keeps a stale cache stale when saving the session', () => {
+    const hourAgo = Date.now() - 60 * 60 * 1000;
+    setCachedFeed('top', [1, 2, 3].map(id => createStoryItem({ id })), hourAgo);
+    const { result } = renderHook(() => useInfiniteStories('top'));
+
+    act(() => result.current.saveSessionState(0));
+
+    expect(getCachedFeed('top')).toMatchObject({ timestamp: hourAgo, isStale: true });
+  });
+
   describe('revalidation', () => {
     function seedStaleFeed(type: FeedType) {
       // A cached order the live ranking (1, 2, 3, …) has moved on from.

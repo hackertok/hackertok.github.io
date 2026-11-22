@@ -112,9 +112,9 @@ function EmptyScene({ compact }: { compact?: boolean }) {
   return (
     <div className="sv-scene" style={{ width: 120, height: 120, position: 'relative', animation: 'sv-breathe 4s ease-in-out infinite' }}>
       {/* Rising thought dots — start at box opening (y≈55) and float above */}
-      <div className="absolute rounded-full bg-accent" style={{ width: 4, height: 4, top: 53, left: 48, animation: 'sv-fade-up 3s ease-out infinite' }} />
-      <div className="absolute rounded-full bg-accent" style={{ width: 4, height: 4, top: 53, left: 56, animation: 'sv-fade-up 3s ease-out infinite 0.8s' }} />
-      <div className="absolute rounded-full bg-accent" style={{ width: 4, height: 4, top: 53, left: 64, animation: 'sv-fade-up 3s ease-out infinite 1.6s' }} />
+      <div className="absolute rounded-full bg-accent" style={{ width: 4, height: 4, top: 53, left: 50, animation: 'sv-fade-up 3s ease-out infinite' }} />
+      <div className="absolute rounded-full bg-accent" style={{ width: 4, height: 4, top: 53, left: 58, animation: 'sv-fade-up 3s ease-out infinite 0.8s' }} />
+      <div className="absolute rounded-full bg-accent" style={{ width: 4, height: 4, top: 53, left: 66, animation: 'sv-fade-up 3s ease-out infinite 1.6s' }} />
       {/* Floating particles */}
       <div className="absolute rounded-full bg-accent opacity-35" style={{ width: 5, height: 5, top: 5, right: 15, animation: 'sv-roam-2 9s ease-in-out infinite' }} />
       <div className="absolute rounded-full bg-muted-foreground opacity-35" style={{ width: 3, height: 3, bottom: 10, left: 10, animation: 'sv-roam-1 7s ease-in-out infinite 1s' }} />

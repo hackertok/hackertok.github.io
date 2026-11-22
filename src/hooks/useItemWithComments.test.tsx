@@ -548,6 +548,18 @@ describe('useItemWithComments', () => {
       expect(getCachedItem(12345)?.item).toEqual(testItem);
     });
 
+    it('takes the poll option type from the revalidation over a copy cached as a story', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue({ id: 12345, text: 'Yes', by: 'pg', score: 30, time: mockFirebaseStory.time, type: 'pollopt' });
+      seedStaleCache();
+
+      const { result } = renderHook(() => useItemWithComments(12345));
+
+      await waitFor(() => {
+        expect(result.current.item?.type).toBe('pollopt');
+      });
+      expect(getCachedItem(12345)?.item.type).toBe('pollopt');
+    });
+
     it('fetches when cache has no comments', async () => {
       const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
       const partialData = {
@@ -1028,6 +1040,28 @@ describe('useItemWithComments', () => {
 
       await waitFor(() => expect(result.current.item?.type).toBe('comment'));
       expect(isPriorityFetchActive()).toBe(false);
+    });
+  });
+
+  describe('a poll option', () => {
+    it('fetches no comments, and releases priority once it loads', async () => {
+      const readItem = vi.spyOn(hnSdk, 'readItem').mockResolvedValue({
+        id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, type: 'pollopt',
+      });
+      let commentSearches = 0;
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => {
+          commentSearches++;
+          return HttpResponse.json({ hits: [], nbPages: 0 });
+        }),
+      );
+
+      const { result } = renderHook(() => useItemWithComments(126810));
+
+      await waitFor(() => expect(result.current.item?.type).toBe('pollopt'));
+      expect(isPriorityFetchActive()).toBe(false);
+      expect(readItem).toHaveBeenCalledTimes(1);
+      expect(commentSearches).toBe(0);
     });
   });
 

@@ -461,6 +461,17 @@ html.dark { color-scheme: dark; }
   min-height: 100%;
 }
 
+/* A state (not found, error, …) in place of a swipe panel's content. The
+   active panel only has a min-height, so a percentage would resolve to
+   nothing; the state takes the panel's box under the header and centers in it. */
+.full-screen-state {
+  width: 100%;
+  min-height: calc(var(--swipe-viewport-height, 100vh) - var(--header-height) - var(--network-bar-height));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Browsers chain the document's top overscroll into pull-to-refresh, which
    reloads the SPA and costs the reader their feed position. `contain` blocks the
    chain but keeps the rubber-band `none` would remove. On the root because only

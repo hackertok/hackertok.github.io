@@ -82,4 +82,12 @@ describe('FullScreenItem', () => {
       });
     });
   });
+
+  it('says a poll option is not supported instead of showing it', async () => {
+    vi.spyOn(hnSdk, 'readItem').mockResolvedValue({ id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, type: 'pollopt' });
+    render(<FullScreenItem itemId={126810} />);
+
+    expect(await screen.findByRole('heading', { name: "Poll options aren't supported" })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+  });
 });

@@ -66,4 +66,15 @@ test.describe('Content-Security-Policy', () => {
     });
     expect(await readViolations(page)).toEqual([]);
   });
+
+  test('covers the 404.html redirect shell', async ({ page, request }) => {
+    // Pages serves 404.html for every unknown path, so it is a second entry
+    // document and needs the same policy.
+    const html = await (await request.get('/404.html')).text();
+    expect(html).toMatch(/<meta http-equiv="Content-Security-Policy" content="[^"]*script-src 'self' 'sha256-/);
+
+    // The redirect is an inline script, so it runs only if its hash is allowed.
+    await page.goto('/404.html?ref=1');
+    await expect(page).toHaveURL(/\/#\/404\.html\?ref=1$/);
+  });
 });

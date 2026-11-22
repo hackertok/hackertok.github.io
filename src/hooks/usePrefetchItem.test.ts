@@ -136,6 +136,28 @@ describe('usePrefetchItem', () => {
       expect(spy.mock.calls[1][0]).toBe(99999);
       spy.mockRestore();
     });
+
+    it('keeps tracking a restarted prefetch after the aborted one settles', async () => {
+      const settle: (() => void)[] = [];
+      const spy = vi.spyOn(hn, 'prefetchItemComments').mockImplementation(
+        () => new Promise(resolve => { settle.push(() => resolve(null)); }));
+      const { result } = renderHook(() => usePrefetchItem());
+
+      act(() => { result.current.startPrefetch(12345, 0); });
+      await act(async () => { vi.advanceTimersByTime(250); });
+      act(() => { result.current.stopPrefetch(); });
+      act(() => { result.current.startPrefetch(12345, 0); });
+      await act(async () => { vi.advanceTimersByTime(250); });
+      expect(spy).toHaveBeenCalledTimes(2);
+
+      // The first, aborted fetch settles while the second is still in flight.
+      await act(async () => { settle[0](); });
+      act(() => { result.current.startPrefetch(12345, 0); });
+      await act(async () => { vi.advanceTimersByTime(250); });
+
+      expect(spy).toHaveBeenCalledTimes(2);
+      spy.mockRestore();
+    });
   });
 
   describe('priority fetch integration', () => {

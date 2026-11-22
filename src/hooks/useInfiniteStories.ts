@@ -170,7 +170,10 @@ export function useInfiniteStories(type: FeedType = 'top') {
             hasStaleCacheRef.current = false;
           }
           
-          positionRef.current = 1; // Next load will be yesterday
+          // Next load will be yesterday. By design, today's stories ranked
+          // past the top 20 are never shown: the feed is HN's front page,
+          // then each earlier (UTC) day's front page from Algolia.
+          positionRef.current = 1;
         } else {
           let attempts = 0;
           const maxAttempts = 5; // Try up to 5 days if current day has no stories
@@ -371,9 +374,13 @@ export function useInfiniteStories(type: FeedType = 'top') {
       phase: phaseRef.current,
     });
     
-    // Also update the stories cache with current full list (for session reconstruction)
-    if (stories.length > 0) {
-      setCachedFeed(type, stories);
+    // Also update the stories cache with current full list (for session
+    // reconstruction). Keep the cached timestamp: the list is no newer than
+    // its last fetch, and re-stamping it would let a stale list pass as fresh.
+    // No cache entry means the list is over a day old, or storage failed.
+    const fetchedAt = getCachedFeed(type)?.timestamp;
+    if (stories.length > 0 && fetchedAt !== undefined) {
+      setCachedFeed(type, stories, fetchedAt);
     }
   }, [type, stories, hasMore]);
 

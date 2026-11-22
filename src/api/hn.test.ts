@@ -941,6 +941,12 @@ describe('hn API utilities', () => {
 
       expect(result.type !== 'job' ? result.commentCount : 0).toBe(137);
     });
+
+    it('keeps a poll option typed as one', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue({ id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, type: 'pollopt' });
+
+      expect((await fetchItemOnly(126810)).type).toBe('pollopt');
+    });
   });
 
   describe('error handling', () => {

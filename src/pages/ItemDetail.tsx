@@ -1,7 +1,8 @@
 import { useParams } from 'react-router';
 import { useEffect } from 'react';
 import { useItemWithComments } from '../hooks/useItemWithComments';
-import { ItemDetailSkeleton, CommentDetail, StateView, CommentsSection, ItemArticle, PageStage } from '../components';
+import { isPollOption } from '../api/hn';
+import { ItemDetailSkeleton, CommentDetail, StateView, CommentsSection, ItemArticle, PageStage, PollOptionNotSupported, POLL_OPTION_TITLE } from '../components';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
@@ -19,6 +20,7 @@ export function ItemDetail() {
   const documentTitle = (!id || isNotFound || (!itemLoading && !item))
     ? 'Item not found'
     : error ? 'Failed to load item'
+    : item && isPollOption(item) ? POLL_OPTION_TITLE
     : (item && 'title' in item ? item.title : undefined);
   useDocumentTitle(documentTitle);
 
@@ -71,6 +73,14 @@ export function ItemDetail() {
 
   if (!itemLoading && item?.type === 'comment') {
     return <CommentDetail commentId={id} initialData={{ author: item.author, text: item.text, createdAt: item.createdAt, parentId: item.parent }} />;
+  }
+
+  if (!itemLoading && item && isPollOption(item)) {
+    return (
+      <div className="page-state-center-padded">
+        <PollOptionNotSupported action={{ label: 'Back to Home', to: '/' }} />
+      </div>
+    );
   }
 
   return (
