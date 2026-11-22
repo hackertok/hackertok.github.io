@@ -14,7 +14,9 @@ interface ItemBase {
 }
 
 export interface StoryItem extends ItemBase {
-  type: 'story' | 'ask' | 'show';
+  // A poll is a story. A poll option ('pollopt') rides along as one only so
+  // its page can say it isn't supported.
+  type: 'story' | 'ask' | 'show' | 'pollopt';
   title: string;
   url?: string;
   text?: string;

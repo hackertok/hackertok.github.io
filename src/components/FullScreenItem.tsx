@@ -1,11 +1,13 @@
 import { useItemWithComments } from '../hooks/useItemWithComments';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
+import { isPollOption } from '../api/hn';
 import { CommentSkeletonTree } from '../components';
 import { CommentsSection } from './CommentsSection';
 import { FullScreenChrome } from './FullScreenChrome';
 import { ItemArticle } from './ItemArticle';
 import { PageStage } from './PageStage';
+import { PollOptionNotSupported } from './PollOptionNotSupported';
 import { StateView } from './StateView';
 import type { StoryItem } from '../types';
 
@@ -90,6 +92,14 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
     return (
       <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
         <StateView variant="not-found" />
+      </div>
+    );
+  }
+
+  if (!itemLoading && item && isPollOption(item)) {
+    return (
+      <div className="full-screen-item flex items-center justify-center min-h-[50vh]">
+        <PollOptionNotSupported />
       </div>
     );
   }

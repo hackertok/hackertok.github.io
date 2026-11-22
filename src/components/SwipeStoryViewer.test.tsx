@@ -88,6 +88,27 @@ describe('SwipeStoryViewerCore', () => {
 
     expect(title.closest('div')).toHaveClass('swipe-state-center');
   });
+
+  it("titles the tab after the notice on a poll option's panel", async () => {
+    vi.mocked(fetchItemOnly).mockResolvedValueOnce(
+      createStoryItem({ id: 126810, type: 'pollopt', title: '', url: undefined, text: 'Yes, ban them' }),
+    );
+
+    render(
+      <SwipeStoryViewerCore
+        stories={[]}
+        loading={false}
+        error={null}
+        hasMore={false}
+        loadMore={vi.fn().mockResolvedValue(undefined)}
+        initialItemId="126810"
+        backState={{ from: 'top' }}
+      />,
+    );
+
+    await waitFor(() => expect(activePanel()?.getAttribute('data-item-id')).toBe('126810'));
+    expect(document.title).toBe("Poll options aren't supported | HackerTok");
+  });
 });
 
 describe('SwipeStoryViewerCore — mount-snapshot filtering', () => {

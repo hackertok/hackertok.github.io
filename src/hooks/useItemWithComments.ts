@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useEffectEvent, useCallback } from 'react';
-import { fetchItemOnly, fetchCommentsForItem, fetchItemWithComments, NotFoundError } from '../api/hn';
+import { fetchItemOnly, fetchCommentsForItem, fetchItemWithComments, isPollOption, NotFoundError } from '../api/hn';
 import { getCachedItem, setCachedItem } from '../utils/itemCache';
 import { registerPriorityFetch, unregisterPriorityFetch } from '../utils/fetchPriority';
 import { useNetworkStatus } from './useNetworkStatus';
@@ -40,8 +40,11 @@ function withText(item: Item | null | undefined, source: Item | null | undefined
 
 // The comments fetch reads the item too, so it has newer points, comment count
 // and title than a cached or restored copy. The rest stays: Firebase calls
-// Ask/Show posts `story`, and a deleted story comes back without a title.
+// Ask/Show posts `story`, and a deleted story comes back without a title. A
+// fetched poll option's type wins: copies cached before it had one call it a
+// story.
 function withFetchedFields(item: Item | null | undefined, fetched: Item): Item | null {
+  if (item && isPollOption(fetched) && fetched.id === item.id) return fetched;
   if (!item || item.type === 'comment' || item.type === 'job' || fetched.type !== 'story' ||
       fetched.id !== item.id || !fetched.title) {
     return withText(item, fetched);
@@ -54,6 +57,12 @@ function withFetchedFields(item: Item | null | undefined, fetched: Item): Item |
     points: fetched.points,
     commentCount: fetched.commentCount,
   };
+}
+
+// A comment's replies come from useCommentDetail (Algolia /items), and a poll
+// option has no comments.
+function fetchesComments(item: Item): boolean {
+  return item.type !== 'comment' && !isPollOption(item);
 }
 
 export function useItemWithComments(itemId: number | string, { initialItem = null, skipOrderingCompletion = false, isPriority = true, deferComments = false }: UseItemWithCommentsOptions = {}): UseItemWithCommentsResult {
@@ -241,13 +250,12 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       } else if (needsFullFetch) {
         const itemData = hasItem ?? await loadItem();
         
-        // Comment items use a different fetch path (useCommentDetail via Algolia /items).
-        if (itemData && itemData.type !== 'comment' && !controller.signal.aborted) {
+        if (itemData && fetchesComments(itemData) && !controller.signal.aborted) {
           await loadComments(itemData, false);
         }
       }
-      // A comment item fetches nothing more. After an abort, whoever
-      // aborted releases it.
+      // A comment item or poll option fetches nothing more. After an abort,
+      // whoever aborted releases it.
       if (!controller.signal.aborted) releasePriority();
     }
 
@@ -288,7 +296,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     const { commentsLoading, comments, commentsError, item, deferComments } = getReconnectSnapshot();
 
     // Only act when comments are stuck loading (hanging fetch, no error surfaced)
-    if (!commentsLoading || comments || commentsError || !item || item.type === 'comment' || deferComments) return;
+    if (!commentsLoading || comments || commentsError || !item || !fetchesComments(item) || deferComments) return;
 
     // Abort the hanging fetch so its promise settles (AbortError, swallowed by the effect)
     controllerRef.current?.abort();
@@ -348,8 +356,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     }
     setItemLoading(false);
 
-    // Comment items use a different fetch path (useCommentDetail via Algolia /items)
-    if (itemData.type !== 'comment') {
+    if (fetchesComments(itemData)) {
       try {
         const commentsData = await fetchCommentsForItem(itemId);
         setComments(commentsData);

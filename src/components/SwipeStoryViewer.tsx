@@ -7,13 +7,14 @@ import { usePrefetchSections } from '../hooks/usePrefetchSections';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
-import { fetchItemOnly, NotFoundError } from '../api/hn';
+import { fetchItemOnly, isPollOption, NotFoundError } from '../api/hn';
 import { getFilteredViewedIds, getSessionViewedIds } from '../utils/viewedItems';
 import { readSwipePosition, saveSwipePosition, clearSwipePosition } from '../utils/swipePosition';
 import { isCacheFresh } from '../utils/feedCache';
 import { useViewDwell } from '../hooks/useViewDwell';
 import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
+import { POLL_OPTION_TITLE } from './PollOptionNotSupported';
 import { StateView } from './StateView';
 import type { StoryItem, FeedType, LocationState } from '../types';
 
@@ -222,6 +223,7 @@ export function SwipeStoryViewerCore({
     ? (isInjectedNotFound ? (isNonStoryError ? 'Item not available' : 'Item not found') : 'Failed to load item')
     : (error && mergedStories.length === 0) ? 'Failed to load item'
     : isOnline && isAtEndError && giveUp ? 'Failed to load item'
+    : currentStory && isPollOption(currentStory) ? POLL_OPTION_TITLE
     : (currentStory?.title || titleFallback);
   useDocumentTitle(documentTitle);
   

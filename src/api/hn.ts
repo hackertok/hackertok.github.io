@@ -85,9 +85,10 @@ function normalizeFirebaseItem(fbItem: FirebaseItem): Item {
 
   // Firebase doesn't distinguish ask/show — they're all type='story'.
   // Only the Algolia path (via _tags) can set 'ask'/'show' sub-types.
+  // A poll reads as a story, without its options.
   return {
     ...base,
-    type: 'story' as const,
+    type: fbItem.type === 'pollopt' ? 'pollopt' : 'story',
     title: fbItem.title ?? '',
     url: fbItem.url,
     text: fbItem.text,
@@ -229,6 +230,11 @@ export async function fetchNewStories(offset = 0, limit = 30) {
     hasMore: offset + limit < allIds.length,
     nextOffset: offset + limit,
   };
+}
+
+/** A poll option has no title or comments, so its page shows a notice instead. */
+export function isPollOption(item: Item): item is StoryItem & { type: 'pollopt' } {
+  return item.type === 'pollopt';
 }
 
 function normalizeFirebaseToStoryItem(fb: FirebaseItem): StoryItem {
