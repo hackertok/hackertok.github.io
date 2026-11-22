@@ -170,6 +170,12 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      // 404.html is an entry, not a public/ file, so html-meta-csp hashes its
+      // redirect script: public/ is copied verbatim and would ship it with no CSP.
+      input: {
+        index: fileURLToPath(new URL('./index.html', import.meta.url)),
+        404: fileURLToPath(new URL('./404.html', import.meta.url)),
+      },
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/firebase') || id.includes('node_modules/@firebase')) {
