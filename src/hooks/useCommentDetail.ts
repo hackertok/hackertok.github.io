@@ -6,6 +6,11 @@ function countComments(comments: Comment[]): number {
   return comments.reduce((count, comment) => count + 1 + countComments(comment.children), 0);
 }
 
+function orderByKids(replies: Comment[], kids: number[]): Comment[] {
+  const rank = new Map(kids.map((id, i) => [id, i]));
+  return [...replies].sort((a, b) => (rank.get(a.id) ?? kids.length) - (rank.get(b.id) ?? kids.length));
+}
+
 interface CommentData {
   id: number;
   author: string;
@@ -86,13 +91,26 @@ export function useCommentDetail(
       setMoreRepliesLoading(!!item.story_id);
       setLoading(false);
 
+      // The item tree has replies in creation order. HN's order for the ones
+      // shown comes from the comment's Firebase item, sooner than the story's
+      // comments below, which order the rest.
+      if ((item.children?.length ?? 0) > 1) {
+        void fetchFirebaseItem(item.id, signal).then(
+          ({ kids }) => {
+            if (!signal.aborted && kids) setReplies(shown => orderByKids(shown, kids));
+          },
+          () => { /* creation order stays */ },
+        );
+      }
+
       // Algolia's item tree leaves out flagged and deleted replies along with
-      // the replies under them. Those fill in once the story's comments are read.
+      // the replies under them. Those fill in, and nested replies take HN's
+      // order, once the story's comments are read.
       if (item.story_id) {
         void fetchCommentReplies(item, signal).then(
           all => {
             if (signal.aborted) return;
-            setReplies(shown => (countComments(all) > countComments(shown) ? all : shown));
+            setReplies(shown => (countComments(all) >= countComments(shown) ? all : shown));
             setMoreRepliesLoading(false);
           },
           () => {

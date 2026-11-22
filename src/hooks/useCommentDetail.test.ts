@@ -5,6 +5,7 @@ import { useCommentDetail } from './useCommentDetail';
 import { __resetFetchCachesForTests } from '../api/hn';
 import { hnSdk } from '../api/hnSdk';
 import { server } from '../mocks/server';
+import { mockAlgoliaCommentItem } from '../mocks/handlers';
 import { ALGOLIA_API } from '../config/api';
 import type { FirebaseItem } from '../types';
 
@@ -118,6 +119,54 @@ describe('useCommentDetail', () => {
 
     expect(result.current.error).toBeTruthy();
     expect(result.current.comment).toBeNull();
+  });
+
+  describe("HN's order, which Algolia's item tree doesn't keep", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const reply = (id: number, parentId: number, age: number, children: object[] = []) =>
+      ({ id, author: `user${id}`, text: 'Reply', created_at_i: now - age, parent_id: parentId, children });
+
+    function mockComment(children: object[], firebaseItems: FirebaseItem[], storyComments: () => Response | Promise<Response>) {
+      server.use(
+        http.get(`${ALGOLIA_API}/items/:id`, () => HttpResponse.json({ ...mockAlgoliaCommentItem, children })),
+        http.get(`${ALGOLIA_API}/search`, storyComments),
+      );
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 12345) return mockStoryItem;
+        return firebaseItems.find(item => item.id === Number(id)) ?? null;
+      });
+    }
+
+    it("puts the replies in it without waiting for the story's comments", async () => {
+      mockComment(
+        [reply(2001, 1001, 900), reply(2002, 1001, 800)],
+        [{ id: 1001, type: 'comment', by: 'patio11', time: now - 1800, parent: 12345, kids: [2002, 2001] }],
+        () => new Promise<Response>(() => { /* never loads */ }),
+      );
+
+      const { result } = renderHook(() => useCommentDetail(1001));
+
+      await waitFor(() => {
+        expect(result.current.replies.map(c => c.id)).toEqual([2002, 2001]);
+      });
+      expect(result.current.moreRepliesLoading).toBe(true);
+    });
+
+    it("puts nested replies in it once the story's comments load", async () => {
+      mockComment(
+        [reply(2001, 1001, 900, [reply(3001, 2001, 700), reply(3002, 2001, 600)])],
+        [{ id: 2001, type: 'comment', by: 'user2001', time: now - 900, parent: 1001, kids: [3002, 3001] }],
+        () => HttpResponse.json({ hits: [], nbHits: 0, nbPages: 0 }),
+      );
+
+      const { result } = renderHook(() => useCommentDetail(1001));
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+        expect(result.current.moreRepliesLoading).toBe(false);
+      });
+      expect(result.current.replies[0].children.map(c => c.id)).toEqual([3002, 3001]);
+    });
   });
 
   it('keeps an Algolia server error as an error without asking Firebase', async () => {

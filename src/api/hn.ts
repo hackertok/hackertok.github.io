@@ -789,8 +789,9 @@ async function hasRepliesOutsideItemTree(id: number, signal?: AbortSignal): Prom
 
 /**
  * A comment's replies, with the flagged and deleted ones that have live
- * replies. Algolia's item tree leaves those out along with their replies, so
- * they come from the story's comments, as in the story thread.
+ * replies, in HN's order. Algolia's item tree leaves those out along with
+ * their replies, so they come from the story's comments, as in the story
+ * thread. Both come in creation order, so the order comes from Firebase.
  */
 export async function fetchCommentReplies(item: AlgoliaItemResponse, signal?: AbortSignal): Promise<Comment[]> {
   if (item.story_id == null) return normalizeAlgoliaItemChildren(item.children ?? []);
@@ -800,15 +801,24 @@ export async function fetchCommentReplies(item: AlgoliaItemResponse, signal?: Ab
   }
   if (!mayHaveMore) return [];
 
+  // Null for a thread bigger than search returns, which keeps the item tree's replies.
   const storyComments = await fetchStoryComments(item.story_id);
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
   }
-  if (!storyComments) return normalizeAlgoliaItemChildren(item.children ?? []);
 
   const replies = flattenAlgoliaItemChildren(item.children ?? []);
   const seen = new Set(replies.map(c => c.objectID));
-  return buildCommentTree([...replies, ...storyComments.filter(c => !seen.has(c.objectID))], item.id);
+  const comments = [...replies, ...(storyComments ?? []).filter(c => !seen.has(c.objectID))];
+  const kidsOrder = await fetchKidsOrdering(parentsWithSiblings(buildCommentTree(comments, item.id), item.id), signal);
+  return buildCommentTree(comments, item.id, kidsOrder);
+}
+
+// The ids in a reply tree whose replies need ordering: those with more than one.
+function parentsWithSiblings(replies: Comment[], parentId: number, into: number[] = []): number[] {
+  if (replies.length > 1) into.push(parentId);
+  for (const reply of replies) parentsWithSiblings(reply.children, reply.id, into);
+  return into;
 }
 
 export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comment[] {

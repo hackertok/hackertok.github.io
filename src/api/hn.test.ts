@@ -1342,8 +1342,20 @@ describe('hn API utilities', () => {
       expect(rootReplies.map(c => c.id)).toEqual([201, 202]);
       expect(liveReplyReplies.map(c => c.id)).toEqual([302]);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
-      // 201 and its reply 302 to see whether to search, then each missing parent once.
-      expect(readItem.mock.calls.map(([id]) => Number(id)).sort()).toEqual([201, 202, 302, 302]);
+      // 201 and its reply 302 to see whether to search, then each missing
+      // parent once, and 101 to order its two replies.
+      expect(readItem.mock.calls.map(([id]) => Number(id)).sort()).toEqual([101, 201, 202, 302, 302]);
+    });
+
+    it('orders the replies the way HN ranks them', async () => {
+      const { readItem } = mockStory();
+      readItem.mockImplementation(async (id) => Number(id) === 101
+        ? { id: 101, type: 'comment', by: 'alice', time: 1700000100, parent: storyId, kids: [202, 201] }
+        : firebaseItems.find(fb => fb.id === Number(id)) ?? null);
+
+      const replies = await fetchCommentReplies(item);
+
+      expect(replies.map(c => c.id)).toEqual([202, 201]);
     });
 
     it('reads the story again after a failed read', async () => {
