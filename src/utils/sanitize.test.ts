@@ -284,6 +284,17 @@ describe('sanitizeHtml', () => {
       expect(result).toContain('href="https://example.com"');
     });
 
+    it('keeps balanced parentheses in an auto-linked URL', () => {
+      const result = sanitizeHtml('See https://en.wikipedia.org/wiki/Foil_(narrative) for more');
+      expect(result).toContain('href="https://en.wikipedia.org/wiki/Foil_(narrative)"');
+    });
+
+    it('excludes the parenthesis around a URL that has its own pair', () => {
+      const result = sanitizeHtml('(see https://en.wikipedia.org/wiki/Foil_(narrative)).');
+      expect(result).toContain('href="https://en.wikipedia.org/wiki/Foil_(narrative)"');
+      expect(result).toContain('Foil_(narrative)</a>).');
+    });
+
     it('excludes trailing semicolon from auto-linked URL', () => {
       const result = sanitizeHtml('url: https://example.com;');
       expect(result).toContain('href="https://example.com"');
