@@ -111,7 +111,7 @@ export function MobileStoryRoute({ feed }: { feed?: FeedType }) {
   const viewer = canSwipe && isNumericId
     ? pickSwipeViewer(location.state as LocationState | null, recovered, id, feedEntries)
     : null;
-  const isResolvedStory = useResolveDirectLink(id, canSwipe && isNumericId && !viewer);
+  const resolvedType = useResolveDirectLink(id, canSwipe && isNumericId && !viewer);
 
   if (feed) {
     // key={feed}: a list mounts for each feed, so Back to one restores its
@@ -129,8 +129,10 @@ export function MobileStoryRoute({ feed }: { feed?: FeedType }) {
     // Branch 5: Direct URL (no state) → resolve type first. The story viewer
     // must be the element Branch 4 renders for `{ from: 'top' }`: the first
     // swipe writes that state, and a different element there would remount
-    // the viewer and drop the story this link opened.
-    if (isResolvedStory) return renderSwipeViewer({ from: 'top' }, id, feedEntries);
+    // the viewer and drop the story this link opened. A job has no comments
+    // to swipe through and no feed lists it, so it gets the item page.
+    if (resolvedType === 'job') return <ItemDetail key={id} />;
+    if (resolvedType === 'story') return renderSwipeViewer({ from: 'top' }, id, feedEntries);
     return <MobileItemResolverSkeleton />;
   }
   
@@ -178,10 +180,10 @@ function ItemNotFound() {
 }
 
 // Resolves item type for a direct URL hit on mobile (no `location.state`):
-// a comment re-routes to Branch 1, and anything else reports `true` so the
-// wrapper mounts the story viewer.
-function useResolveDirectLink(id: string | undefined, enabled: boolean): boolean {
-  const [storyId, setStoryId] = useState<string | null>(null);
+// a comment re-routes to Branch 1, a job reports `'job'`, and anything else
+// reports `'story'` so the wrapper mounts the story viewer.
+function useResolveDirectLink(id: string | undefined, enabled: boolean): 'story' | 'job' | null {
+  const [resolved, setResolved] = useState<{ id: string; type: 'story' | 'job' } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -195,19 +197,19 @@ function useResolveDirectLink(id: string | undefined, enabled: boolean): boolean
           // Navigate with state so MobileStoryRoute Branch 1 picks it up
           void navigate(`/item/${id}`, { replace: true, state: { isComment: true } });
         } else {
-          setStoryId(id);
+          setResolved({ id, type: item.type === 'job' ? 'job' : 'story' });
         }
       })
       .catch(() => {
         if (controller.signal.aborted) return;
         // Default to story viewer on error (it has its own error handling)
-        setStoryId(id);
+        setResolved({ id, type: 'story' });
       });
 
     return () => controller.abort();
   }, [id, enabled, navigate]);
 
-  return storyId !== null && storyId === id;
+  return resolved && resolved.id === id ? resolved.type : null;
 }
 
 function MobileItemResolverSkeleton() {

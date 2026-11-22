@@ -938,16 +938,17 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page).toHaveURL(/\/item\/1001/);
   });
 
-  test('shows not-available message for job items', async ({ page }) => {
-    // Job items (type: 'job') are not stories — SwipeStoryViewer shows an error.
-    // Flow: MobileItemResolver fetches item → type is 'job' (not 'comment') →
-    // renders SwipeStoryViewer → it fetches again → detects type === 'job' →
-    // sets injectedError('job') → renders error UI.
+  test('opens job items on the item page', async ({ page }) => {
+    // The swipe viewer only takes stories, and no feed lists jobs, so a direct
+    // link to one gets the item page, as on desktop.
     await page.goto('/#/item/55555');
 
-    await expect(page.getByText('This item is not a story')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole('link', { name: /back to home/i })).toBeVisible();
-    await expect(page).toHaveTitle(/Item not available.*HackerTok/);
+    await expect(page.getByRole('heading', { name: 'YC Startup Is Hiring Engineers' })).toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveTitle(/YC Startup Is Hiring Engineers.*HackerTok/);
+    await expect(page.getByTestId('swipe-container')).toHaveCount(0);
+    // index.html adds swipe-mode before paint for any /item/:id.
+    await expect(page.locator('html')).not.toHaveClass(/swipe-mode/);
+    await expect(page.locator('body')).not.toHaveClass(/swipe-mode/);
   });
 
   test('restores swipe position on the main feed after a full page reload', async ({ page }) => {
