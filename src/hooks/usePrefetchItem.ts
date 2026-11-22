@@ -84,7 +84,11 @@ async function processQueue() {
       // Don't await — let prefetches run in parallel, refilling the queue
       // as each completes.
       void doPrefetch(bestId, controller).finally(() => {
-        activePrefetches.delete(bestId);
+        // A stop-then-restart can register a newer prefetch for this id
+        // before this aborted one settles; leave that one tracked.
+        if (activePrefetches.get(bestId) === controller) {
+          activePrefetches.delete(bestId);
+        }
         processQueueNow();
       });
     }
