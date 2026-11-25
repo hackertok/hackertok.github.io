@@ -7,20 +7,22 @@ import { useIsViewed, markViewedWithTime } from '../utils/viewedItems';
 import { itemPermalink } from '../utils/share';
 import { metaItemClass, metaPillClass } from '../lib/classes';
 import { AuthorByline } from './AuthorByline';
+import { PollOptions } from './PollOptions';
 import { RelativeTime } from './RelativeTime';
 import { ShareButton } from './ShareButton';
-import type { Item } from '../types';
+import type { JobItem, StoryItem } from '../types';
 
 interface ItemArticleProps {
-  item: Item & { title: string; points: number; url?: string; commentCount?: number };
+  item: StoryItem | JobItem;
   className?: string;
 }
 
-/** Shared item header (title, meta, text). */
+/** Shared item header (title, meta, text, a poll's options). */
 export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-border' }: ItemArticleProps) {
   const viewed = useIsViewed(item.id);
   const hostname = getHostname(item.url);
   const commentCount = item.type !== 'job' ? (item.commentCount ?? 0) : 0;
+  const pollOptions = item.type === 'poll' ? item.pollOptions : undefined;
 
   // Gate the outbound href to http(s) so javascript:/data: URLs can't reach the
   // DOM; anything else degrades to plain text. Keep it ONE `startsWith` — a `||`
@@ -89,6 +91,8 @@ export function ItemArticle({ item, className = 'mb-4 pb-4 border-b border-borde
           dangerouslySetInnerHTML={{ __html: sanitizedText }}
         />
       )}
+
+      {pollOptions && pollOptions.length > 0 && <PollOptions options={pollOptions} />}
     </article>
   );
 }

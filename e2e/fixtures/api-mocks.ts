@@ -404,8 +404,8 @@ export async function setupApiMocks(page: Page) {
     } else if (tags.includes('front_page')) {
       hits = [mockAlgoliaItem1, mockAlgoliaItem2, mockAlgoliaItem3];
       nbHits = 3;
-    } else if (tags === 'story') {
-      // Day-based pagination (tags=story + numericFilters) — distinct items
+    } else if (tags === '(story,poll)') {
+      // Day-based pagination (tags=(story,poll) + numericFilters) — distinct items
       // from the 'front_page' branch above so pagination is observable.
       hits = [mockPaginationItem1, mockPaginationItem2, mockPaginationItem3];
       nbHits = 3;
@@ -445,7 +445,7 @@ export async function setupApiMocks(page: Page) {
 
   // Algolia: Search by date endpoint. Two callers share this URL:
   //  - `useDomainInfiniteStories` issues `?query=<domain>` (no `tags`)
-  //  - `useUserInfiniteStories` issues `?tags=story,author_<username>` (no `query`)
+  //  - `useUserInfiniteStories` issues `?tags=(story,poll),author_<username>` (no `query`)
   // The author branch is matched FIRST so the absence of a `tags` substring
   // can never be mis-routed to the domain branch.
   await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {

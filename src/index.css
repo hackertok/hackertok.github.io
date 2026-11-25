@@ -843,6 +843,33 @@ body.swipe-mode.is-swiping .app-header {
   border-radius: 8px;
 }
 
+/* ── Poll options ─────────────────────────────────────────────────── */
+
+/* Under the poll's body (or its meta row), with the story body's spacing.
+   Each option is a bordered row whose fill is its share of the points; the
+   leader's fill is stronger. */
+.poll {
+  margin-top: 18px;
+}
+
+.poll-option {
+  position: relative;
+  overflow: hidden;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.poll-option-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+}
+
+.poll-option[data-leading] .poll-option-fill {
+  background: color-mix(in oklch, var(--accent) 22%, transparent);
+}
+
 /* ── OP badge ─────────────────────────────────────────────────────── */
 
 /* Soft-tinted accent pill (shadcn-ghost treatment) rendered next to

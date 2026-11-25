@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { createFirebaseWsHandler, FIREBASE_WS_PATTERN, setupApiMocks } from './fixtures/api-mocks';
-import { expectLocatorCenteredBetweenChrome, setOfflineAndWaitForBar } from './fixtures/layout-helpers';
 
 test.describe('Item Detail', () => {
   test.beforeEach(async ({ page }) => {
@@ -267,26 +266,61 @@ test.describe('Item Detail - Desktop', () => {
   });
 });
 
+const pollItems = {
+  126809: { id: 126809, title: 'Poll: Ban Polls?', by: 'pg', score: 46, time: 1204403652, descendants: 0, parts: [126810, 126811], type: 'poll' },
+  126810: { id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, poll: 126809, type: 'pollopt' },
+  126811: { id: 126811, text: 'No, leave them', by: 'pg', score: 10, time: 1204403652, poll: 126809, type: 'pollopt' },
+};
+
+test.describe('Item Detail - Poll', () => {
+  test.beforeEach(async ({ page }) => {
+    await setupApiMocks(page);
+    // Registered last, so it wins over setupApiMocks' handler.
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ itemOverrides: pollItems }));
+  });
+
+  test("lists a poll's options with their points and shares", async ({ page }) => {
+    await page.goto('/#/item/126809');
+
+    await expect(page.getByRole('heading', { level: 1, name: 'Poll: Ban Polls?' })).toBeVisible({ timeout: 10_000 });
+    const options = page.getByRole('region', { name: 'Poll options' }).getByRole('listitem');
+    await expect(options).toHaveText([/Yes, ban them\s*30 points · 75%/, /No, leave them\s*10 points · 25%/]);
+  });
+
+  test('shows its options when its comments fail to load', async ({ page }) => {
+    await page.route('**/search*', async (route) => {
+      const tags = new URL(route.request().url()).searchParams.get('tags') ?? '';
+      if (tags.includes('story_126809')) {
+        await route.fulfill({ status: 503, json: { message: 'Service temporarily unavailable' } });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto('/#/item/126809');
+
+    await expect(page.getByRole('region', { name: 'Poll options' }).getByRole('listitem')).toHaveCount(2, { timeout: 10_000 });
+  });
+});
+
 test.describe('Item Detail - Poll option on a phone', () => {
   test.use({ viewport: { width: 375, height: 667 }, hasTouch: true });
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
     // Registered last, so it wins over setupApiMocks' handler.
-    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({
-      itemOverrides: {
-        126810: { id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, poll: 126809, type: 'pollopt' },
-      },
-    }));
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ itemOverrides: pollItems }));
   });
 
-  test('centers the notice between the header and the offline bar', async ({ page, context }) => {
+  // The swipe viewer only holds stories, so a poll option opens as a page.
+  test('opens as a page that links to its poll', async ({ page }) => {
     await page.goto('/#/item/126810');
-    const heading = page.getByRole('heading', { name: "Poll options aren't supported" });
-    await expect(heading).toBeVisible({ timeout: 10_000 });
 
-    await setOfflineAndWaitForBar(page, context);
+    await expect(page.getByText('Yes, ban them', { exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('swipe-container')).toHaveCount(0);
 
-    await expectLocatorCenteredBetweenChrome(heading.locator('xpath=..'));
+    await page.getByRole('link', { name: 'Poll: Ban Polls?' }).click();
+    await expect(page).toHaveURL(/\/item\/126809$/);
+    await expect(page.getByRole('region', { name: 'Poll options' }).getByRole('listitem')).toHaveCount(2);
   });
 });

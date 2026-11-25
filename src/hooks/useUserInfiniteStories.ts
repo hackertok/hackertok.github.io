@@ -89,10 +89,10 @@ export function useUserInfiniteStories(username: string) {
 
     try {
       const pageToFetch = nextPageRef.current;
-      // tags=story,author_X is an AND filter: only stories AND authored by X.
-      // search_by_date returns chronological newest-first, matching HN's
-      // /submitted ordering.
-      const url = `${ALGOLIA_API}/search_by_date?tags=story,author_${encodeURIComponent(username)}&hitsPerPage=${HITS_PER_PAGE}${algoliaPageParams(pageToFetch)}`;
+      // tags=(story,poll),author_X: stories or polls (an OR group) AND
+      // authored by X, as HN's /submitted lists both. search_by_date returns
+      // chronological newest-first, matching HN's /submitted ordering.
+      const url = `${ALGOLIA_API}/search_by_date?tags=(story,poll),author_${encodeURIComponent(username)}&hitsPerPage=${HITS_PER_PAGE}${algoliaPageParams(pageToFetch)}`;
       const response = await fetch(url);
 
       if (!response.ok) {

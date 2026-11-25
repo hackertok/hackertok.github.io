@@ -1090,7 +1090,7 @@ test.describe('Mobile Swipe Viewer - Back past the cached page', () => {
   async function goBackToStory21(page: Page) {
     await page.route(`${ALGOLIA_API}/search*`, async (route) => {
       const tags = new URL(route.request().url()).searchParams.get('tags');
-      if (tags === 'story') {
+      if (tags === '(story,poll)') {
         await route.abort();
       } else {
         await route.fallback();

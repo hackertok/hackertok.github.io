@@ -96,13 +96,19 @@ describe('ItemDetail', () => {
     });
   });
 
-  it('says a poll option is not supported instead of showing it', async () => {
-    vi.spyOn(hnSdk, 'readItem').mockResolvedValue({ id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, type: 'pollopt' });
+  it('shows a poll option on its own page, linked to its poll', async () => {
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => (
+      Number(id) === 126810
+        ? { id: 126810, text: 'Yes, ban them<p>I&#x27;m tired of polls', by: 'pg', score: 30, time: 1204403652, poll: 126809, type: 'pollopt' }
+        : { id: 126809, title: 'Poll: Ban Polls?', by: 'pg', score: 46, time: 1204403652, parts: [126810], type: 'poll' }
+    ));
     renderItemDetail(126810);
 
-    expect(await screen.findByRole('heading', { name: "Poll options aren't supported" })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
-    expect(document.title).toBe("Poll options aren't supported | HackerTok");
+    // Its paragraphs kept, as in a comment.
+    expect((await screen.findByText('Yes, ban them')).innerHTML).toBe("Yes, ban them<p>I'm tired of polls</p>");
+    expect(screen.getByText('30 points')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Poll: Ban Polls\?/ })).toHaveAttribute('href', '/item/126809');
+    expect(document.title).toBe("Yes, ban them I'm tired of polls | HackerTok");
   });
 
   describe('comments that keep failing', () => {

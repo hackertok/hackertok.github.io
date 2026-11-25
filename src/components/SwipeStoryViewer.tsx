@@ -14,7 +14,6 @@ import { isCacheFresh } from '../utils/feedCache';
 import { useViewDwell } from '../hooks/useViewDwell';
 import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
-import { POLL_OPTION_TITLE } from './PollOptionNotSupported';
 import { StateView } from './StateView';
 import type { StoryItem, FeedType, LocationState } from '../types';
 
@@ -215,7 +214,7 @@ export function SwipeStoryViewerCore({
 
   // Get current story for document title (updates as user swipes)
   const currentStory = mergedStories[currentIndex];
-  const isNonStoryError = injectedError === 'job' || injectedError === 'comment';
+  const isNonStoryError = injectedError === 'job' || injectedError === 'comment' || injectedError === 'pollopt';
   const isInjectedNotFound = injectedError && (isNonStoryError || isInjectedItemNotFound);
   const isAtEndError = error && !loading && mergedStories.length > 0 && currentIndex >= mergedStories.length - 1;
 
@@ -223,7 +222,6 @@ export function SwipeStoryViewerCore({
     ? (isInjectedNotFound ? (isNonStoryError ? 'Item not available' : 'Item not found') : 'Failed to load item')
     : (error && mergedStories.length === 0) ? 'Failed to load item'
     : isOnline && isAtEndError && giveUp ? 'Failed to load item'
-    : currentStory && isPollOption(currentStory) ? POLL_OPTION_TITLE
     : (currentStory?.title || titleFallback);
   useDocumentTitle(documentTitle);
   
@@ -274,10 +272,10 @@ export function SwipeStoryViewerCore({
         // Race condition guard: user may have swiped to another story while fetching.
         // Only update state if this fetch result matches the story we're still waiting for.
         if (fetchedItem.id === fetchedStoryIdRef.current) {
-          // Only inject stories (not comments or jobs)
-          if (fetchedItem.type === 'comment' || fetchedItem.type === 'job') {
+          // Only inject stories (not comments, jobs or poll options)
+          if (fetchedItem.type === 'comment' || fetchedItem.type === 'job' || isPollOption(fetchedItem)) {
             setInjectedLoading(false);
-            setInjectedError(fetchedItem.type === 'job' ? 'job' : 'comment');
+            setInjectedError(fetchedItem.type);
             return;
           }
           setInjectedStory(fetchedItem);

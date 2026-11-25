@@ -937,7 +937,7 @@ describe('useItemWithComments', () => {
 
       expect(result.current.commentsLoading).toBe(true);
 
-      // Both endpoints must fail since fetchCommentsForItem touches Firebase too.
+      // Both endpoints must fail since fetchItemWithComments touches Firebase too.
       vi.spyOn(hnSdk, 'readItem').mockRejectedValue(new Error('Offline'));
       server.use(
         http.get(`${ALGOLIA_API}/search`, () => {
@@ -1062,6 +1062,87 @@ describe('useItemWithComments', () => {
       expect(isPriorityFetchActive()).toBe(false);
       expect(readItem).toHaveBeenCalledTimes(1);
       expect(commentSearches).toBe(0);
+    });
+  });
+
+  describe('a poll', () => {
+    const pollFirebase: FirebaseItem = {
+      id: 126809, title: 'Poll: Ban Polls?', by: 'pg', score: 46, time: 1204403652, descendants: 0,
+      parts: [126810, 126811], type: 'poll',
+    };
+    const pollOptions = [
+      { id: 126810, text: 'Yes, ban them', points: 30 },
+      { id: 126811, text: 'No, leave them', points: 10 },
+    ];
+    // How a feed (Algolia) delivers it: no options.
+    const feedPoll = createStoryItem({ id: 126809, title: 'Poll: Ban Polls?', author: 'pg', points: 46, commentCount: 0, type: 'poll' });
+
+    beforeEach(() => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === pollFirebase.id) return pollFirebase;
+        const option = pollOptions.find(o => o.id === Number(id));
+        return option ? { id: option.id, text: option.text, score: option.points, by: 'pg', time: 1204403652, poll: 126809, type: 'pollopt' } : null;
+      });
+    });
+
+    it("takes a feed copy's options from the comments fetch, and caches them", async () => {
+      const { result } = renderHook(() => useItemWithComments(126809, { initialItem: feedPoll }));
+
+      await waitFor(() => expect(result.current.commentsLoading).toBe(false));
+      expect(result.current.item).toEqual({ ...feedPoll, pollOptions });
+      expect(getCachedItem(126809)?.item).toEqual({ ...feedPoll, pollOptions });
+    });
+
+    it('takes them from a prefetch that lands after a feed copy mounted', async () => {
+      const { result, rerender } = renderHook(
+        ({ deferComments }) => useItemWithComments(126809, { initialItem: feedPoll, deferComments, skipOrderingCompletion: true }),
+        { initialProps: { deferComments: true } },
+      );
+
+      await act(async () => {
+        setCachedItem(126809, { ...feedPoll, pollOptions }, [], 1);
+      });
+      rerender({ deferComments: false });
+
+      await waitFor(() => expect(result.current.item).toEqual({ ...feedPoll, pollOptions }));
+      expect(hnSdk.readItem).not.toHaveBeenCalled();
+    });
+
+    it('reads them again over a fresh cached copy that lacks them, keeping its comments up', async () => {
+      setCachedItem(126809, feedPoll, [], 3);
+
+      const { result } = renderHook(() => useItemWithComments(126809));
+
+      expect(result.current.commentsLoading).toBe(false);
+      await waitFor(() => expect(result.current.item).toEqual({ ...feedPoll, pollOptions }));
+      expect(getCachedItem(126809)?.item).toEqual({ ...feedPoll, pollOptions });
+    });
+
+    it('shows them when the comments fail to load, without caching the poll', async () => {
+      server.use(http.get(`${ALGOLIA_API}/search`, () => new HttpResponse(null, { status: 503 })));
+
+      const { result } = renderHook(() => useItemWithComments(126809, { initialItem: feedPoll }));
+
+      await waitFor(() => expect(result.current.commentsError).toBe('Failed to fetch comments: 503'));
+      expect(result.current.item).toEqual({ ...feedPoll, pollOptions });
+      expect(getCachedItem(126809)).toBeNull();
+    });
+
+    it('gets them back when a failed load is retried', async () => {
+      const readItem = vi.mocked(hnSdk.readItem);
+      const read = readItem.getMockImplementation()!;
+      readItem.mockRejectedValueOnce(new Error('Offline'));
+
+      const { result } = renderHook(() => useItemWithComments(126809));
+      await waitFor(() => expect(result.current.error).toBe('Offline'));
+
+      readItem.mockImplementation(read);
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      expect(result.current.item).toMatchObject({ type: 'poll', pollOptions });
+      expect(getCachedItem(126809)?.item).toMatchObject({ type: 'poll', pollOptions });
     });
   });
 

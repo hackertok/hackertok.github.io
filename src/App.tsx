@@ -129,9 +129,10 @@ export function MobileStoryRoute({ feed }: { feed?: FeedType }) {
     // Branch 5: Direct URL (no state) → resolve type first. The story viewer
     // must be the element Branch 4 renders for `{ from: 'top' }`: the first
     // swipe writes that state, and a different element there would remount
-    // the viewer and drop the story this link opened. A job has no comments
-    // to swipe through and no feed lists it, so it gets the item page.
-    if (resolvedType === 'job') return <ItemDetail key={id} />;
+    // the viewer and drop the story this link opened. A job or poll option has
+    // no comments to swipe through and no feed lists it, so it gets the item
+    // page.
+    if (resolvedType === 'page') return <ItemDetail key={id} />;
     if (resolvedType === 'story') return renderSwipeViewer({ from: 'top' }, id, feedEntries);
     return <MobileItemResolverSkeleton />;
   }
@@ -180,10 +181,10 @@ function ItemNotFound() {
 }
 
 // Resolves item type for a direct URL hit on mobile (no `location.state`):
-// a comment re-routes to Branch 1, a job reports `'job'`, and anything else
-// reports `'story'` so the wrapper mounts the story viewer.
-function useResolveDirectLink(id: string | undefined, enabled: boolean): 'story' | 'job' | null {
-  const [resolved, setResolved] = useState<{ id: string; type: 'story' | 'job' } | null>(null);
+// a comment re-routes to Branch 1, a job or poll option reports `'page'`, and
+// anything else reports `'story'` so the wrapper mounts the story viewer.
+function useResolveDirectLink(id: string | undefined, enabled: boolean): 'story' | 'page' | null {
+  const [resolved, setResolved] = useState<{ id: string; type: 'story' | 'page' } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -197,7 +198,7 @@ function useResolveDirectLink(id: string | undefined, enabled: boolean): 'story'
           // Navigate with state so MobileStoryRoute Branch 1 picks it up
           void navigate(`/item/${id}`, { replace: true, state: { isComment: true } });
         } else {
-          setResolved({ id, type: item.type === 'job' ? 'job' : 'story' });
+          setResolved({ id, type: item.type === 'job' || item.type === 'pollopt' ? 'page' : 'story' });
         }
       })
       .catch(() => {

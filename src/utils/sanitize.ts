@@ -375,3 +375,15 @@ export function sanitizeHtml(html: string | null | undefined): string {
   const sanitized = DOMPurify.sanitize(html, PURIFY_CONFIG);
   return DOMPurify.sanitize(autoLinkUrls(sanitized), PURIFY_CONFIG);
 }
+
+/**
+ * HN's HTML as plain text, entities decoded, for a tab title or share sheet.
+ * A parsed document is inert: nothing in it loads or runs.
+ */
+export function htmlToText(html: string | null | undefined): string {
+  if (!html) return '';
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+  // textContent runs paragraphs together: `a<p>b` would read "ab".
+  body.querySelectorAll('p, pre, br').forEach(block => block.before(' '));
+  return (body.textContent ?? '').replace(/\s+/g, ' ').trim();
+}

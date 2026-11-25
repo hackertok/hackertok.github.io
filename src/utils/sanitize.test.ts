@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import DOMPurify from 'dompurify';
-import { sanitizeHtml } from './sanitize';
+import { htmlToText, sanitizeHtml } from './sanitize';
 
 describe('sanitizeHtml', () => {
   describe('basic functionality', () => {
@@ -891,6 +891,14 @@ describe('sanitizeHtml', () => {
         expect(result).not.toContain('alert');
       });
     });
+  });
+});
+
+// A real poll option's text (34180944), and code blocks as HN writes them: `<p><pre><code>`.
+describe('htmlToText', () => {
+  it('keeps a space between paragraphs and code blocks', () => {
+    expect(htmlToText('Lenovo T14<p>Lenovo T480&#x2F;490')).toBe('Lenovo T14 Lenovo T480/490');
+    expect(htmlToText('A <i>fast</i> one:<p><pre><code>x =\n  1</code></pre>')).toBe('A fast one: x = 1');
   });
 });
 
