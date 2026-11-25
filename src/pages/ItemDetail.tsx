@@ -2,10 +2,11 @@ import { useParams } from 'react-router';
 import { useEffect } from 'react';
 import { useItemWithComments } from '../hooks/useItemWithComments';
 import { isPollOption } from '../api/hn';
-import { ItemDetailSkeleton, CommentDetail, StateView, CommentsSection, ItemArticle, PageStage, PollOptionNotSupported, POLL_OPTION_TITLE } from '../components';
+import { ItemDetailSkeleton, CommentDetail, StateView, CommentsSection, ItemArticle, PageStage, PollOptionArticle } from '../components';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
+import { htmlToText } from '../utils/sanitize';
 
 export function ItemDetail() {
   const { id } = useParams();
@@ -20,7 +21,8 @@ export function ItemDetail() {
   const documentTitle = (!id || isNotFound || (!itemLoading && !item))
     ? 'Item not found'
     : error ? 'Failed to load item'
-    : item && isPollOption(item) ? POLL_OPTION_TITLE
+    // A poll option's text is its title, as on HN.
+    : item && isPollOption(item) ? (htmlToText(item.text) || 'Poll option')
     : (item && 'title' in item ? item.title : undefined);
   useDocumentTitle(documentTitle);
 
@@ -77,8 +79,8 @@ export function ItemDetail() {
 
   if (!itemLoading && item && isPollOption(item)) {
     return (
-      <div className="page-state-center-padded">
-        <PollOptionNotSupported action={{ label: 'Back to Home', to: '/' }} />
+      <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
+        <PollOptionArticle option={item} />
       </div>
     );
   }
@@ -94,7 +96,7 @@ export function ItemDetail() {
         loading={itemLoading || commentsLoading}
         skeleton={<ItemDetailSkeleton />}
       >
-        {item && item.type !== 'comment' && (
+        {item && item.type !== 'comment' && !isPollOption(item) && (
           <>
             <ItemArticle item={item} className="mb-6 pb-4 border-b border-border" />
             <section>

@@ -13,15 +13,26 @@ interface ItemBase {
   createdAt: number;
 }
 
+/** One choice in a poll. `text` is HN's HTML; sanitize before rendering. */
+export interface PollOption {
+  id: number;
+  text: string;
+  points: number;
+}
+
 export interface StoryItem extends ItemBase {
-  // A poll is a story. A poll option ('pollopt') rides along as one only so
-  // its page can say it isn't supported.
-  type: 'story' | 'ask' | 'show' | 'pollopt';
+  type: 'story' | 'ask' | 'show' | 'poll';
   title: string;
   url?: string;
   text?: string;
   points: number;
   commentCount: number;
+  /**
+   * A poll's options in HN's order, most points first. Only the comments
+   * fetch reads them, so feed copies and polls whose options haven't loaded
+   * leave it out.
+   */
+  pollOptions?: PollOption[];
 }
 
 export interface CommentItem extends ItemBase {
@@ -38,7 +49,17 @@ export interface JobItem extends ItemBase {
   points: number;
 }
 
-export type Item = StoryItem | CommentItem | JobItem;
+/** A poll option opened on its own. It has no title or comments. */
+export interface PollOptionItem extends ItemBase {
+  type: 'pollopt';
+  text: string;
+  points: number;
+  poll: number;
+  /** Left out when the poll couldn't be read. */
+  pollTitle?: string;
+}
+
+export type Item = StoryItem | CommentItem | JobItem | PollOptionItem;
 
 export interface Comment {
   id: number;
@@ -97,6 +118,10 @@ export interface FirebaseItem {
   dead?: boolean;
   deleted?: boolean;
   parent?: number;
+  /** A poll's option ids. The API calls this display order, but HN lists options by points. */
+  parts?: number[];
+  /** A poll option's poll. */
+  poll?: number;
 }
 
 // Algolia /items/{id} endpoint - returns item with full children tree

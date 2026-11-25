@@ -89,10 +89,10 @@ describe('SwipeStoryViewerCore', () => {
     expect(title.closest('div')).toHaveClass('swipe-state-center');
   });
 
-  it("titles the tab after the notice on a poll option's panel", async () => {
-    vi.mocked(fetchItemOnly).mockResolvedValueOnce(
-      createStoryItem({ id: 126810, type: 'pollopt', title: '', url: undefined, text: 'Yes, ban them' }),
-    );
+  it('refuses to inject a poll option as a story', async () => {
+    vi.mocked(fetchItemOnly).mockResolvedValueOnce({
+      id: 126810, type: 'pollopt', text: 'Yes, ban them', points: 30, author: 'pg', createdAt: 1204403652000, poll: 126809,
+    });
 
     render(
       <SwipeStoryViewerCore
@@ -106,8 +106,9 @@ describe('SwipeStoryViewerCore', () => {
       />,
     );
 
-    await waitFor(() => expect(activePanel()?.getAttribute('data-item-id')).toBe('126810'));
-    expect(document.title).toBe("Poll options aren't supported | HackerTok");
+    expect(await screen.findByRole('heading', { name: 'This item is not a story' })).toBeInTheDocument();
+    expect(screen.queryByTestId('fsi')).not.toBeInTheDocument();
+    expect(document.title).toBe('Item not available | HackerTok');
   });
 });
 

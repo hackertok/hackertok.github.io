@@ -377,7 +377,7 @@ export const mockUserProfile = {
 };
 
 // User-submitted stories (Algolia format) returned by the
-// `tags=story,author_pg` branch of `search_by_date`. Distinct objectIDs (66666,
+// `tags=(story,poll),author_pg` branch of `search_by_date`. Distinct objectIDs (66666,
 // 66667) so tests asserting URL rewrites or back-navigation can pin specific
 // indices without colliding with top/best/show/ask/domain mock IDs.
 export const mockUserStory1 = {

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { screen, fireEvent, within } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { ItemArticle } from './ItemArticle';
 import { clearViewed, clearViewedTimes, clearSessionViewed, isViewed, VIEWED_TITLE_TIMES_KEY, VIEWED_SESSION_KEY } from '../utils/viewedItems';
@@ -142,6 +142,76 @@ describe('ItemArticle', () => {
 
       expect(screen.getByText(/^0\s+comments$/)).toBeInTheDocument();
       expect(screen.queryByText(/99\s+comments/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('a poll', () => {
+    const optionRows = () => within(screen.getByRole('region', { name: 'Poll options' })).getAllByRole('listitem');
+
+    it('lists its options in order with their points and shares, the leader marked', () => {
+      render(<ItemArticle item={story({ type: 'poll', url: undefined, pollOptions: [
+        { id: 1, text: 'Vim', points: 1 },
+        { id: 2, text: 'Emacs &amp; <i>friends</i>', points: 299 },
+        { id: 3, text: 'Nano', points: 0 },
+      ] })} />);
+
+      expect(optionRows().map(row => row.textContent)).toEqual([
+        'Vim1 point · <1%',
+        'Emacs & friends299 points · 100%',
+        'Nano0 points · 0%',
+      ]);
+      expect(optionRows().map(row => row.hasAttribute('data-leading'))).toEqual([false, true, false]);
+    });
+
+    it('marks no leader before anyone has voted', () => {
+      render(<ItemArticle item={story({ type: 'poll', url: undefined, pollOptions: [
+        { id: 1, text: 'Yes', points: 0 },
+        { id: 2, text: 'No', points: 0 },
+      ] })} />);
+
+      expect(optionRows().map(row => row.textContent)).toEqual(['Yes0 points · 0%', 'No0 points · 0%']);
+      expect(optionRows().some(row => row.hasAttribute('data-leading'))).toBe(false);
+    });
+
+    it('shows the first 10 of a long poll until asked for all', () => {
+      const pollOptions = Array.from({ length: 13 }, (_, i) => ({ id: i + 1, text: `Option ${i + 1}`, points: 1 }));
+      render(<ItemArticle item={story({ type: 'poll', url: undefined, pollOptions })} />);
+
+      expect(optionRows()).toHaveLength(10);
+      const toggle = screen.getByRole('button', { name: 'Show all 13 options' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+      fireEvent.click(toggle);
+      expect(optionRows()).toHaveLength(13);
+      expect(screen.getByRole('button', { name: 'Show fewer options' })).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('keeps the toggle where it was when collapsing from far down the options', () => {
+      const pollOptions = Array.from({ length: 13 }, (_, i) => ({ id: i + 1, text: `Option ${i + 1}`, points: 1 }));
+      render(<ItemArticle item={story({ type: 'poll', url: undefined, pollOptions })} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Show all 13 options' }));
+      const toggle = screen.getByRole('button', { name: 'Show fewer options' });
+      vi.spyOn(toggle, 'getBoundingClientRect')
+        .mockReturnValueOnce({ top: 600 } as DOMRect)
+        .mockReturnValueOnce({ top: -2000 } as DOMRect);
+      const scrollBy = vi.spyOn(window, 'scrollBy').mockImplementation(vi.fn());
+
+      try {
+        fireEvent.click(toggle);
+
+        expect(optionRows()).toHaveLength(10);
+        expect(scrollBy).toHaveBeenCalledExactlyOnceWith(0, -2600);
+      } finally {
+        scrollBy.mockRestore();
+      }
+    });
+
+    it('shows every option of a poll of up to 12', () => {
+      const pollOptions = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, text: `Option ${i + 1}`, points: 1 }));
+      render(<ItemArticle item={story({ type: 'poll', url: undefined, pollOptions })} />);
+
+      expect(optionRows()).toHaveLength(12);
+      expect(screen.queryByRole('button', { name: /options/ })).not.toBeInTheDocument();
     });
   });
 });

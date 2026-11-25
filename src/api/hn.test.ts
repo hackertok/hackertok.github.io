@@ -11,10 +11,11 @@ import {
   fetchTopStories,
   fetchBestStories,
   fetchNewStories,
+  fetchFrontPageForDay,
   fetchFirebaseItem,
   fetchItemOnly,
   fetchAlgoliaItem,
-  fetchCommentsForItem,
+  fetchItemWithComments,
   fetchCommentReplies,
   normalizeAlgoliaItemChildren,
   NotFoundError,
@@ -325,6 +326,21 @@ describe('hn API utilities', () => {
 
   describe('normalizeAlgoliaHit', () => {
     const nowSec = Math.floor(Date.now() / 1000);
+
+    it('types a poll, which Algolia tags `poll` rather than `story`', () => {
+      const hit = {
+        objectID: '5640988',
+        title: 'Poll: Do you have a 3d printer?',
+        url: null,
+        points: 186,
+        author: 'pg',
+        created_at_i: 1367444459,
+        num_comments: 275,
+        _tags: ['poll', 'author_pg'],
+      };
+
+      expect(normalizeAlgoliaHit(hit).type).toBe('poll');
+    });
 
     it('maps story_text to text field', () => {
       const hit = {
@@ -915,7 +931,7 @@ describe('hn API utilities', () => {
     it('normalizes Firebase item format', async () => {
       const result = await fetchItemOnly(12345);
       expect(result.type).not.toBe('comment');
-      if (result.type === 'comment') throw new Error('unexpected');
+      if (result.type === 'comment' || result.type === 'pollopt') throw new Error('unexpected');
       
       expect(result.points).toBe(284);
       expect(result.author).toBe('leerob');
@@ -937,15 +953,120 @@ describe('hn API utilities', () => {
     it('defaults commentCount to 0 when descendants missing', async () => {
       const result = await fetchItemOnly(12345);
       expect(result.type).not.toBe('comment');
-      if (result.type === 'comment') throw new Error('unexpected');
+      if (result.type === 'comment' || result.type === 'pollopt') throw new Error('unexpected');
 
       expect(result.type !== 'job' ? result.commentCount : 0).toBe(137);
     });
 
-    it('keeps a poll option typed as one', async () => {
-      vi.spyOn(hnSdk, 'readItem').mockResolvedValue({ id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, type: 'pollopt' });
+    it('reads a poll option with its poll\'s title', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => (
+        Number(id) === 126810
+          ? { id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, poll: 126809, type: 'pollopt' }
+          : { id: 126809, title: 'Poll: Ban Polls?', by: 'pg', time: 1204403652, parts: [126810], type: 'poll' }
+      ));
 
-      expect((await fetchItemOnly(126810)).type).toBe('pollopt');
+      expect(await fetchItemOnly(126810)).toEqual({
+        id: 126810,
+        type: 'pollopt',
+        text: 'Yes, ban them',
+        points: 30,
+        author: 'pg',
+        createdAt: 1204403652 * 1000,
+        poll: 126809,
+        pollTitle: 'Poll: Ban Polls?',
+      });
+    });
+
+    it('still reads a poll option when its poll can\'t be read', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === 126809) throw new Error('Offline');
+        return { id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, poll: 126809, type: 'pollopt' };
+      });
+
+      const option = await fetchItemOnly(126810);
+
+      expect(option).toMatchObject({ type: 'pollopt', poll: 126809 });
+      expect(option).not.toHaveProperty('pollTitle');
+    });
+  });
+
+  describe('fetchFrontPageForDay', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("includes a day's polls, which Algolia doesn't tag as stories", async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({
+        hits: [
+          { objectID: '1', title: 'A story', url: 'https://example.com', points: 10, author: 'a', created_at_i: 1700000000, num_comments: 1, _tags: ['story'] },
+          { objectID: '2', title: 'Poll: Tabs or spaces?', url: null, points: 50, author: 'b', created_at_i: 1700000000, num_comments: 9, _tags: ['poll'] },
+        ],
+        nbHits: 2,
+      }));
+
+      const stories = await fetchFrontPageForDay(1);
+
+      expect(new URL(fetchSpy.mock.calls[0]?.[0] as string).searchParams.get('tags')).toBe('(story,poll)');
+      expect(stories.map(s => [s.id, s.type])).toEqual([[2, 'poll'], [1, 'story']]);
+    });
+  });
+
+  describe('poll options', () => {
+    const poll: FirebaseItem = {
+      id: 126809, title: 'Poll: Ban Polls?', by: 'pg', score: 46, time: 1204403652, descendants: 1,
+      parts: [126810, 126811, 126812, 126813], kids: [126900], type: 'poll',
+    };
+    const options: FirebaseItem[] = [
+      { id: 126810, text: 'Yes, ban them; I&#x27;m tired', by: 'pg', score: 12, time: 1204403652, poll: 126809, type: 'pollopt' },
+      { id: 126811, text: 'No, leave them', by: 'pg', score: 30, time: 1204403652, poll: 126809, type: 'pollopt' },
+      { id: 126812, by: 'pg', time: 1204403652, poll: 126809, type: 'pollopt', deleted: true },
+      { id: 126813, text: 'Only on Fridays', by: 'pg', score: 12, time: 1204403652, poll: 126809, type: 'pollopt' },
+    ];
+    const comment = { objectID: '126900', author: 'dang', comment_text: 'Polls are fine', created_at_i: 1204403700, parent_id: 126809 };
+
+    function mockPoll(readOption: (id: number) => Promise<FirebaseItem | null> = async id => options.find(o => o.id === id) ?? null) {
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => (Number(id) === poll.id ? poll : readOption(Number(id))));
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ hits: [comment], nbHits: 1, nbPages: 1 }));
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('come with a poll\'s comments, most points first as on HN, ties in poll order, without deleted ones', async () => {
+      mockPoll();
+
+      const { item } = await fetchItemWithComments(poll.id);
+
+      expect(item).toMatchObject({ type: 'poll', title: 'Poll: Ban Polls?', points: 46 });
+      expect(item.type === 'poll' && item.pollOptions).toEqual([
+        { id: 126811, text: 'No, leave them', points: 30 },
+        { id: 126810, text: 'Yes, ban them; I&#x27;m tired', points: 12 },
+        { id: 126813, text: 'Only on Fridays', points: 12 },
+      ]);
+    });
+
+    it('are all left out when one of them fails, rather than misstate the shares, and the comments still come', async () => {
+      mockPoll(async id => {
+        if (id === 126811) throw new Error('Offline');
+        return options.find(o => o.id === id) ?? null;
+      });
+
+      const { item, comments } = await fetchItemWithComments(poll.id);
+
+      expect(item).toMatchObject({ type: 'poll', title: 'Poll: Ban Polls?' });
+      expect(item).not.toHaveProperty('pollOptions');
+      expect(comments.map(c => [c.id, c.text])).toEqual([[126900, 'Polls are fine']]);
+    });
+
+    it('aren\'t read for the item alone', async () => {
+      mockPoll();
+
+      const item = await fetchItemOnly(poll.id);
+
+      expect(item.type).toBe('poll');
+      expect(item).not.toHaveProperty('pollOptions');
+      expect(hnSdk.readItem).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1051,7 +1172,7 @@ describe('hn API utilities', () => {
     });
   });
 
-  describe('fetchCommentsForItem', () => {
+  describe('fetchItemWithComments', () => {
     describe('replies to a comment search leaves out', () => {
       const itemId = 9000;
 
@@ -1092,7 +1213,7 @@ describe('hn API utilities', () => {
           { id: 102, type: 'comment', by: 'eve', text: '[flagged]', dead: true, time: 1700000150, parent: itemId, kids: [202, 201] },
         ]);
 
-        const comments = await fetchCommentsForItem(itemId);
+        const { comments } = await fetchItemWithComments(itemId);
 
         expect(comments.map(c => c.id)).toEqual([101, 102, 103]);
         expect(comments[1]).toMatchObject({ author: 'eve', text: '[flagged]', createdAt: 1700000150 * 1000 });
@@ -1106,7 +1227,7 @@ describe('hn API utilities', () => {
           { id: 102, type: 'comment', by: 'eve', text: 'Praise the iLord.', dead: true, time: 1700000150, parent: itemId, kids: [201, 202] },
         ]);
 
-        const comments = await fetchCommentsForItem(itemId);
+        const { comments } = await fetchItemWithComments(itemId);
 
         expect(comments[1]).toMatchObject({ id: 102, author: 'eve', text: '[flagged]' });
       });
@@ -1116,7 +1237,7 @@ describe('hn API utilities', () => {
           { id: 102, type: 'comment', deleted: true, time: 1700000150, parent: itemId, kids: [201, 202] },
         ]);
 
-        const comments = await fetchCommentsForItem(itemId);
+        const { comments } = await fetchItemWithComments(itemId);
 
         expect(comments.map(c => c.id)).toEqual([101, 102, 103]);
         expect(comments[1]).toMatchObject({ deleted: true, author: '', text: '' });
@@ -1136,7 +1257,7 @@ describe('hn API utilities', () => {
           ],
         );
 
-        const comments = await fetchCommentsForItem(itemId);
+        const { comments } = await fetchItemWithComments(itemId);
 
         expect(comments.map(c => c.id)).toEqual([101, 102]);
         expect(comments[1].children.map(c => c.id)).toEqual([201]);
@@ -1146,7 +1267,7 @@ describe('hn API utilities', () => {
       it('drops the replies when Firebase does not have their parent either', async () => {
         mockThread([]);
 
-        const comments = await fetchCommentsForItem(itemId);
+        const { comments } = await fetchItemWithComments(itemId);
 
         expect(comments.map(c => c.id)).toEqual([101, 103]);
         expect(comments.flatMap(c => c.children)).toEqual([]);
@@ -1204,7 +1325,7 @@ describe('hn API utilities', () => {
         // nbPages is capped at 1,000 hits / 200 per page, so it no longer covers nbHits.
         mockAlgolia({ nbHits: 1500, nbPages: 5 });
 
-        const comments = await fetchCommentsForItem(itemId);
+        const { comments } = await fetchItemWithComments(itemId);
 
         expect(comments.map(c => c.id)).toEqual([101, 102, 104]);
         expect(comments[0].text).toBe('From search');
@@ -1214,7 +1335,7 @@ describe('hn API utilities', () => {
       it('keeps the search results when the item tree fails', async () => {
         mockAlgolia({ nbHits: 1500, nbPages: 5 }, { treeStatus: 500 });
 
-        const comments = await fetchCommentsForItem(itemId);
+        const { comments } = await fetchItemWithComments(itemId);
 
         expect(comments.map(c => c.id)).toEqual([101, 102]);
       });
@@ -1222,7 +1343,7 @@ describe('hn API utilities', () => {
       it('skips the item tree when search has every comment', async () => {
         const mockFetch = mockAlgolia({ nbHits: 2, nbPages: 1 });
 
-        await fetchCommentsForItem(itemId);
+        await fetchItemWithComments(itemId);
 
         expect(mockFetch).toHaveBeenCalledTimes(1);
         expect(urlOf(mockFetch.mock.calls[0][0])).toContain('/search?');

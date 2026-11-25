@@ -1,11 +1,22 @@
 import { ALGOLIA_API } from '../config/api';
 import { hnSdk } from './hnSdk';
-import type { Item, StoryItem, Comment, AlgoliaHit, AlgoliaComment, AlgoliaSearchResponse, FirebaseItem, PrefetchResult, AlgoliaItemResponse, AlgoliaItemChild } from '../types';
+import type { Item, StoryItem, Comment, AlgoliaHit, AlgoliaComment, AlgoliaSearchResponse, FirebaseItem, PrefetchResult, AlgoliaItemResponse, AlgoliaItemChild, PollOption, PollOptionItem } from '../types';
 
 export class NotFoundError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'NotFoundError';
+  }
+}
+
+/** The comments couldn't be read, but the item they hang off was, with a poll's options. */
+export class CommentsError extends Error {
+  readonly item: Item;
+
+  constructor(message: string, item: Item) {
+    super(message);
+    this.name = 'CommentsError';
+    this.item = item;
   }
 }
 
@@ -41,7 +52,7 @@ function getDayRange(daysAgo = 0) {
   };
 }
 
-// Feed endpoints only return stories.
+// Feed endpoints only return stories (polls among them).
 export function normalizeAlgoliaHit(hit: AlgoliaHit): StoryItem {
   return {
     id: parseInt(hit.objectID, 10),
@@ -52,7 +63,10 @@ export function normalizeAlgoliaHit(hit: AlgoliaHit): StoryItem {
     author: hit.author,
     createdAt: hit.created_at_i * 1000,
     commentCount: hit.num_comments || 0,
-    type: hit._tags?.includes('ask_hn') ? 'ask' : hit._tags?.includes('show_hn') ? 'show' : 'story',
+    type: hit._tags?.includes('poll') ? 'poll'
+      : hit._tags?.includes('ask_hn') ? 'ask'
+      : hit._tags?.includes('show_hn') ? 'show'
+      : 'story',
   };
 }
 
@@ -83,12 +97,22 @@ function normalizeFirebaseItem(fbItem: FirebaseItem): Item {
     };
   }
 
+  if (fbItem.type === 'pollopt') {
+    return {
+      ...base,
+      type: 'pollopt' as const,
+      text: fbItem.text ?? '',
+      points: fbItem.score ?? 0,
+      poll: fbItem.poll ?? 0,
+    };
+  }
+
   // Firebase doesn't distinguish ask/show — they're all type='story'.
   // Only the Algolia path (via _tags) can set 'ask'/'show' sub-types.
-  // A poll reads as a story, without its options.
+  // A poll's options are separate items, read with its comments.
   return {
     ...base,
-    type: fbItem.type === 'pollopt' ? 'pollopt' : 'story',
+    type: fbItem.type === 'poll' ? 'poll' : 'story',
     title: fbItem.title ?? '',
     url: fbItem.url,
     text: fbItem.text,
@@ -130,8 +154,9 @@ export async function fetchTopStories(limit = 20): Promise<StoryItem[]> {
 export async function fetchFrontPageForDay(daysAgo = 1): Promise<StoryItem[]> {
   const { start, end } = getDayRange(daysAgo);
   
-  // story tag excludes jobs/comments/polls; relevance sort factors in points.
-  const url = `${ALGOLIA_API}/search?tags=story&numericFilters=created_at_i>=${start},created_at_i<${end}&hitsPerPage=30`;
+  // story,poll is an OR group: polls are tagged `poll`, not `story`. It still
+  // leaves out jobs and comments; relevance sort factors in points.
+  const url = `${ALGOLIA_API}/search?tags=(story,poll)&numericFilters=created_at_i>=${start},created_at_i<${end}&hitsPerPage=30`;
   
   const response = await fetch(url);
   if (!response.ok) {
@@ -232,15 +257,15 @@ export async function fetchNewStories(offset = 0, limit = 30) {
   };
 }
 
-/** A poll option has no title or comments, so its page shows a notice instead. */
-export function isPollOption(item: Item): item is StoryItem & { type: 'pollopt' } {
+/** A poll option has no title or comments, so it gets a page of its own. */
+export function isPollOption(item: Item): item is PollOptionItem {
   return item.type === 'pollopt';
 }
 
 function normalizeFirebaseToStoryItem(fb: FirebaseItem): StoryItem {
   return {
     id: fb.id,
-    type: 'story',
+    type: fb.type === 'poll' ? 'poll' : 'story',
     title: fb.title ?? '',
     url: fb.url,
     text: fb.text,
@@ -283,7 +308,7 @@ async function fetchRankedStories(
       !fb.dead &&
       !excludeTitles?.some(t => (fb.title ?? '').toLowerCase().includes(t))
     )
-    .map(fb => ({ ...normalizeFirebaseToStoryItem(fb), type: type }));
+    .map(fb => ({ ...normalizeFirebaseToStoryItem(fb), type: fb.type === 'poll' ? 'poll' as const : type }));
 
   return {
     stories,
@@ -622,11 +647,68 @@ async function buildOrderedCommentTree(
   return buildCommentTree(comments, itemId, kidsOrder);
 }
 
-/** Fetch item metadata only (no comments). */
+/** Fetch item metadata only (no comments). A poll's options come with its comments. */
 export async function fetchItemOnly(id: number | string, signal?: AbortSignal): Promise<Item> {
   const itemId = Number(id);
-  const item = await fetchFirebaseItem(itemId, signal);
-  return normalizeFirebaseItem(item);
+  const item = normalizeFirebaseItem(await fetchFirebaseItem(itemId, signal));
+  if (!isPollOption(item) || !item.poll) return item;
+
+  // Its page links to the poll by title. Without one the link still works.
+  const poll = await hnSdk.readItem(item.poll).catch(() => null);
+  return poll?.title ? { ...item, pollTitle: poll.title } : item;
+}
+
+// Every option is read: a poll missing one would misstate the others' shares,
+// so one failed read fails them all. Deleted and flagged options are left out.
+// Not batched: reads share one WebSocket, so batches would only add round
+// trips (seconds, for HN's biggest poll).
+// They come in HN's order, most points first. The API calls `parts` display
+// order, but HN's pages sort by points; the sort is stable, so ties keep it.
+async function fetchPollOptions(parts: number[], signal?: AbortSignal): Promise<PollOption[]> {
+  const items = await Promise.all(parts.map(id => hnSdk.readItem(id)));
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+  return items
+    .filter((item): item is FirebaseItem => item != null && !item.deleted && !item.dead)
+    .map(item => ({ id: item.id, text: item.text ?? '', points: item.score ?? 0 }))
+    .sort((a, b) => b.points - a.points);
+}
+
+function threadItem(raw: FirebaseItem, pollOptions: PollOption[] | undefined): Item {
+  const item = normalizeFirebaseItem(raw);
+  return item.type === 'poll' && pollOptions ? { ...item, pollOptions } : item;
+}
+
+// The item, normalized, with its comments in HN's order. A poll's options are
+// its content, so they're read too, while the comments are put in order.
+// Options that can't be read leave the poll without them rather than cost it
+// its comments; a copy cached that way reads them again. Comments that can't
+// be read don't cost a poll its options: the CommentsError carries them.
+async function fetchThread(itemId: number, signal?: AbortSignal, maxOrderingDepth = Infinity): Promise<PrefetchResult> {
+  const itemRead = fetchFirebaseItem(itemId, signal);
+  const pollOptionsRead = itemRead
+    .then(raw => (raw.type === 'poll' ? fetchPollOptions(raw.parts ?? [], signal) : undefined))
+    .catch(() => undefined);
+  const commentsRead = fetchAllCommentsAlgolia(itemId, signal).catch(async (err: unknown) => {
+    if (signal?.aborted) throw err;
+    const raw = await itemRead.catch(() => null);
+    if (!raw) throw err;
+    const item = threadItem(raw, await pollOptionsRead);
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    throw new CommentsError(err instanceof Error ? err.message : String(err), item);
+  });
+  const [raw, comments] = await Promise.all([itemRead, commentsRead]);
+
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+
+  const [commentTree, pollOptions] = await Promise.all([
+    buildOrderedCommentTree(comments, itemId, raw.kids, signal, maxOrderingDepth),
+    pollOptionsRead,
+  ]);
+  return { item: threadItem(raw, pollOptions), comments: commentTree };
 }
 
 // Batched to avoid overwhelming the API. Items that fail or don't exist are
@@ -669,56 +751,23 @@ async function fetchKidsOrdering(commentIds: number[], signal?: AbortSignal): Pr
  */
 export async function prefetchItemComments(id: number | string, signal?: AbortSignal, maxOrderingDepth = Infinity): Promise<PrefetchResult | null> {
   try {
-    const itemId = Number(id);
-    
     if (signal?.aborted) return null;
-    
-    const [item, comments] = await Promise.all([
-      fetchFirebaseItem(itemId, signal),
-      fetchAllCommentsAlgolia(itemId, signal),
-    ]);
-    
-    if (signal?.aborted) return null;
-    if (!item) return null;
-    
-    const commentTree = await buildOrderedCommentTree(comments, itemId, item.kids, signal, maxOrderingDepth);
-    
-    if (signal?.aborted) return null;
-    
-    return {
-      item: normalizeFirebaseItem(item),
-      comments: commentTree,
-    };
+
+    const result = await fetchThread(Number(id), signal, maxOrderingDepth);
+
+    return signal?.aborted ? null : result;
   } catch {
     return null;
   }
 }
 
-export async function fetchCommentsForItem(id: number | string, signal: AbortSignal | null = null): Promise<Comment[]> {
-  return (await fetchItemWithComments(id, signal)).comments;
-}
-
 /** The comment tree plus the item it hangs off, which the ordering reads anyway. */
 export async function fetchItemWithComments(id: number | string, signal: AbortSignal | null = null): Promise<PrefetchResult> {
-  const itemId = Number(id);
-
   if (signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError');
   }
 
-  const [item, comments] = await Promise.all([
-    fetchFirebaseItem(itemId, signal ?? undefined),
-    fetchAllCommentsAlgolia(itemId, signal ?? undefined),
-  ]);
-
-  if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
-
-  return {
-    item: normalizeFirebaseItem(item),
-    comments: await buildOrderedCommentTree(comments, itemId, item.kids, signal ?? undefined),
-  };
+  return fetchThread(Number(id), signal ?? undefined);
 }
 
 // Algolia /items/{id} returns the full nested children tree in one request.

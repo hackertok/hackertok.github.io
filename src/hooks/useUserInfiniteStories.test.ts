@@ -60,7 +60,7 @@ function fakeResponse<T>(jsonDeferred: Deferred<T>, status = 200): Response {
   } as unknown as Response;
 }
 
-/** Extracts the author tag value from a `search_by_date?tags=story,author_X` URL. */
+/** Extracts the author tag value from a `search_by_date?tags=(story,poll),author_X` URL. */
 function authorFromUrl(url: string): string {
   const params = new URLSearchParams(url.split('?')[1] ?? '');
   const tags = params.get('tags') ?? '';
@@ -100,7 +100,7 @@ describe('useUserInfiniteStories', () => {
     expect(result.current.hasMore).toBe(false);
   });
 
-  it('queries Algolia with the AND-tagged author filter and preserves username case', async () => {
+  it('queries Algolia for the stories and polls by the author, preserving username case', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response(JSON.stringify(body([1]))));
@@ -108,9 +108,9 @@ describe('useUserInfiniteStories', () => {
     const { result } = renderHook(() => useUserInfiniteStories('PaulG'));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    const url = fetchInputToUrl(fetchSpy.mock.calls[0]?.[0]);
-    expect(url).toContain('search_by_date');
-    expect(url).toMatch(/tags=story%2Cauthor_PaulG|tags=story,author_PaulG/);
+    const url = new URL(fetchInputToUrl(fetchSpy.mock.calls[0]?.[0]));
+    expect(url.pathname).toContain('search_by_date');
+    expect(url.searchParams.get('tags')).toBe('(story,poll),author_PaulG');
   });
 
   it('returns empty list and hasMore=false on the first round-trip when the user has no stories (no cap loop)', async () => {

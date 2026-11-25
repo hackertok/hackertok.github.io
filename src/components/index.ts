@@ -17,6 +17,7 @@ export { ItemArticle } from './ItemArticle';
 export { FullScreenComment, FullScreenCommentSkeleton, FullScreenCommentSkeletonPanel } from './FullScreenComment';
 export { CommentsSection } from './CommentsSection';
 export { StateView } from './StateView';
-export { PollOptionNotSupported, POLL_OPTION_TITLE } from './PollOptionNotSupported';
+export { PollOptionArticle } from './PollOptionArticle';
+export { PollOptions } from './PollOptions';
 export { NetworkStatusBar } from './NetworkStatusBar';
 export { ShareButton } from './ShareButton';

@@ -7,7 +7,6 @@ import { CommentsSection } from './CommentsSection';
 import { FullScreenChrome } from './FullScreenChrome';
 import { ItemArticle } from './ItemArticle';
 import { PageStage } from './PageStage';
-import { PollOptionNotSupported } from './PollOptionNotSupported';
 import { StateView } from './StateView';
 import type { StoryItem } from '../types';
 
@@ -88,18 +87,12 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
     return <FullScreenItemSkeletonPanel />;
   }
 
-  if (!itemLoading && (!item || item.type === 'comment')) {
+  // The swipe viewer only gets stories and jobs: a poll option, like a
+  // comment, has no story to show here.
+  if (!itemLoading && (!item || item.type === 'comment' || isPollOption(item))) {
     return (
       <div className="full-screen-state">
         <StateView variant="not-found" />
-      </div>
-    );
-  }
-
-  if (!itemLoading && item && isPollOption(item)) {
-    return (
-      <div className="full-screen-state">
-        <PollOptionNotSupported />
       </div>
     );
   }
@@ -115,7 +108,7 @@ export function FullScreenItem({ itemId, initialItem, isPriority = true, deferCo
         skeleton={<FullScreenItemSkeleton />}
         triggerWhen={isPriority}
       >
-        {item && item.type !== 'comment' && (
+        {item && item.type !== 'comment' && !isPollOption(item) && (
           <>
             <ItemArticle item={item} />
             <section>

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useEffectEvent, useCallback } from 'react';
-import { fetchItemOnly, fetchCommentsForItem, fetchItemWithComments, isPollOption, NotFoundError } from '../api/hn';
+import { fetchItemOnly, fetchItemWithComments, isPollOption, CommentsError, NotFoundError } from '../api/hn';
 import { getCachedItem, setCachedItem } from '../utils/itemCache';
 import { registerPriorityFetch, unregisterPriorityFetch } from '../utils/fetchPriority';
 import { useNetworkStatus } from './useNetworkStatus';
-import type { Item, Comment } from '../types';
+import type { Item, Comment, StoryItem } from '../types';
 
 interface UseItemWithCommentsOptions {
   /** Pre-loaded item data (avoids the redundant item fetch). */
@@ -31,23 +31,30 @@ interface UseItemWithCommentsResult {
 }
 
 // Swipe-position snapshots store stories without `text` (see swipePosition.ts),
-// so an initialItem can lack a body that another copy of the item has.
-function withText(item: Item | null | undefined, source: Item | null | undefined): Item | null {
+// and feeds don't carry a poll's options, so an initialItem can lack fields
+// that another copy of the item has.
+function withCachedFields(item: Item | null | undefined, source: Item | null | undefined): Item | null {
   if (!item) return null;
-  if (item.text !== undefined || source?.id !== item.id || source.text === undefined) return item;
-  return { ...item, text: source.text };
+  if (source?.id !== item.id) return item;
+  const filled = item.text === undefined && source.text !== undefined ? { ...item, text: source.text } : item;
+  if (!isStory(filled) || filled.pollOptions || source.type !== 'poll' || !source.pollOptions) return filled;
+  return { ...filled, type: 'poll', pollOptions: source.pollOptions };
 }
 
-// The comments fetch reads the item too, so it has newer points, comment count
-// and title than a cached or restored copy. The rest stays: Firebase calls
-// Ask/Show posts `story`, and a deleted story comes back without a title. A
-// fetched poll option's type wins: copies cached before it had one call it a
-// story.
+function isStory(item: Item): item is StoryItem {
+  return item.type !== 'comment' && item.type !== 'job' && !isPollOption(item);
+}
+
+// The comments fetch reads the item too, so it has newer points, comment
+// count, title and poll options than a cached or restored copy. The rest
+// stays: Firebase calls Ask/Show posts `story`, and a deleted story comes back
+// without a title. A fetched poll or poll option's type wins: copies cached
+// before HackerTok knew them call them stories.
 function withFetchedFields(item: Item | null | undefined, fetched: Item): Item | null {
   if (item && isPollOption(fetched) && fetched.id === item.id) return fetched;
-  if (!item || item.type === 'comment' || item.type === 'job' || fetched.type !== 'story' ||
+  if (!item || !isStory(item) || (fetched.type !== 'story' && fetched.type !== 'poll') ||
       fetched.id !== item.id || !fetched.title) {
-    return withText(item, fetched);
+    return withCachedFields(item, fetched);
   }
   return {
     ...item,
@@ -56,7 +63,14 @@ function withFetchedFields(item: Item | null | undefined, fetched: Item): Item |
     text: fetched.text ?? item.text,
     points: fetched.points,
     commentCount: fetched.commentCount,
+    ...(fetched.type === 'poll' && { type: 'poll', pollOptions: fetched.pollOptions ?? item.pollOptions }),
   };
+}
+
+// A comments fetch that fails still brings the item it read, so a poll shows
+// its options. Not cached: the cache holds an item with its comments.
+function withFailedFetchFields(item: Item | null, err: unknown): Item | null {
+  return err instanceof CommentsError ? withFetchedFields(item, err.item) : item;
 }
 
 // A comment's replies come from useCommentDetail (Algolia /items), and a poll
@@ -69,7 +83,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   const [initialCache] = useState(() => getCachedItem(itemId));
   
   // Lazy initialization from cache or initialItem for instant render
-  const [item, setItem] = useState(() => withText(initialItem, initialCache?.item) ?? initialCache?.item ?? null);
+  const [item, setItem] = useState(() => withCachedFields(initialItem, initialCache?.item) ?? initialCache?.item ?? null);
   const [comments, setComments] = useState(() => initialCache?.comments ?? null);
   
   const [itemLoading, setItemLoading] = useState(!initialItem && !initialCache?.item);
@@ -117,7 +131,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     
     const cached = getCachedItem(itemId);
     
-    const hasItem = withText(initialItem, cached?.item) ?? cached?.item;
+    const hasItem = withCachedFields(initialItem, cached?.item) ?? cached?.item;
     
     const stateHasDifferentItem = currentItem && String(currentItemId) !== String(itemId);
     
@@ -130,6 +144,9 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       if (cached.item && (!currentItem || stateHasDifferentItem)) {
         setItem(cached.item);
         setItemLoading(false);
+      } else if (cached.item) {
+        // A feed's copy, held since before the prefetch: it has no poll options.
+        setItem(current => withCachedFields(current, cached.item));
       }
     } else if (stateHasDifferentItem) {
       // itemId changed and the new item isn't (freshly) cached — reset to a
@@ -138,19 +155,21 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       const validInitialItem = initialItem && String(initialItem.id) === String(itemId) 
         ? initialItem 
         : null;
-      setItem(withText(validInitialItem, cached?.item));
+      setItem(withCachedFields(validInitialItem, cached?.item));
       setItemLoading(!validInitialItem);
       setComments(null);
       setCommentsLoading(true);
       setCommentsError(null);
     }
     
-    const needsFullFetch = !cached?.isFresh || !hasItem || !cached?.comments;
+    // A poll whose options failed to load with its comments reads them again.
+    const lacksPollOptions = hasItem?.type === 'poll' && !hasItem.pollOptions;
+    const needsFullFetch = !cached?.isFresh || !hasItem || !cached?.comments || lacksPollOptions;
     // Mobile swipe mode skips ordering completion — users swipe fast and deep
     // order isn't visible.
     const needsOrderingCompletion = !skipOrderingCompletion && cached?.isFresh && cached?.orderedDepth < 3;
     
-    if (cached?.isFresh && hasItem && cached?.comments && cached?.orderedDepth >= 3) {
+    if (cached?.isFresh && hasItem && cached?.comments && cached?.orderedDepth >= 3 && !lacksPollOptions) {
       return;
     }
     
@@ -230,6 +249,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       } catch (err) {
         if (!controller.signal.aborted && !(err instanceof Error && err.name === 'AbortError')) {
           // Comments failed but item succeeded — still usable, but surface the error.
+          setItem(current => withFailedFetchFields(current, err));
           setCommentsLoading(false);
           setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
           console.warn('Failed to load comments:', err);
@@ -320,6 +340,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       })
       .catch(err => {
         if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
+        setItem(current => withFailedFetchFields(current, err));
         setCommentsLoading(false);
         setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
       })
@@ -358,11 +379,15 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
 
     if (fetchesComments(itemData)) {
       try {
-        const commentsData = await fetchCommentsForItem(itemId);
+        // Its read of the item carries a poll's options, which fetchItemOnly's doesn't.
+        const { item: fetchedItem, comments: commentsData } = await fetchItemWithComments(itemId);
+        const fullItem = withFetchedFields(itemData, fetchedItem) ?? itemData;
+        setItem(fullItem);
         setComments(commentsData);
-        setCachedItem(itemId, itemData, commentsData);
+        setCachedItem(itemId, fullItem, commentsData);
       } catch (err) {
         // The item loaded, so the page can show it with the comments error.
+        setItem(withFailedFetchFields(itemData, err) ?? itemData);
         setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
       }
     }
@@ -382,6 +407,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       const fullItem = withFetchedFields(item, fetchedItem);
       if (fullItem) setCachedItem(itemId, fullItem, commentsData, 3);
     } catch (err) {
+      setItem(current => withFailedFetchFields(current, err));
       setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
       throw err;
     }
