@@ -109,7 +109,7 @@ describe('usePrefetchItem', () => {
         vi.advanceTimersByTime(250);
       });
 
-      expect(spy).toHaveBeenCalledWith(12345, expect.any(AbortSignal), 1);
+      expect(spy).toHaveBeenCalledWith(12345, expect.any(AbortSignal));
       spy.mockRestore();
     });
 

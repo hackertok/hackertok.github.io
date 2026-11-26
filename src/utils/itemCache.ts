@@ -12,15 +12,15 @@ const MAX_CACHED_ITEMS = 60;
 export const MAX_ITEM_CACHE_CHARS = 3_000_000;
 const TIMESTAMP_FIELD = '"timestamp":';
 
-export function getCachedItem(itemId: number | string): { item: Item; comments: Comment[]; timestamp: number; isFresh: boolean; orderedDepth: number } | null {
+export function getCachedItem(itemId: number | string): { item: Item; comments: Comment[]; timestamp: number; isFresh: boolean } | null {
   try {
     const key = `${ITEM_CACHE_KEY_PREFIX}${itemId}`;
     const cached = localStorage.getItem(key);
     
     if (!cached) return null;
     
-    const { item, comments, timestamp, orderedDepth } = JSON.parse(cached) as {
-      item: Item; comments: Comment[]; timestamp: number; orderedDepth?: number;
+    const { item, comments, timestamp } = JSON.parse(cached) as {
+      item: Item; comments: Comment[]; timestamp: number;
     };
     const age = Date.now() - timestamp;
     
@@ -34,18 +34,16 @@ export function getCachedItem(itemId: number | string): { item: Item; comments: 
       comments,
       timestamp,
       isFresh: age <= CACHE_MAX_AGE,
-      orderedDepth: orderedDepth ?? 3, // Default to full ordering for old caches
     };
   } catch {
     return null;
   }
 }
 
-/** `orderedDepth`: 1 = top-level only (prefetch), 3 = full ordering. */
-export function setCachedItem(itemId: number | string, item: Item, comments: Comment[], orderedDepth = 3): void {
+export function setCachedItem(itemId: number | string, item: Item, comments: Comment[]): void {
   const key = `${ITEM_CACHE_KEY_PREFIX}${itemId}`;
   try {
-    const value = JSON.stringify({ item, comments, timestamp: Date.now(), orderedDepth });
+    const value = JSON.stringify({ item, comments, timestamp: Date.now() });
     // A thread this big would push out half the cache, so it isn't kept.
     if (value.length > MAX_ITEM_CACHE_CHARS / 2) {
       // An older copy would still be read as fresh in its place.

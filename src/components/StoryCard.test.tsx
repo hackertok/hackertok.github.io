@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { Routes, Route, useLocation } from 'react-router';
 import { render } from '../test/test-utils';
 import { StoryCard } from './StoryCard';
 import { clearViewed, markViewedWithTime, clearViewedTimes, clearSessionViewed, VIEWED_DETAIL_TIMES_KEY, VIEWED_SESSION_KEY } from '../utils/viewedItems';
 import { createStoryItem } from '../test/factories';
+import * as hn from '../api/hn';
 import type { StoryItem } from '../types';
 
 // Route consumer that echoes the post-navigation location.state into the DOM
@@ -577,6 +578,56 @@ describe('StoryCard', () => {
       const placeholder = screen.getByText('unknown');
       expect(placeholder.tagName).toBe('SPAN');
       expect(screen.queryByRole('link', { name: 'unknown' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('prefetch on open', () => {
+    // The shared mock never reports anything in view; this one reports every card.
+    class CardsInViewObserver {
+      readonly thresholds = [0];
+      readonly root = null;
+      readonly rootMargin = '';
+      readonly scrollMargin = '';
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        setTimeout(() => this.callback(
+          [{ target, isIntersecting: true, intersectionRatio: 1 } as unknown as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        ), 0);
+      }
+      unobserve() { /* noop */ }
+      disconnect() { /* noop */ }
+      takeRecords() { return []; }
+    }
+
+    beforeEach(() => {
+      vi.stubGlobal('IntersectionObserver', CardsInViewObserver);
+      // The setup's requestIdleCallback never calls back.
+      vi.stubGlobal('requestIdleCallback', (cb: IdleRequestCallback) => setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 0 }), 0));
+      vi.stubGlobal('cancelIdleCallback', (id: ReturnType<typeof setTimeout>) => clearTimeout(id));
+    });
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it("keeps the opened story's prefetch running after the list unmounts and cancels the rest", async () => {
+      const prefetch = vi.spyOn(hn, 'prefetchItemComments').mockReturnValue(new Promise(() => { /* in flight */ }));
+      const other = createStoryItem({ id: 222 });
+      render(
+        <Routes>
+          <Route path="/" element={<><StoryCard story={mockStory} /><StoryCard story={other} index={1} /></>} />
+          <Route path="/item/:id" element={<StateEchoer />} />
+        </Routes>,
+      );
+      await waitFor(() => expect(prefetch).toHaveBeenCalledTimes(2));
+      const signals = new Map(prefetch.mock.calls.map(([id, signal]) => [Number(id), signal!]));
+
+      fireEvent.click(screen.getByRole('link', { name: /42 comments/i }));
+
+      expect(screen.getByTestId('echoed-state')).toBeInTheDocument();
+      expect(signals.get(mockStory.id)!.aborted).toBe(false);
+      expect(signals.get(other.id)!.aborted).toBe(true);
     });
   });
 });

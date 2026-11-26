@@ -77,28 +77,6 @@ describe('itemCache', () => {
       expect(localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}123`)).toBeNull();
     });
 
-    it('returns orderedDepth from cache', () => {
-      setCachedItem(123, mockItem, mockComments, 1);
-      
-      const result = getCachedItem(123)!;
-      
-      expect(result.orderedDepth).toBe(1);
-    });
-
-    it('defaults orderedDepth to 3 for old cache entries missing the field', () => {
-      // Manually set cache without orderedDepth (simulating old cache format)
-      localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}123`, JSON.stringify({
-        item: mockItem,
-        comments: mockComments,
-        timestamp: Date.now(),
-        // orderedDepth intentionally omitted
-      }));
-      
-      const result = getCachedItem(123)!;
-      
-      expect(result.orderedDepth).toBe(3);
-    });
-
     it('returns null for corrupted JSON', () => {
       localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}123`, 'not valid json');
       
@@ -158,20 +136,6 @@ describe('itemCache', () => {
       setCachedItem(123, createStoryItem({ title: 'New' }), [] as Comment[]);
       
       expect((getCachedItem(123)!.item as StoryItem).title).toBe('New');
-    });
-
-    it('stores orderedDepth correctly', () => {
-      setCachedItem(123, mockItem, mockComments, 1);
-      expect(getCachedItem(123)!.orderedDepth).toBe(1);
-      
-      setCachedItem(123, mockItem, mockComments, 3);
-      expect(getCachedItem(123)!.orderedDepth).toBe(3);
-    });
-
-    it('defaults orderedDepth to 3', () => {
-      setCachedItem(123, mockItem, mockComments);
-      
-      expect(getCachedItem(123)!.orderedDepth).toBe(3);
     });
 
     it('prunes old entries when exceeding MAX_CACHED_ITEMS (60)', () => {

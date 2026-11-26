@@ -34,6 +34,7 @@ export function __resetFetchCachesForTests() {
   askStoriesCache = { ids: null, timestamp: 0 };
   newStoriesCache = { ids: null, timestamp: 0 };
   storyCommentsCache = null;
+  threadDownloads.clear();
 }
 
 function getDayRange(daysAgo = 0) {
@@ -403,59 +404,63 @@ export async function fetchHiddenCommentIds(ids: number[], keepId: number, signa
   }));
 }
 
-// Algolia is much faster than Firebase here — 1-2 requests instead of hundreds
-// of recursive item fetches. `stopIfCapped` skips the remaining pages of a
-// thread bigger than search returns.
-async function searchItemComments(
-  itemId: number,
-  signal?: AbortSignal,
-  { stopIfCapped = false } = {},
-): Promise<{ comments: AlgoliaComment[]; isCapped: boolean }> {
-  const comments: AlgoliaComment[] = [];
-  let page = 0;
-  const hitsPerPage = 200; // Algolia max
-  let isCapped = false;
-  
-  while (true) {
-    if (signal?.aborted) break;
-    
-    const url = `${ALGOLIA_API}/search?tags=comment,story_${itemId}&hitsPerPage=${hitsPerPage}&page=${page}`;
-    const response = await fetch(url, { signal });
-    if (!response.ok) {
-      throw new Error(`Failed to fetch comments: ${response.status}`);
-    }
-    
-    const data = await response.json() as AlgoliaSearchResponse<AlgoliaComment>;
-    comments.push(...data.hits);
-    // Search returns at most 1,000 hits and caps nbPages to match.
-    if (page === 0) isCapped = data.nbHits > data.nbPages * hitsPerPage;
-    
-    if ((isCapped && stopIfCapped) || data.hits.length < hitsPerPage || comments.length >= data.nbHits || page >= data.nbPages - 1) {
-      break;
-    }
-    page++;
-    
-    // Safety limit to prevent infinite loops
-    if (page > 10) break;
+// Search returns at most 1,000 hits, and a page can hold all of them.
+const SEARCH_HITS_PER_PAGE = 1000;
+// Only the fields a comment needs, without the highlighted copy of each one:
+// 70% less to download, and Algolia doesn't compress it.
+const SEARCH_COMMENT_FIELDS = 'attributesToRetrieve=author,comment_text,created_at_i,parent_id&attributesToHighlight=%5B%5D';
+
+// Algolia is much faster than Firebase here: one request instead of hundreds
+// of recursive item reads. A thread bigger than search returns is capped.
+async function searchItemComments(itemId: number, signal?: AbortSignal): Promise<{ comments: AlgoliaComment[]; isCapped: boolean }> {
+  const url = `${ALGOLIA_API}/search?tags=comment,story_${itemId}&hitsPerPage=${SEARCH_HITS_PER_PAGE}&${SEARCH_COMMENT_FIELDS}`;
+  const response = await fetch(url, { signal });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch comments: ${response.status}`);
   }
 
-  return { comments, isCapped };
+  const data = await response.json() as AlgoliaSearchResponse<AlgoliaComment>;
+  return { comments: data.hits, isCapped: data.nbHits > data.hits.length };
 }
 
-async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal): Promise<AlgoliaComment[]> {
-  const { comments: allComments, isCapped } = await searchItemComments(itemId, signal);
-
-  // The item endpoint has the rest of a bigger thread. It also misses a few
-  // comments that search has, so it adds to search's results.
-  if (isCapped && !signal?.aborted) {
-    const tree = await fetchAlgoliaItem(itemId, signal).catch(() => null);
-    const seen = new Set(allComments.map(c => c.objectID));
-    for (const comment of flattenAlgoliaItemChildren(tree?.children ?? [])) {
-      if (!seen.has(comment.objectID)) allComments.push(comment);
-    }
+async function countItemComments(itemId: number): Promise<number> {
+  const response = await fetch(`${ALGOLIA_API}/search?tags=comment,story_${itemId}&hitsPerPage=0`);
+  if (!response.ok) {
+    throw new Error(`Failed to count comments: ${response.status}`);
   }
-  
-  return allComments;
+  const data = await response.json() as AlgoliaSearchResponse<AlgoliaComment>;
+  return data.nbHits;
+}
+
+async function fetchAllCommentsAlgolia(itemId: number, signal?: AbortSignal, itemRead?: Promise<FirebaseItem>): Promise<AlgoliaComment[]> {
+  // A story with more comments than search returns will need the item tree,
+  // so it downloads alongside the search. The two counts differ slightly, so
+  // the tree is cancelled when search turns out to have every comment.
+  const treeAbort = new AbortController();
+  const abortTree = () => treeAbort.abort();
+  signal?.addEventListener('abort', abortTree);
+  const earlyTree = itemRead
+    ?.then(raw => ((raw.descendants ?? 0) > SEARCH_HITS_PER_PAGE ? fetchAlgoliaItem(itemId, treeAbort.signal) : null))
+    .catch(() => null);
+
+  try {
+    const { comments: allComments, isCapped } = await searchItemComments(itemId, signal);
+
+    // The item endpoint has the rest of a bigger thread. It also misses a few
+    // comments that search has, so it adds to search's results.
+    if (isCapped && !signal?.aborted) {
+      const tree = (await earlyTree) ?? await fetchAlgoliaItem(itemId, signal).catch(() => null);
+      const seen = new Set(allComments.map(c => c.objectID));
+      for (const comment of flattenAlgoliaItemChildren(tree?.children ?? [])) {
+        if (!seen.has(comment.objectID)) allComments.push(comment);
+      }
+    }
+
+    return allComments;
+  } finally {
+    treeAbort.abort();
+    signal?.removeEventListener('abort', abortTree);
+  }
 }
 
 function flattenAlgoliaItemChildren(children: AlgoliaItemChild[], into: AlgoliaComment[] = []): AlgoliaComment[] {
@@ -489,7 +494,7 @@ async function fetchMissingParents(comments: AlgoliaComment[], itemId: number, s
 
   for (let depth = 0; depth < MAX_DEPTH && missing.length > 0 && !signal?.aborted; depth++) {
     const next = new Set<number>();
-    for (const item of await readItemsBatched(missing, signal)) {
+    for (const item of await readItems(missing, signal)) {
       if (item.parent == null) continue;
       known.add(item.id);
       found.push(item);
@@ -582,7 +587,6 @@ async function buildOrderedCommentTree(
   itemId: number,
   itemKids: number[] | undefined,
   signal?: AbortSignal,
-  maxOrderingDepth = Infinity,
 ): Promise<Comment[]> {
   const kidsOrder = new Map<number, number[]>();
   if (itemKids) {
@@ -601,45 +605,9 @@ async function buildOrderedCommentTree(
     childrenCount.set(c.parent_id, count + 1);
   });
 
-  let parentsNeedingOrder: number[];
-
-  if (maxOrderingDepth < Infinity) {
-    const commentDepths = new Map<number, number>();
-    const commentParents = new Map<number, number>();
-    comments.forEach(c => {
-      commentParents.set(parseInt(c.objectID, 10), c.parent_id);
-    });
-
-    const getDepth = (commentId: number): number => {
-      if (commentDepths.has(commentId)) return commentDepths.get(commentId)!;
-      const parentId = commentParents.get(commentId);
-      if (parentId === undefined || parentId === itemId) {
-        commentDepths.set(commentId, 0);
-        return 0;
-      }
-      if (!commentParents.has(parentId)) {
-        commentDepths.set(commentId, 0);
-        return 0;
-      }
-      const depth = getDepth(parentId) + 1;
-      commentDepths.set(commentId, depth);
-      return depth;
-    };
-
-    comments.forEach(c => getDepth(Number(c.objectID)));
-
-    parentsNeedingOrder = [...childrenCount.entries()]
-      .filter(([parentId, count]: [number, number]) => {
-        if (count <= 1 || parentId === itemId) return false;
-        const parentDepth = commentDepths.get(parentId) ?? -1;
-        return parentDepth >= 0 && parentDepth < maxOrderingDepth;
-      })
-      .map(([parentId]) => parentId);
-  } else {
-    parentsNeedingOrder = [...childrenCount.entries()]
-      .filter(([parentId, count]: [number, number]) => count > 1 && parentId !== itemId)
-      .map(([parentId]) => parentId);
-  }
+  const parentsNeedingOrder = [...childrenCount.entries()]
+    .filter(([parentId, count]: [number, number]) => count > 1 && parentId !== itemId)
+    .map(([parentId]) => parentId);
 
   const nestedKidsOrder = await fetchKidsOrdering(parentsNeedingOrder.filter(id => !kidsOrder.has(id)), signal);
   nestedKidsOrder.forEach((kids, parentId) => kidsOrder.set(parentId, kids));
@@ -649,8 +617,11 @@ async function buildOrderedCommentTree(
 
 /** Fetch item metadata only (no comments). A poll's options come with its comments. */
 export async function fetchItemOnly(id: number | string, signal?: AbortSignal): Promise<Item> {
-  const itemId = Number(id);
-  const item = normalizeFirebaseItem(await fetchFirebaseItem(itemId, signal));
+  return itemOnly(await fetchFirebaseItem(Number(id), signal));
+}
+
+async function itemOnly(raw: FirebaseItem): Promise<Item> {
+  const item = normalizeFirebaseItem(raw);
   if (!isPollOption(item) || !item.poll) return item;
 
   // Its page links to the poll by title. Without one the link still works.
@@ -685,12 +656,15 @@ function threadItem(raw: FirebaseItem, pollOptions: PollOption[] | undefined): I
 // Options that can't be read leave the poll without them rather than cost it
 // its comments; a copy cached that way reads them again. Comments that can't
 // be read don't cost a poll its options: the CommentsError carries them.
-async function fetchThread(itemId: number, signal?: AbortSignal, maxOrderingDepth = Infinity): Promise<PrefetchResult> {
-  const itemRead = fetchFirebaseItem(itemId, signal);
+async function fetchThread(
+  itemId: number,
+  signal?: AbortSignal,
+  itemRead = fetchFirebaseItem(itemId, signal),
+): Promise<PrefetchResult> {
   const pollOptionsRead = itemRead
     .then(raw => (raw.type === 'poll' ? fetchPollOptions(raw.parts ?? [], signal) : undefined))
     .catch(() => undefined);
-  const commentsRead = fetchAllCommentsAlgolia(itemId, signal).catch(async (err: unknown) => {
+  const commentsRead = fetchAllCommentsAlgolia(itemId, signal, itemRead).catch(async (err: unknown) => {
     if (signal?.aborted) throw err;
     const raw = await itemRead.catch(() => null);
     if (!raw) throw err;
@@ -705,55 +679,87 @@ async function fetchThread(itemId: number, signal?: AbortSignal, maxOrderingDept
   }
 
   const [commentTree, pollOptions] = await Promise.all([
-    buildOrderedCommentTree(comments, itemId, raw.kids, signal, maxOrderingDepth),
+    buildOrderedCommentTree(comments, itemId, raw.kids, signal),
     pollOptionsRead,
   ]);
   return { item: threadItem(raw, pollOptions), comments: commentTree };
 }
 
-// Batched to avoid overwhelming the API. Items that fail or don't exist are
-// left out.
-async function readItemsBatched(ids: number[], signal?: AbortSignal): Promise<FirebaseItem[]> {
-  const BATCH_SIZE = 10; // Reduced from 20 to lower concurrent requests
-  const items: FirebaseItem[] = [];
-
-  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-    if (signal?.aborted) return items;
-
-    const batch = await Promise.all(
-      ids.slice(i, i + BATCH_SIZE).map(async (id) => {
-        try {
-          return await hnSdk.readItem(id);
-        } catch {
-          return null;
-        }
-      })
-    );
-    for (const item of batch) {
-      if (item) items.push(item);
-    }
-  }
-
-  return items;
+// Items that fail or don't exist are left out. Not batched: reads share one
+// WebSocket, so batches would only add round trips (seconds, for a big thread).
+async function readItems(ids: number[], signal?: AbortSignal): Promise<FirebaseItem[]> {
+  if (signal?.aborted) return [];
+  const items = await Promise.all(ids.map(id => hnSdk.readItem(id).catch(() => null)));
+  return items.filter(item => item != null);
 }
 
 // Required for HN's ranking order (not chronological).
 async function fetchKidsOrdering(commentIds: number[], signal?: AbortSignal): Promise<Map<number, number[]>> {
   const kidsOrder = new Map<number, number[]>();
-  for (const item of await readItemsBatched(commentIds, signal)) {
+  for (const item of await readItems(commentIds, signal)) {
     if (item.kids) kidsOrder.set(item.id, item.kids);
   }
   return kidsOrder;
 }
 
+interface ThreadDownload {
+  itemRead: Promise<FirebaseItem>;
+  thread: Promise<PrefetchResult>;
+  controller: AbortController;
+  users: number;
+}
+const threadDownloads = new Map<number, ThreadDownload>();
+
+// One download per thread: the story on screen and the prefetches that want
+// it at the same time share it. A caller's abort only detaches that caller,
+// and the download stops once all have. It also retires the download, so a
+// retry starts over rather than joining a stalled one.
+function downloadThread(itemId: number, signal?: AbortSignal): { itemRead: Promise<FirebaseItem>; thread: Promise<PrefetchResult> } {
+  let download = threadDownloads.get(itemId);
+  if (!download) {
+    const controller = new AbortController();
+    const itemRead = fetchFirebaseItem(itemId, controller.signal);
+    const created: ThreadDownload = { itemRead, thread: fetchThread(itemId, controller.signal, itemRead), controller, users: 0 };
+    const retire = () => {
+      if (threadDownloads.get(itemId) === created) threadDownloads.delete(itemId);
+    };
+    created.thread.then(retire, retire);
+    threadDownloads.set(itemId, created);
+    download = created;
+  }
+  const shared = download;
+  shared.users++;
+  if (!signal) return shared;
+
+  let left = false;
+  const leave = () => {
+    if (left) return;
+    left = true;
+    if (threadDownloads.get(itemId) === shared) threadDownloads.delete(itemId);
+    if (--shared.users === 0) shared.controller.abort();
+  };
+  const own = <T,>(read: Promise<T>) => new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      leave();
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    if (signal.aborted) return onAbort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    read.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+  const itemRead = own(shared.itemRead);
+  itemRead.catch(() => { /* a prefetch only reads the thread */ });
+  return { itemRead, thread: own(shared.thread) };
+}
+
 /**
  * Background prefetch — silent failures, returns null on any error.
  */
-export async function prefetchItemComments(id: number | string, signal?: AbortSignal, maxOrderingDepth = Infinity): Promise<PrefetchResult | null> {
+export async function prefetchItemComments(id: number | string, signal?: AbortSignal): Promise<PrefetchResult | null> {
   try {
     if (signal?.aborted) return null;
 
-    const result = await fetchThread(Number(id), signal, maxOrderingDepth);
+    const result = await downloadThread(Number(id), signal).thread;
 
     return signal?.aborted ? null : result;
   } catch {
@@ -767,7 +773,16 @@ export async function fetchItemWithComments(id: number | string, signal: AbortSi
     throw new DOMException('Aborted', 'AbortError');
   }
 
-  return fetchThread(Number(id), signal ?? undefined);
+  return downloadThread(Number(id), signal ?? undefined).thread;
+}
+
+/**
+ * The item, and its comments without waiting to learn what it is, from one
+ * read of it. For a comment or poll option, the comments' search finds none.
+ */
+export function fetchItemAndComments(id: number | string, signal?: AbortSignal): { item: Promise<Item>; thread: Promise<PrefetchResult> } {
+  const { itemRead, thread } = downloadThread(Number(id), signal);
+  return { item: itemRead.then(itemOnly), thread };
 }
 
 // Algolia /items/{id} returns the full nested children tree in one request.
@@ -830,10 +845,20 @@ function fetchStoryComments(storyId: number): Promise<ThreadComment[] | null> {
   }
 
   const comments = (async () => {
-    const { comments: found, isCapped } = await searchItemComments(storyId, undefined, { stopIfCapped: true });
-    if (isCapped) return null;
-    const missingParents = await fetchMissingParents(found, storyId);
-    return [...found, ...missingParents.map(threadCommentFromFirebase)];
+    // A thread bigger than search returns is dropped, so its count, which
+    // comes back well before its comments, stops the search.
+    const search = new AbortController();
+    countItemComments(storyId).then(
+      count => { if (count > SEARCH_HITS_PER_PAGE) search.abort(); },
+      () => { /* the search decides */ },
+    );
+    const result = await searchItemComments(storyId, search.signal).catch((err: unknown) => {
+      if (search.signal.aborted) return null;
+      throw err;
+    });
+    if (!result || result.isCapped) return null;
+    const missingParents = await fetchMissingParents(result.comments, storyId);
+    return [...result.comments, ...missingParents.map(threadCommentFromFirebase)];
   })();
   const entry = { storyId, comments, timestamp: Date.now() };
   storyCommentsCache = entry;
@@ -850,7 +875,7 @@ function fetchStoryComments(storyId: number): Promise<ThreadComment[] | null> {
 async function hasRepliesOutsideItemTree(id: number, signal?: AbortSignal): Promise<boolean> {
   const { kids = [] } = await fetchFirebaseItem(id, signal);
   if (kids.length === 0) return false;
-  const replies = await readItemsBatched(kids, signal);
+  const replies = await readItems(kids, signal);
   return replies.some(reply => (reply.kids?.length ?? 0) > 0 || (!reply.dead && !reply.deleted));
 }
 
@@ -904,13 +929,16 @@ export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comm
 // Format timestamp as a localized absolute date string for tooltips.
 // Guards reject null/undefined/zero (`!timestamp`), NaN, AND ±Infinity —
 // the latter would otherwise slip through (`!Infinity` is false,
-// `isNaN(Infinity)` is false) and produce a literal "Invalid Date" string.
+// `isNaN(Infinity)` is false) and make the formatter throw a RangeError.
+// The formatter is built once: Date#toLocaleString builds a new one per call,
+// which showed up in swipe profiles (every comment renders a timestamp).
+const absoluteTimeFormat = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric', month: 'short', day: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+});
 export function formatAbsoluteTime(timestamp: number): string {
   if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) return '';
-  return new Date(timestamp).toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
+  return absoluteTimeFormat.format(timestamp);
 }
 
 // Long-month date-only (e.g. "October 9, 2006") for profile creation dates

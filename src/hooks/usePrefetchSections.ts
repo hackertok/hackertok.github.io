@@ -3,10 +3,10 @@ import { fetchTopStories, fetchBestStories, fetchNewStories, fetchShowStories, f
 import { getCachedFeed, setCachedFeed } from '../utils/feedCache';
 import { setCachedItem, getCachedItem } from '../utils/itemCache';
 import { waitForPriorityFetch } from '../utils/fetchPriority';
+import { getFilteredViewedIds, getSessionViewedIds } from '../utils/viewedItems';
 import type { StoryItem, FeedType } from '../types';
 
 const ALL_SECTIONS: FeedType[] = ['top', 'best', 'show', 'ask', 'newest'];
-const STAGGER_DELAY = 500; // ms between requests to be API-friendly
 const CACHE_FRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
 function getCachedStoriesIfFresh(type: FeedType): StoryItem[] | null {
@@ -17,12 +17,19 @@ function getCachedStoriesIfFresh(type: FeedType): StoryItem[] | null {
   return cached.stories;
 }
 
-function isFirstStoryCommentsCached(stories: StoryItem[]): boolean {
-  if (!stories || stories.length === 0) return true; // Nothing to prefetch
-  const firstStory = stories[0];
-  if (!firstStory?.id) return true;
-  const cached = getCachedItem(firstStory.id);
-  return !!(cached?.isFresh && cached?.comments);
+// The story a feed opens on: the swipe viewer skips stories viewed in an
+// earlier session (see SwipeStoryViewerCore's mergedStories).
+function firstShownStory(stories: StoryItem[]): StoryItem | undefined {
+  const hidden = getFilteredViewedIds();
+  const session = getSessionViewedIds();
+  return stories.find(s => session.has(s.id) || !hidden.has(s.id)) ?? stories[0];
+}
+
+// A stale thread still shows at once and refreshes when opened, so only a
+// missing one is worth downloading ahead.
+function needsThread(stories: StoryItem[]): boolean {
+  const first = firstShownStory(stories);
+  return !!first && !getCachedItem(first.id)?.comments;
 }
 
 async function fetchFirstPage(type: FeedType): Promise<StoryItem[]> {
@@ -52,106 +59,78 @@ async function fetchFirstPage(type: FeedType): Promise<StoryItem[]> {
   }
 }
 
-/** Background prefetch for other feed sections. */
-export function usePrefetchSections(currentType: FeedType) {
+/**
+ * Background prefetch for other feed sections. `ready` holds it until the
+ * current feed is on screen, so its first story has claimed priority.
+ */
+export function usePrefetchSections(currentType: FeedType, ready = true) {
   const hasPrefetchedRef = useRef(false);
-  const currentTypeRef = useRef(currentType);
-  
-  // Track current type so the loop below can skip it if the user switches mid-flight.
+
   useEffect(() => {
-    currentTypeRef.current = currentType;
-  }, [currentType]);
-  
-  useEffect(() => {
-    if (hasPrefetchedRef.current) return;
-    
-    const sectionsToFetch = ALL_SECTIONS.filter(type => type !== currentType);
-    
-    // A section needs work if its story list ISN'T fresh OR its first
-    // story's comments aren't cached.
-    const sectionsNeedingWork = sectionsToFetch.filter(type => {
-      const cachedStories = getCachedStoriesIfFresh(type);
-      return !cachedStories || !isFirstStoryCommentsCached(cachedStories);
+    if (!ready || hasPrefetchedRef.current) return;
+
+    const sectionsNeedingWork = ALL_SECTIONS.filter(type => {
+      if (type === currentType) return false;
+      const stories = getCachedStoriesIfFresh(type);
+      return !stories || needsThread(stories);
     });
-    
+
     if (sectionsNeedingWork.length === 0) {
       hasPrefetchedRef.current = true;
       return;
     }
-    
+
     let cancelled = false;
-    
+
+    async function fetchList(type: FeedType): Promise<StoryItem[]> {
+      try {
+        const stories = await fetchFirstPage(type);
+        if (!cancelled && stories.length > 0) setCachedFeed(type, stories);
+        return stories;
+      } catch (err) {
+        console.debug(`Prefetch failed for ${type}:`, (err as Error).message);
+        return [];
+      }
+    }
+
+    async function prefetchThread(stories: StoryItem[]) {
+      if (cancelled || !needsThread(stories)) return;
+      const { id } = firstShownStory(stories)!;
+      const result = await prefetchItemComments(id);
+      // Kept after a switch cancels the rest, unless the story, opened
+      // meanwhile, cached a newer copy.
+      if (result && !getCachedItem(id)?.comments) setCachedItem(id, result.item, result.comments);
+    }
+
     async function prefetchAll() {
       // Wait for the current item's comments first so it gets full bandwidth.
       try {
         await waitForPriorityFetch();
       } catch {
-        // Aborted - stop prefetching
         return;
       }
-      
       if (cancelled) return;
-      
-      for (let i = 0; i < sectionsNeedingWork.length; i++) {
-        if (cancelled) break;
-        
-        const type = sectionsNeedingWork[i];
-        
-        // User may have switched while we were waiting — skip the now-current section.
-        if (type === currentTypeRef.current) continue;
-        
-        try {
-          let stories = getCachedStoriesIfFresh(type);
-          
-          if (!stories) {
-            stories = await fetchFirstPage(type);
-            
-            if (cancelled) break;
-            
-            if (stories.length > 0 && type !== currentTypeRef.current) {
-              setCachedFeed(type, stories);
-            }
-          }
-          
-          if (cancelled) break;
-          
-          // Prefetch first story's comments even when the list itself was cached —
-          // a stale comments cache for the visible-on-arrival story would defeat
-          // the warm-up.
-          if (stories.length > 0 && type !== currentTypeRef.current) {
-            const firstStory = stories[0];
-            if (firstStory?.id) {
-              const cachedComments = getCachedItem(firstStory.id);
-              if (!cachedComments?.isFresh || !cachedComments?.comments) {
-                try {
-                  const result = await prefetchItemComments(firstStory.id, undefined, 1);
-                  if (result && !cancelled && type !== currentTypeRef.current) {
-                    setCachedItem(firstStory.id, result.item, result.comments, 1);
-                  }
-                } catch { /* best-effort */ }
-              }
-            }
-          }
-        } catch (err) {
-          console.debug(`Prefetch failed for ${type}:`, (err as Error).message);
-        }
-        
-        if (i < sectionsNeedingWork.length - 1 && !cancelled) {
-          await new Promise(resolve => setTimeout(resolve, STAGGER_DELAY));
-        }
-      }
-      
+
+      // Lists are small: fetched together, so every tab is fresh early.
+      // Threads can be large: one at a time, as their lists arrive.
+      let threads = Promise.resolve();
+      await Promise.all(sectionsNeedingWork.map(async type => {
+        const stories = getCachedStoriesIfFresh(type) ?? await fetchList(type);
+        threads = threads.then(() => prefetchThread(stories));
+      }));
+      await threads;
+
       if (!cancelled) {
         hasPrefetchedRef.current = true;
       }
     }
-    
+
     // Delay so the current section's fetches don't race with prefetching.
     const timeoutId = setTimeout(() => void prefetchAll(), 1000);
-    
+
     return () => {
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [currentType]);
+  }, [currentType, ready]);
 }

@@ -71,7 +71,7 @@ describe('useItemWithComments', () => {
     });
 
     it('returns cached data without fetching', async () => {
-      setCachedItem(12345, testItem, testComments, 3);
+      setCachedItem(12345, testItem, testComments);
 
       const { result } = renderHook(() => useItemWithComments(12345));
 
@@ -83,7 +83,7 @@ describe('useItemWithComments', () => {
     });
 
     it('reads the cache when it mounts, not on every render', () => {
-      setCachedItem(12345, testItem, testComments, 3);
+      setCachedItem(12345, testItem, testComments);
       const cached = localStorage.getItem(`${ITEM_CACHE_KEY_PREFIX}12345`);
       const parse = vi.spyOn(JSON, 'parse');
       const cacheReads = () => parse.mock.calls.filter(([text]) => text === cached).length;
@@ -116,7 +116,7 @@ describe('useItemWithComments', () => {
     const body = '<p>Ask HN body</p>';
 
     it('takes the body from the cached copy without fetching', () => {
-      setCachedItem(12345, { ...testItem, text: body }, testComments, 3);
+      setCachedItem(12345, { ...testItem, text: body }, testComments);
 
       const { result } = renderHook(() =>
         useItemWithComments(12345, { initialItem: testItem })
@@ -199,7 +199,7 @@ describe('useItemWithComments', () => {
 
       // Background prefetch fills the cache while the hook is still deferred.
       await act(async () => {
-        setCachedItem(12345, testItem, testComments, 1);
+        setCachedItem(12345, testItem, testComments);
       });
 
       const { result: result2, rerender } = renderHook(
@@ -293,7 +293,7 @@ describe('useItemWithComments', () => {
     });
 
     it('does not register priority when cache has comments', async () => {
-      setCachedItem(12345, testItem, testComments, 3);
+      setCachedItem(12345, testItem, testComments);
 
       expect(isPriorityFetchActive()).toBe(false);
 
@@ -475,7 +475,7 @@ describe('useItemWithComments', () => {
     });
 
     it('combined loading is true only when both are loading', async () => {
-      setCachedItem(12345, testItem, null as unknown as Comment[], 0); // Item cached, no comments
+      setCachedItem(12345, testItem, null as unknown as Comment[]); // Item cached, no comments
 
       const { result } = renderHook(() => useItemWithComments(12345));
 
@@ -493,7 +493,6 @@ describe('useItemWithComments', () => {
         item: testItem,
         comments: testComments,
         timestamp: Date.now() - (10 * 60 * 1000),
-        orderedDepth: 3,
       };
       localStorage.setItem(CACHE_KEY, JSON.stringify(staleData));
 
@@ -513,7 +512,6 @@ describe('useItemWithComments', () => {
         item: testItem,
         comments: testComments,
         timestamp: Date.now() - 60 * 60 * 1000,
-        orderedDepth: 3,
       }));
     }
 
@@ -566,7 +564,6 @@ describe('useItemWithComments', () => {
         item: testItem,
         comments: null,
         timestamp: Date.now(),
-        orderedDepth: 0,
       };
       localStorage.setItem(CACHE_KEY, JSON.stringify(partialData));
 
@@ -583,91 +580,40 @@ describe('useItemWithComments', () => {
     });
   });
 
-  describe('ordering completion', () => {
-    it('completes ordering in background when orderedDepth < 3', async () => {
-      // orderedDepth=1 mimics a prefetch that ordered only top-level kids.
-      const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
-      const partialOrderData = {
-        item: testItem,
-        comments: testComments,
-        timestamp: Date.now(),
-        orderedDepth: 1,
-      };
-      localStorage.setItem(CACHE_KEY, JSON.stringify(partialOrderData));
-
-      const { result } = renderHook(() =>
-        useItemWithComments(12345, { skipOrderingCompletion: false })
+  describe('with no copy of the item', () => {
+    it('reads the item once, and its comments without waiting for it', async () => {
+      let releaseItem!: () => void;
+      const itemRead = new Promise<FirebaseItem>(resolve => { releaseItem = () => resolve(mockFirebaseStory); });
+      let readsOfItem = 0;
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(id => {
+        if (Number(id) !== 12345) return Promise.resolve(null);
+        readsOfItem++;
+        return itemRead;
+      });
+      let commentSearches = 0;
+      server.use(
+        http.get(`${ALGOLIA_API}/search`, () => {
+          commentSearches++;
+          return HttpResponse.json({
+            hits: [{ objectID: '1001', author: 'user1', comment_text: 'Test', created_at_i: 1000, parent_id: 12345, story_id: 12345 }],
+            nbHits: 1,
+          });
+        }),
       );
 
-      // Cached data renders synchronously — no loading flash on partial order.
-      expect(result.current.item).toEqual(testItem);
-      expect(result.current.comments).toEqual(testComments);
-      expect(result.current.itemLoading).toBe(false);
+      const { result } = renderHook(() => useItemWithComments(12345));
 
-      await waitFor(() => {
-        expect(result.current.commentsLoading).toBe(false);
-      });
-    });
+      // The search is out before the item arrives, and the item is read once.
+      await waitFor(() => expect(commentSearches).toBe(1));
+      expect(readsOfItem).toBe(1);
+      expect(result.current.itemLoading).toBe(true);
 
-    it('skips ordering completion when skipOrderingCompletion is true', async () => {
-      const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
-      const partialOrderData = {
-        item: testItem,
-        comments: testComments,
-        timestamp: Date.now(),
-        orderedDepth: 1,
-      };
-      localStorage.setItem(CACHE_KEY, JSON.stringify(partialOrderData));
+      releaseItem();
 
-      const fetchSpy = vi.fn();
-      const originalFetch = globalThis.fetch;
-      globalThis.fetch = (...args) => {
-        fetchSpy(...args);
-        return originalFetch(...args);
-      };
-
-      const { result } = renderHook(() =>
-        useItemWithComments(12345, { skipOrderingCompletion: true })
-      );
-
-      expect(result.current.item).toEqual(testItem);
-      expect(result.current.comments).toEqual(testComments);
-
-      // Drain microtasks; skipOrderingCompletion must short-circuit the reorder.
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      });
-
-      expect(result.current.comments).toEqual(testComments);
-
-      globalThis.fetch = originalFetch;
-    });
-
-    it('does not trigger ordering completion when orderedDepth >= 3', async () => {
-      const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
-      const fullOrderData = {
-        item: testItem,
-        comments: testComments,
-        timestamp: Date.now(),
-        orderedDepth: 3,
-      };
-      localStorage.setItem(CACHE_KEY, JSON.stringify(fullOrderData));
-
-      const { result } = renderHook(() =>
-        useItemWithComments(12345, { skipOrderingCompletion: false })
-      );
-
-      expect(result.current.item).toEqual(testItem);
-      expect(result.current.comments).toEqual(testComments);
-      expect(result.current.itemLoading).toBe(false);
-      expect(result.current.commentsLoading).toBe(false);
-
-      // Fully-ordered cache must early-return; no background fetch should fire.
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
-      });
-
-      expect(result.current.comments).toEqual(testComments);
+      await waitFor(() => expect(result.current.comments).toHaveLength(1));
+      expect(result.current.item?.id).toBe(12345);
+      expect(commentSearches).toBe(1);
+      expect(readsOfItem).toBe(1);
     });
   });
 
@@ -684,7 +630,7 @@ describe('useItemWithComments', () => {
     });
 
     it('shares cache between string and number itemId', async () => {
-      setCachedItem(12345, testItem, testComments, 3);
+      setCachedItem(12345, testItem, testComments);
 
       const { result } = renderHook(() => useItemWithComments('12345'));
 
@@ -703,8 +649,8 @@ describe('useItemWithComments', () => {
       const commentsA = [createComment({ id: 1001, text: 'Comment for item A', author: 'commenterA' })];
       const commentsB = [createComment({ id: 2001, text: 'Comment for item B', author: 'commenterB' })];
 
-      setCachedItem(11111, itemA, commentsA, 3);
-      setCachedItem(22222, itemB, commentsB, 3);
+      setCachedItem(11111, itemA, commentsA);
+      setCachedItem(22222, itemB, commentsB);
 
       const { result, rerender } = renderHook(
         ({ itemId }) => useItemWithComments(itemId),
@@ -732,7 +678,7 @@ describe('useItemWithComments', () => {
       const itemA = createStoryItem({ id: 33333, title: 'Cached Item A', url: 'https://example1.com', points: 100, author: 'user1', createdAt: Date.now(), commentCount: 5 });
       const commentsA = [createComment({ id: 3001, text: 'Comment for cached A', author: 'commenter1' })];
 
-      setCachedItem(33333, itemA, commentsA, 3);
+      setCachedItem(33333, itemA, commentsA);
 
       // 50ms delay simulates a real network round trip so the test can
       // observe the "loading null" intermediate state.
@@ -860,7 +806,7 @@ describe('useItemWithComments', () => {
 
     it('does not retry when comments already loaded', async () => {
       // Pre-cache so nothing should fetch on reconnect.
-      setCachedItem(12345, testItem, testComments, 3);
+      setCachedItem(12345, testItem, testComments);
 
       const fetchSpy = vi.fn();
       const origFetch = globalThis.fetch;
@@ -1044,15 +990,18 @@ describe('useItemWithComments', () => {
   });
 
   describe('a poll option', () => {
-    it('fetches no comments, and releases priority once it loads', async () => {
-      const readItem = vi.spyOn(hnSdk, 'readItem').mockResolvedValue({
+    it('shows no comments, and releases priority once it loads', async () => {
+      vi.spyOn(hnSdk, 'readItem').mockResolvedValue({
         id: 126810, text: 'Yes, ban them', by: 'pg', score: 30, time: 1204403652, type: 'pollopt',
       });
       let commentSearches = 0;
       server.use(
         http.get(`${ALGOLIA_API}/search`, () => {
           commentSearches++;
-          return HttpResponse.json({ hits: [], nbPages: 0 });
+          return HttpResponse.json({
+            hits: [{ objectID: '1001', author: 'user1', comment_text: 'Test', created_at_i: 1000, parent_id: 126810, story_id: 126810 }],
+            nbHits: 1,
+          });
         }),
       );
 
@@ -1060,8 +1009,13 @@ describe('useItemWithComments', () => {
 
       await waitFor(() => expect(result.current.item?.type).toBe('pollopt'));
       expect(isPriorityFetchActive()).toBe(false);
-      expect(readItem).toHaveBeenCalledTimes(1);
-      expect(commentSearches).toBe(0);
+      // The comments read starts before the item turns out to be an option,
+      // and its result goes unused. It shares the option's one read.
+      await waitFor(() => expect(commentSearches).toBe(1));
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+      expect(result.current.comments).toBeNull();
+      expect(getCachedItem(126810)).toBeNull();
+      expect(hnSdk.readItem).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1095,12 +1049,12 @@ describe('useItemWithComments', () => {
 
     it('takes them from a prefetch that lands after a feed copy mounted', async () => {
       const { result, rerender } = renderHook(
-        ({ deferComments }) => useItemWithComments(126809, { initialItem: feedPoll, deferComments, skipOrderingCompletion: true }),
+        ({ deferComments }) => useItemWithComments(126809, { initialItem: feedPoll, deferComments }),
         { initialProps: { deferComments: true } },
       );
 
       await act(async () => {
-        setCachedItem(126809, { ...feedPoll, pollOptions }, [], 1);
+        setCachedItem(126809, { ...feedPoll, pollOptions }, []);
       });
       rerender({ deferComments: false });
 
@@ -1109,7 +1063,7 @@ describe('useItemWithComments', () => {
     });
 
     it('reads them again over a fresh cached copy that lacks them, keeping its comments up', async () => {
-      setCachedItem(126809, feedPoll, [], 3);
+      setCachedItem(126809, feedPoll, []);
 
       const { result } = renderHook(() => useItemWithComments(126809));
 
@@ -1131,7 +1085,7 @@ describe('useItemWithComments', () => {
     it('gets them back when a failed load is retried', async () => {
       const readItem = vi.mocked(hnSdk.readItem);
       const read = readItem.getMockImplementation()!;
-      readItem.mockRejectedValueOnce(new Error('Offline'));
+      readItem.mockRejectedValue(new Error('Offline'));
 
       const { result } = renderHook(() => useItemWithComments(126809));
       await waitFor(() => expect(result.current.error).toBe('Offline'));

@@ -16,6 +16,7 @@ import {
   fetchItemOnly,
   fetchAlgoliaItem,
   fetchItemWithComments,
+  prefetchItemComments,
   fetchCommentReplies,
   normalizeAlgoliaItemChildren,
   NotFoundError,
@@ -172,10 +173,9 @@ describe('hn API utilities', () => {
     });
 
     it('returns empty string for non-finite timestamps (Infinity, -Infinity)', () => {
-      // The `!isFinite()` guard exists because `new Date(Infinity)` produces
-      // an "Invalid Date" whose `toLocaleString` is locale-dependent garbage
-      // ("Invalid Date" / "Date invalide" / "无效日期"). Returning '' lets
-      // the consumer fall back cleanly without leaking that string.
+      // The `!isFinite()` guard exists because Intl.DateTimeFormat#format
+      // throws a RangeError for non-finite timestamps. Returning '' lets the
+      // consumer fall back cleanly.
       expect(formatAbsoluteTime(Infinity)).toBe('');
       expect(formatAbsoluteTime(-Infinity)).toBe('');
     });
@@ -183,7 +183,7 @@ describe('hn API utilities', () => {
     it('returns a localized date string for a valid timestamp', () => {
       const ts = new Date('2026-02-21T14:30:00Z').getTime();
       const result = formatAbsoluteTime(ts);
-      // toLocaleString(undefined, …) renders in the host's default locale, so
+      // Intl.DateTimeFormat(undefined, …) renders in the host's default locale, so
       // we only assert locale-invariant pieces: year, day-of-month, and a
       // clock segment H:MM / HH:MM. The exact month spelling ("Feb" vs "Fév"
       // vs "2月") differs by locale and is not part of the contract.
@@ -1304,13 +1304,22 @@ describe('hn API utilities', () => {
       const urlOf = (input: RequestInfo | URL) =>
         typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 
-      function mockAlgolia(search: { nbHits: number; nbPages: number }, { treeStatus = 200 } = {}) {
+      function mockAlgolia(nbHits: number, { treeStatus = 200, searchDone = Promise.resolve() } = {}) {
         return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
           if (urlOf(input).includes(`/items/${itemId}`)) {
             return treeStatus === 200 ? Response.json(tree) : new Response(null, { status: treeStatus });
           }
-          return Response.json({ hits: searchHits, page: 0, hitsPerPage: 200, ...search });
+          await searchDone;
+          return Response.json({ hits: searchHits, nbHits });
         });
+      }
+
+      // Holds the search response until the item tree has been requested.
+      async function searchAfterTree(mockFetch: ReturnType<typeof mockAlgolia>, respond: () => void) {
+        await vi.waitFor(() => {
+          expect(mockFetch.mock.calls.some(([input]) => urlOf(input).includes(`/items/${itemId}`))).toBe(true);
+        });
+        respond();
       }
 
       beforeEach(() => {
@@ -1322,18 +1331,45 @@ describe('hn API utilities', () => {
       });
 
       it('adds the comments past the limit from the item tree', async () => {
-        // nbPages is capped at 1,000 hits / 200 per page, so it no longer covers nbHits.
-        mockAlgolia({ nbHits: 1500, nbPages: 5 });
+        // Search returns at most 1,000 of a thread's hits, fewer than nbHits.
+        const mockFetch = mockAlgolia(1500);
 
         const { comments } = await fetchItemWithComments(itemId);
 
         expect(comments.map(c => c.id)).toEqual([101, 102, 104]);
         expect(comments[0].text).toBe('From search');
         expect(comments[0].children.map(c => c.id)).toEqual([201]);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      });
+
+      it('downloads the item tree alongside the search', async () => {
+        let respond!: () => void;
+        const mockFetch = mockAlgolia(1500, { searchDone: new Promise<void>(r => { respond = r; }) });
+
+        const read = fetchItemWithComments(itemId);
+        await searchAfterTree(mockFetch, respond);
+        const { comments } = await read;
+
+        expect(comments.map(c => c.id)).toEqual([101, 102, 104]);
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      });
+
+      it('cancels the item tree when search has every comment', async () => {
+        // The story's comment count says more than search has, but search is complete.
+        let respond!: () => void;
+        const mockFetch = mockAlgolia(2, { searchDone: new Promise<void>(r => { respond = r; }) });
+
+        const read = fetchItemWithComments(itemId);
+        await searchAfterTree(mockFetch, respond);
+        const { comments } = await read;
+
+        expect(comments.map(c => c.id)).toEqual([101, 102]);
+        const treeCall = mockFetch.mock.calls.find(([input]) => urlOf(input).includes(`/items/${itemId}`));
+        expect(treeCall?.[1]?.signal?.aborted).toBe(true);
       });
 
       it('keeps the search results when the item tree fails', async () => {
-        mockAlgolia({ nbHits: 1500, nbPages: 5 }, { treeStatus: 500 });
+        mockAlgolia(1500, { treeStatus: 500 });
 
         const { comments } = await fetchItemWithComments(itemId);
 
@@ -1341,12 +1377,109 @@ describe('hn API utilities', () => {
       });
 
       it('skips the item tree when search has every comment', async () => {
-        const mockFetch = mockAlgolia({ nbHits: 2, nbPages: 1 });
+        vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => (Number(id) === itemId ? { ...firebaseItem, descendants: 2 } : null));
+        const mockFetch = mockAlgolia(2);
 
         await fetchItemWithComments(itemId);
 
         expect(mockFetch).toHaveBeenCalledTimes(1);
         expect(urlOf(mockFetch.mock.calls[0][0])).toContain('/search?');
+        const params = new URL(urlOf(mockFetch.mock.calls[0][0])).searchParams;
+        expect(params.get('hitsPerPage')).toBe('1000');
+        // An empty value doesn't turn highlighting off; an empty list does.
+        expect(params.get('attributesToHighlight')).toBe('[]');
+        expect(params.get('attributesToRetrieve')?.split(',').sort()).toEqual(['author', 'comment_text', 'created_at_i', 'parent_id']);
+      });
+    });
+
+    it('reads all the comments it orders at once', async () => {
+      const itemId = 9300;
+      const roots = Array.from({ length: 25 }, (_, i) => 101 + i);
+      // Each root comment has two replies, created in the opposite of HN's order.
+      const hits = roots.flatMap(id => [
+        { objectID: String(id), author: 'alice', comment_text: 'Root', created_at_i: 1700000000 + id, parent_id: itemId },
+        { objectID: String(id * 10), author: 'bob', comment_text: 'First', created_at_i: 1700001000 + id, parent_id: id },
+        { objectID: String(id * 10 + 1), author: 'carol', comment_text: 'Second', created_at_i: 1700002000 + id, parent_id: id },
+      ]);
+      let pending = 0;
+      let mostPending = 0;
+      vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
+        if (Number(id) === itemId) return { id: itemId, type: 'story', title: 'Thread', time: 1700000000, kids: roots };
+        mostPending = Math.max(mostPending, ++pending);
+        await new Promise(resolve => setTimeout(resolve));
+        pending--;
+        return { id: Number(id), type: 'comment', time: 1700000000, parent: itemId, kids: [Number(id) * 10 + 1, Number(id) * 10] };
+      });
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ hits, nbHits: hits.length }));
+
+      const { comments } = await fetchItemWithComments(itemId);
+
+      expect(mostPending).toBe(roots.length);
+      expect(comments.map(c => c.id)).toEqual(roots);
+      expect(comments[0].children.map(c => c.id)).toEqual([1011, 1010]);
+    });
+
+    describe('a thread several callers want at once', () => {
+      const itemId = 9400;
+      const hits = [{ objectID: '101', author: 'alice', comment_text: 'Root', created_at_i: 1700000100, parent_id: itemId }];
+      let searches: { respond: () => void; signal?: AbortSignal | null }[];
+
+      beforeEach(() => {
+        searches = [];
+        vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) =>
+          Number(id) === itemId ? { id: itemId, type: 'story', title: 'Thread', time: 1700000000, kids: [101] } : null);
+        // Each comment search waits to be answered, or fails when aborted.
+        vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+          searches.push({ respond: () => resolve(Response.json({ hits, nbHits: hits.length })), signal: init?.signal });
+        }));
+      });
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it('shares one download between them', async () => {
+        const shown = fetchItemWithComments(itemId, new AbortController().signal);
+        const prefetched = prefetchItemComments(itemId);
+        await vi.waitFor(() => expect(searches).toHaveLength(1));
+        searches[0].respond();
+
+        expect((await shown).comments.map(c => c.id)).toEqual([101]);
+        expect((await prefetched)?.comments.map(c => c.id)).toEqual([101]);
+        expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      it('lets one abort without the others, and starts the next caller over', async () => {
+        const controller = new AbortController();
+        const shown = fetchItemWithComments(itemId, controller.signal);
+        const prefetched = prefetchItemComments(itemId);
+        await vi.waitFor(() => expect(searches).toHaveLength(1));
+
+        controller.abort();
+        await expect(shown).rejects.toMatchObject({ name: 'AbortError' });
+        // A retry, as after a reconnect, doesn't join the download it gave up on.
+        const retried = fetchItemWithComments(itemId);
+        await vi.waitFor(() => expect(searches).toHaveLength(2));
+        searches.forEach(search => search.respond());
+
+        expect((await prefetched)?.comments).toHaveLength(1);
+        expect((await retried).comments).toHaveLength(1);
+      });
+
+      it('stops the download once all of them abort', async () => {
+        const first = new AbortController();
+        const second = new AbortController();
+        const shown = fetchItemWithComments(itemId, first.signal);
+        const prefetched = prefetchItemComments(itemId, second.signal);
+        await vi.waitFor(() => expect(searches).toHaveLength(1));
+
+        first.abort();
+        expect(searches[0].signal?.aborted).toBe(false);
+        second.abort();
+        expect(searches[0].signal?.aborted).toBe(true);
+        await expect(shown).rejects.toMatchObject({ name: 'AbortError' });
+        expect(await prefetched).toBeNull();
       });
     });
   });
@@ -1381,11 +1514,14 @@ describe('hn API utilities', () => {
     // 102's only reply is flagged 203, which has none of its own.
     const flaggedLeafParent: AlgoliaItemResponse = { ...item, id: 102, author: 'gina', children: [] };
 
-    function mockStory(search: { nbHits: number; nbPages: number } = { nbHits: searchHits.length, nbPages: 1 }) {
+    function mockStory(nbHits = searchHits.length) {
       const readItem = vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => firebaseItems.find(fb => fb.id === Number(id)) ?? null);
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
-        Response.json({ hits: searchHits, page: 0, hitsPerPage: 200, ...search }));
-      return { readItem, fetchSpy };
+      // The story's comments, and the count of them that goes out alongside.
+      const search = vi.fn(async (_init?: RequestInit) => Response.json({ hits: searchHits, nbHits }));
+      const count = vi.fn(async () => Response.json({ hits: [], nbHits }));
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) =>
+        typeof url === 'string' && url.includes('hitsPerPage=0') ? count() : search(init));
+      return { readItem, fetchSpy, search, count };
     }
 
     afterEach(() => {
@@ -1406,14 +1542,35 @@ describe('hn API utilities', () => {
     });
 
     it('keeps the item tree replies for a thread bigger than search returns', async () => {
-      const { readItem, fetchSpy } = mockStory({ nbHits: 1500, nbPages: 5 });
+      const { readItem, search } = mockStory(1500);
 
       const replies = await fetchCommentReplies(item);
 
       expect(replies.map(c => c.id)).toEqual([201]);
       expect(replies[0].children).toEqual([]);
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(search).toHaveBeenCalledTimes(1);
       expect(readItem).not.toHaveBeenCalled();
+    });
+
+    it('stops the story search once the count shows a thread bigger than search returns', async () => {
+      const { search } = mockStory(1500);
+      search.mockImplementation(init => new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      }));
+
+      const replies = await fetchCommentReplies(item);
+
+      expect(replies.map(c => c.id)).toEqual([201]);
+      expect(search.mock.calls[0][0]?.signal?.aborted).toBe(true);
+    });
+
+    it('lets the story search decide when the count fails', async () => {
+      const { count } = mockStory();
+      count.mockImplementation(async () => new Response(null, { status: 503 }));
+
+      const replies = await fetchCommentReplies(item);
+
+      expect(replies.map(c => c.id)).toEqual([201, 202]);
     });
 
     it('looks up the replies of a comment whose replies are all flagged or deleted', async () => {
@@ -1459,7 +1616,7 @@ describe('hn API utilities', () => {
     });
 
     it("reads a story's comments once for comments on the same story", async () => {
-      const { readItem, fetchSpy } = mockStory();
+      const { readItem, search, count } = mockStory();
 
       const [rootReplies, liveReplyReplies] = await Promise.all([
         fetchCommentReplies(item),
@@ -1468,7 +1625,8 @@ describe('hn API utilities', () => {
 
       expect(rootReplies.map(c => c.id)).toEqual([201, 202]);
       expect(liveReplyReplies.map(c => c.id)).toEqual([302]);
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(search).toHaveBeenCalledTimes(1);
+      expect(count).toHaveBeenCalledTimes(1);
       // 201 and its reply 302 to see whether to search, then each missing
       // parent once, and 101 to order its two replies.
       expect(readItem.mock.calls.map(([id]) => Number(id)).sort()).toEqual([101, 201, 202, 302, 302]);
@@ -1486,14 +1644,14 @@ describe('hn API utilities', () => {
     });
 
     it('reads the story again after a failed read', async () => {
-      const { fetchSpy } = mockStory();
-      fetchSpy.mockResolvedValueOnce(new Response(null, { status: 503 }));
+      const { search } = mockStory();
+      search.mockResolvedValueOnce(new Response(null, { status: 503 }));
 
       await expect(fetchCommentReplies(item)).rejects.toThrow(/503/);
       const replies = await fetchCommentReplies(item);
 
       expect(replies.map(c => c.id)).toEqual([201, 202]);
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(search).toHaveBeenCalledTimes(2);
     });
   });
 });

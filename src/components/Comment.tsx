@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { memo, useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router';
 import { isKnownAuthor } from '../api/hn';
 import { sanitizeHtml } from '../utils/sanitize';
@@ -17,7 +17,8 @@ interface CommentProps {
   stageIdx?: number;
 }
 
-export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
+// Memoized: the swipe viewer re-renders every mounted panel on each swipe.
+export const Comment = memo(function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
   const [repliesExpanded, setRepliesExpanded] = useState(false);
 
   const expandReplies = () => {
@@ -139,7 +140,7 @@ export function Comment({ comment, storyAuthor = '', stageIdx }: CommentProps) {
       ) : null}
     </div>
   );
-}
+});
 
 interface CommentTreeProps {
   comments: CommentType[];

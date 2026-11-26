@@ -764,7 +764,7 @@ export function SwipeStoryViewer({ type, initialItemId }: SwipeStoryViewerProps)
   }, [hidesStaleCache]);
 
   // Prefetch other sections in background for instant tab switching
-  usePrefetchSections(type);
+  usePrefetchSections(type, !hidesStaleCache && stories.length > 0);
 
   // Trigger revalidation eagerly — same as StoryList — so it lands before the
   // reader has swiped far: the stories they've reached, the one on screen

@@ -68,9 +68,17 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
     [fromUser, fromDomain, listType],
   );
 
+  // The story's page joins its prefetch, so this card's unmount mustn't stop it.
+  const keepOwnPrefetch = () => {
+    isPrefetchingRef.current = false;
+    cancelAllPrefetches(story.id);
+  };
+
   const handleTitleClick = () => {
     markViewedWithTime(story.id, 'title');
-    cancelAllPrefetches();
+    // An outbound title leaves the app, so nothing would use the prefetch.
+    if (safeUrl) cancelAllPrefetches();
+    else keepOwnPrefetch();
     if (onBeforeNavigate) {
       onBeforeNavigate();
     }
@@ -94,7 +102,7 @@ export function StoryCard({ story, index = 0, listType = 'top', fromDomain, from
     if (!story.url) {
       markViewedWithTime(story.id, 'detail');
     }
-    cancelAllPrefetches();
+    keepOwnPrefetch();
     if (onBeforeNavigate) {
       onBeforeNavigate();
     }

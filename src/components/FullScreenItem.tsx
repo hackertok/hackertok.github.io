@@ -55,7 +55,6 @@ interface FullScreenItemProps {
 export function FullScreenItem({ itemId, initialItem, isPriority = true, deferComments = false }: FullScreenItemProps) {
   const { item, comments, itemLoading, commentsLoading, error, isNotFound, commentsError, refresh, retryComments } = useItemWithComments(itemId, {
     initialItem: initialItem ?? null,
-    skipOrderingCompletion: true,
     isPriority,
     deferComments,
   });

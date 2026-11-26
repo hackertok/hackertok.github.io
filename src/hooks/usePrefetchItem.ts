@@ -99,10 +99,10 @@ async function processQueue() {
 
 async function doPrefetch(itemId: number, controller: AbortController) {
   try {
-    const result = await prefetchItemComments(itemId, controller.signal, 1);
+    const result = await prefetchItemComments(itemId, controller.signal);
     
     if (result && !controller.signal.aborted) {
-      setCachedItem(itemId, result.item, result.comments, 1);
+      setCachedItem(itemId, result.item, result.comments);
     }
   } catch {
     // Silent failure for prefetch
@@ -179,14 +179,18 @@ export function usePrefetchItems(currentIndex: number, items: Item[], count = 3)
   }, [currentIndex, items, count]);
 }
 
-/** Cancel all in-flight prefetches. Call when navigating to an item. */
-export function cancelAllPrefetches() {
+/**
+ * Cancel queued and in-flight prefetches. Call when navigating; pass the item
+ * being opened as `keepId` so its page can join that download.
+ */
+export function cancelAllPrefetches(keepId?: number) {
   cancelSchedule?.();
   
   prefetchQueue.clear();
   
-  for (const controller of activePrefetches.values()) {
+  for (const [itemId, controller] of activePrefetches) {
+    if (itemId === keepId) continue;
     controller.abort();
+    activePrefetches.delete(itemId);
   }
-  activePrefetches.clear();
 }
