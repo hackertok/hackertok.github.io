@@ -21,7 +21,7 @@ interface CommentDetailProps {
 }
 
 /** Skeleton matching CommentArticle's shape. Chrome stays with the parent. */
-export function CommentDetailSkeleton() {
+function CommentDetailSkeleton() {
   return (
     <div className="animate-pulse">
       <article className="mb-6 pb-4 border-b border-border">

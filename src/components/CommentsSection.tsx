@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { CommentTree, CommentSkeletonTree } from '../components';
+import { CommentTree } from './Comment';
+import { CommentSkeletonTree } from './CommentSkeleton';
 import { StateView } from './StateView';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';

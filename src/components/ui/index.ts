@@ -5,9 +5,3 @@ export {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./dropdown-menu";
-export {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "./tooltip";

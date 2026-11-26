@@ -108,7 +108,7 @@ html.dark { color-scheme: dark; }
      variables into Tailwind v4's color utility space (`bg-primary`,
      `bg-popover`, etc.). These are required because shadcn-emitted
      class names depend on `--color-<token>` being declared inside @theme.
-     Trimmed to only the aliases consumed by the kept Button + Tooltip +
+     Trimmed to only the aliases consumed by the kept Button +
      DropdownMenu variants. */
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);

@@ -5,7 +5,7 @@ interface StoryCardSkeletonProps {
 
 // Heights ≤ real card to prevent PageStage contraction.
 // Second title bar md:hidden (desktop titles fit one line).
-export function StoryCardSkeleton({
+function StoryCardSkeleton({
   titleWidths = [0.8, 0.4],
   metaWidths = [0.08, 0.16, 0.1, 0.14, 0.12],
 }: StoryCardSkeletonProps) {

@@ -22,6 +22,7 @@ import { useScrollContainer } from '../hooks/useScrollContainer';
 import { useIsMobileLayout } from '../hooks/useIsMobileLayout';
 import { usePackedNav, type PackableItem } from '../hooks/usePackedNav';
 import { clearListSessionState } from '../utils/itemCache';
+import { FEED_TYPES } from '../config/feedTypes';
 import { prefersReducedMotion } from '../utils/prefersReducedMotion';
 import {
   deriveHeaderState,
@@ -187,11 +188,7 @@ export function Header() {
 
   // Clear all session states so we start fresh (logo = "home/reset" action)
   const handleLogoClick = () => {
-    clearListSessionState('top');
-    clearListSessionState('best');
-    clearListSessionState('show');
-    clearListSessionState('ask');
-    clearListSessionState('newest');
+    for (const type of FEED_TYPES) clearListSessionState(type);
     if (location.pathname === '/') {
       scrollToTop();
     }

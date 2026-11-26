@@ -4,7 +4,7 @@ interface CommentSkeletonProps {
 }
 
 // Heights ≤ real Comment to prevent PageStage contraction on swap.
-export function CommentSkeleton({ lineCount = 3, widths = [1, 0.92, 0.75] }: CommentSkeletonProps) {
+function CommentSkeleton({ lineCount = 3, widths = [1, 0.92, 0.75] }: CommentSkeletonProps) {
   return (
     <div className="py-2">
       <div className="flex items-center gap-2 mb-0.5 min-h-5">

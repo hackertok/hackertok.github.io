@@ -4,17 +4,12 @@ import { getCachedFeed, setCachedFeed } from '../utils/feedCache';
 import { setCachedItem, getCachedItem } from '../utils/itemCache';
 import { waitForPriorityFetch } from '../utils/fetchPriority';
 import { getFilteredViewedIds, getSessionViewedIds } from '../utils/viewedItems';
+import { FEED_TYPES } from '../config/feedTypes';
 import type { StoryItem, FeedType } from '../types';
-
-const ALL_SECTIONS: FeedType[] = ['top', 'best', 'show', 'ask', 'newest'];
-const CACHE_FRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
 function getCachedStoriesIfFresh(type: FeedType): StoryItem[] | null {
   const cached = getCachedFeed(type);
-  if (!cached) return null;
-  const age = Date.now() - cached.timestamp;
-  if (age >= CACHE_FRESH_THRESHOLD) return null;
-  return cached.stories;
+  return cached && !cached.isStale ? cached.stories : null;
 }
 
 // The story a feed opens on: the swipe viewer skips stories viewed in an
@@ -69,7 +64,7 @@ export function usePrefetchSections(currentType: FeedType, ready = true) {
   useEffect(() => {
     if (!ready || hasPrefetchedRef.current) return;
 
-    const sectionsNeedingWork = ALL_SECTIONS.filter(type => {
+    const sectionsNeedingWork = FEED_TYPES.filter(type => {
       if (type === currentType) return false;
       const stories = getCachedStoriesIfFresh(type);
       return !stories || needsThread(stories);

@@ -1611,7 +1611,7 @@ describe('hn API utilities', () => {
         return firebaseItems.find(fb => fb.id === Number(id)) ?? null;
       });
 
-      await expect(fetchCommentReplies(liveReply, controller.signal)).rejects.toThrow('Aborted');
+      await expect(fetchCommentReplies(liveReply, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 

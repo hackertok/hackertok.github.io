@@ -10,7 +10,7 @@ import { StateView } from './StateView';
 
 // Inner content ONLY — consumer supplies the chrome.
 // Mirrors CommentArticle's shape.
-export function FullScreenCommentSkeleton() {
+function FullScreenCommentSkeleton() {
   return (
     <div className="animate-pulse">
       <article className="mb-4 pb-4 border-b border-border">
