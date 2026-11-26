@@ -109,12 +109,9 @@ test.describe('User Submissions - Desktop', () => {
 });
 
 test.describe('User Submissions - User change reset', () => {
-  // Desktop-scoped: on mobile, `SwipeUserSubmissionsViewer` is keyed by
-  // `username` in `MobileUserSubmissionsWrapper`, so a username change
-  // unmounts the old viewer entirely. The reset block in
-  // `useUserInfiniteStories` only runs when the same hook instance sees a
-  // new `username` prop — that path exists on desktop because
-  // `UserSubmissions` is NOT keyed by `username` in App.tsx.
+  // Desktop-scoped: pins the `key` on `UserSubmissions` in App.tsx. The
+  // route element stays the same across users, so without the key the page
+  // would keep the old user's list state.
   test.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 
   test.beforeEach(async ({ page }) => {
@@ -126,13 +123,12 @@ test.describe('User Submissions - User change reset', () => {
     await expect(page.getByText('Beating the Averages')).toBeVisible({ timeout: 10_000 });
 
     // Client-side hash change — same as clicking an author byline link from
-    // a comment thread. No reload, so `UserSubmissions` stays mounted and
-    // the hook re-renders with the new `username` prop.
+    // a comment thread. No reload; only the key remounts the page.
     await page.evaluate(() => { window.location.hash = '#/submitted/dang'; });
 
     // The default mock returns a synthetic "Story by dang" for unknown users.
-    // The `pg` story must disappear (proves the reset block ran — otherwise
-    // the first commit after the prop change would still show pg's stories).
+    // The `pg` story must disappear (proves the page remounted — otherwise
+    // the first commit after the hash change would still show pg's stories).
     await expect(page.getByText('Beating the Averages')).not.toBeVisible({ timeout: 5_000 });
     await expect(page.getByText('Story by dang')).toBeVisible({ timeout: 10_000 });
 

@@ -254,15 +254,9 @@ test.describe('Domain Filter - Pagination', () => {
 });
 
 test.describe('Domain Filter - Domain change reset', () => {
-  // Desktop-scoped: on mobile, SwipeDomainStoryViewer is keyed by `domain`
-  // in App.tsx, which unmounts the old viewer and mounts a fresh one on
-  // every domain change — the new instance initializes cleanly through
-  // the hook's lazy useState init, so the `if (prevDomain !== domain)`
-  // reset block never runs. DomainStories is NOT keyed and stays mounted
-  // across /#/from/:a → /#/from/:b transitions, which is the only browser
-  // path that exercises the reset block. (Unit tests pin the branch
-  // directly; this pins the wiring between StoryCard's hostname pill and
-  // the hook.)
+  // Desktop-scoped: pins the `key` on DomainStories in App.tsx. The route
+  // element stays the same across /#/from/:a → /#/from/:b, so without the
+  // key the page would keep the old domain's list state.
   test.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 
   test.beforeEach(async ({ page }) => {
@@ -275,15 +269,14 @@ test.describe('Domain Filter - Domain change reset', () => {
 
     // Client-side hash change — same mechanism React Router dispatches
     // when StoryCard's hostname pill is clicked to cross-link into a
-    // different domain. No page reload, so the DomainStories instance
-    // stays mounted and the hook re-renders with a new `domain` prop.
+    // different domain. No page reload; only the key remounts the page.
     await page.evaluate(() => { window.location.hash = '#/from/example.org'; });
 
     // The default mock returns mockDomainItem (URL: https://example.com/…)
     // regardless of the `query` param, so the hook's URL-filter rejects
     // every hit for example.org and we land on the empty state. That
-    // state rendering is only possible if the reset block cleared the
-    // old `stories` array — otherwise the first commit after the hash
+    // state rendering is only possible if the remount dropped the old
+    // `stories` array — otherwise the first commit after the hash
     // change would still show the example.com items.
     await expect(page.getByText('Google Announces Gemini 3.0 with Extended Context')).not.toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/No submissions found from.*example\.org/i)).toBeVisible({ timeout: 10000 });

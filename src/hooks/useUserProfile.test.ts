@@ -119,61 +119,6 @@ describe('useUserProfile', () => {
     });
   });
 
-  describe('username change', () => {
-    it('discards stale state when username changes between renders', async () => {
-      vi.spyOn(hnSdk, 'readUser').mockImplementation(async (username) => {
-        const id = username;
-        return profileBody({ id, karma: id === 'pg' ? 1 : 2 });
-      });
-
-      const { result, rerender } = renderHook(
-        ({ username }: { username: string }) => useUserProfile(username),
-        { initialProps: { username: 'pg' } },
-      );
-
-      await waitFor(() => expect(result.current.profile?.id).toBe('pg'));
-
-      rerender({ username: 'dang' });
-      await waitFor(() => expect(result.current.profile?.id).toBe('dang'));
-      expect(result.current.profile?.karma).toBe(2);
-    });
-
-    it('does not commit a stale in-flight response when username changes mid-fetch', async () => {
-      let resolvePg!: (value: UserProfile | null) => void;
-      const pgPromise = new Promise<UserProfile | null>((resolve) => {
-        resolvePg = resolve;
-      });
-
-      vi.spyOn(hnSdk, 'readUser').mockImplementation(async (username) => {
-        if (username === 'pg') return pgPromise;
-        return profileBody({ id: 'dang', karma: 999 });
-      });
-
-      const { result, rerender } = renderHook(
-        ({ username }: { username: string }) => useUserProfile(username),
-        { initialProps: { username: 'pg' } },
-      );
-
-      expect(result.current.loading).toBe(true);
-
-      rerender({ username: 'dang' });
-
-      await waitFor(() => expect(result.current.profile?.id).toBe('dang'));
-      expect(result.current.profile?.karma).toBe(999);
-
-      await act(async () => {
-        resolvePg(profileBody({ id: 'pg', karma: 1 }));
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      expect(result.current.profile?.id).toBe('dang');
-      expect(result.current.profile?.karma).toBe(999);
-      expect(__getUserProfileCacheForTests().get('pg')).toBeUndefined();
-      expect(__getUserProfileCacheForTests().get('dang')?.karma).toBe(999);
-    });
-  });
-
   describe('refresh', () => {
     it('clears the cache entry and re-fetches', async () => {
       const spy = vi.spyOn(hnSdk, 'readUser')

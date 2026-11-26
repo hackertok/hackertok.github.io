@@ -9,6 +9,7 @@ import { useCanSwipe } from './hooks/useCanSwipe';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 import { ItemDetail } from './pages/ItemDetail';
 import { DomainStories } from './pages/DomainStories';
+import { canonicalizeDomain } from './hooks/useDomainInfiniteStories';
 import { UserProfile } from './pages/UserProfile';
 import { UserSubmissions } from './pages/UserSubmissions';
 import { SwipeStoryViewer } from './components/SwipeStoryViewer';
@@ -34,7 +35,8 @@ function MobileDomainStoriesWrapper() {
     return <SwipeDomainStoryViewer key={domain} domain={domain} />;
   }
 
-  return <DomainStories />;
+  // Keyed like the swipe viewers: a new domain gets fresh list state.
+  return <DomainStories key={canonicalizeDomain(domain)} />;
 }
 
 // Falls through to the desktop list when the URL has no username so
@@ -54,7 +56,12 @@ function MobileUserSubmissionsWrapper() {
     return <SwipeUserSubmissionsViewer key={username} username={username} />;
   }
 
-  return <UserSubmissions />;
+  return <UserSubmissions key={username} />;
+}
+
+function UserProfileRoute() {
+  const { id } = useParams<{ id: string }>();
+  return <UserProfile key={id} />;
 }
 
 // Maps a viewer context to its swipe viewer (priority fromUser → fromDomain → from;
@@ -308,7 +315,7 @@ function App() {
                     <Route path="/newest" element={<MobileStoryRoute feed="newest" />} />
                     <Route path="/item/:id" element={<MobileStoryRoute />} />
                     <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
-                    <Route path="/user/:id" element={<UserProfile />} />
+                    <Route path="/user/:id" element={<UserProfileRoute />} />
                     <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>

@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { setupApiMocks, stubNotFoundUser } from './fixtures/api-mocks';
+import {
+  setupApiMocks,
+  stubNotFoundUser,
+  createFirebaseWsHandler,
+  FIREBASE_WS_PATTERN,
+} from './fixtures/api-mocks';
 import { waitForSwipeReady } from './fixtures/swipe-helpers';
 
 test.describe('User Profile - Desktop', () => {
@@ -38,6 +43,21 @@ test.describe('User Profile - Desktop', () => {
     // appends ' | HackerTok'. Pinning the suffix catches a regression where
     // the title gets double-suffixed or set to a stale string.
     await expect(page).toHaveTitle('pg | HackerTok');
+  });
+
+  test('drops the old profile at once when navigating between two users', async ({ page }) => {
+    // Slow responses keep dang loading long enough to see what shows meanwhile.
+    await page.routeWebSocket(FIREBASE_WS_PATTERN, createFirebaseWsHandler({ delayMs: 1500 }));
+    await page.goto('/#/user/pg');
+    await expect(page.getByText('155,555 karma')).toBeVisible({ timeout: 10_000 });
+
+    // Same route element, so only the `key` in App.tsx remounts the page.
+    await page.evaluate(() => { window.location.hash = '#/user/dang'; });
+
+    // pg's profile must not linger while dang's loads.
+    await expect(page.getByText('155,555 karma')).not.toBeVisible({ timeout: 1000 });
+    await expect(page.getByRole('heading', { level: 1, name: 'dang' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('1 karma', { exact: true })).toBeVisible();
   });
 
   test('"submissions" metadata link navigates to /#/submitted/:id', async ({ page }) => {
