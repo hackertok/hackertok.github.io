@@ -1,5 +1,6 @@
 import { ALGOLIA_API } from '../config/api';
 import { hnSdk } from './hnSdk';
+import { errorMessage } from '../utils/errors';
 import type { Item, StoryItem, Comment, AlgoliaHit, AlgoliaComment, AlgoliaSearchResponse, FirebaseItem, PrefetchResult, AlgoliaItemResponse, AlgoliaItemChild, PollOption, PollOptionItem } from '../types';
 
 export class NotFoundError extends Error {
@@ -585,7 +586,7 @@ async function fetchThread(
     if (!raw) throw err;
     const item = threadItem(raw, await pollOptionsRead);
     signal?.throwIfAborted();
-    throw new CommentsError(err instanceof Error ? err.message : String(err), item);
+    throw new CommentsError(errorMessage(err), item);
   });
   const [raw, comments] = await Promise.all([itemRead, commentsRead]);
 

@@ -9,6 +9,7 @@ import { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { fetchTopStories, fetchFrontPageForDay, fetchBestStories, fetchNewStories, fetchShowStories, fetchAskStories, fetchAskStoriesForDay, fetchShowStoriesForDay } from '../api/hn';
 import { getCachedFeed, setCachedFeed } from '../utils/feedCache';
 import { getListSessionState, saveListSessionState, clearListSessionState } from '../utils/itemCache';
+import { errorMessage } from '../utils/errors';
 import type { StoryItem, FeedType, ListSessionState } from '../types';
 
 interface InitialState {
@@ -320,7 +321,7 @@ export function useInfiniteStories(type: FeedType = 'top') {
     } catch (err) {
       // Stale-response guard: only surface errors from the current request.
       if (versionRef.current === currentVersion) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
         throw err;
       }
     } finally {

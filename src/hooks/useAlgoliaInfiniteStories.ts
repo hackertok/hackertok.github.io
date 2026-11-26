@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { ALGOLIA_API } from '../config/api';
 import { normalizeAlgoliaHit } from '../api/hn';
 import { algoliaPageParams, nextAlgoliaPage, type AlgoliaPageCursor } from '../utils/algoliaPaging';
+import { errorMessage } from '../utils/errors';
 import type { StoryItem, AlgoliaHit, AlgoliaSearchResponse } from '../types';
 
 const HITS_PER_PAGE = 50;
@@ -135,7 +136,7 @@ export function useAlgoliaInfiniteStories(key: string, source: AlgoliaStoriesSou
       setStories(updated);
     } catch (err) {
       if (versionRef.current !== currentVersion) return;
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
       throw err;
     } finally {
       // Only clear flags if this fetch is still the current version. After a

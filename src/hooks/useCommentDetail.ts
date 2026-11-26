@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchCommentItem, fetchCommentReplies, fetchFirebaseItem, normalizeAlgoliaItemChildren } from '../api/hn';
+import { errorMessage, isAbortError } from '../utils/errors';
 import type { Comment } from '../types';
 
 function countComments(comments: Comment[]): number {
@@ -140,8 +141,8 @@ export function useCommentDetail(
         }
       }
     } catch (err) {
-      if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
-      setError(err instanceof Error ? err.message : String(err));
+      if (signal.aborted || isAbortError(err)) return;
+      setError(errorMessage(err));
       setLoading(false);
       throw err;
     }

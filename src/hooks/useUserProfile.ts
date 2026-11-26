@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hnSdk } from '../api/hnSdk';
 import { NotFoundError } from '../api/hn';
+import { errorMessage } from '../utils/errors';
 import type { UserProfile } from '../types';
 
 // Module-level profile cache (session-lifetime, not persisted).
@@ -64,7 +65,7 @@ export function useUserProfile(username: string): UseUserProfileResult {
         setIsNotFound(true);
         setError(err.message);
       } else {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
       }
     } finally {
       if (versionRef.current === currentVersion) {
