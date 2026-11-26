@@ -1,15 +1,13 @@
 import { useState, useEffect, useRef, useEffectEvent, useCallback } from 'react';
-import { fetchItemOnly, fetchItemWithComments, isPollOption, CommentsError, NotFoundError } from '../api/hn';
+import { fetchItemAndComments, fetchItemOnly, fetchItemWithComments, isPollOption, CommentsError, NotFoundError } from '../api/hn';
 import { getCachedItem, setCachedItem } from '../utils/itemCache';
 import { registerPriorityFetch, unregisterPriorityFetch } from '../utils/fetchPriority';
 import { useNetworkStatus } from './useNetworkStatus';
-import type { Item, Comment, StoryItem } from '../types';
+import type { Item, Comment, StoryItem, PrefetchResult } from '../types';
 
 interface UseItemWithCommentsOptions {
   /** Pre-loaded item data (avoids the redundant item fetch). */
   initialItem?: Item | null;
-  /** Skip background re-fetch for deep comment ordering (mobile swipe mode). */
-  skipOrderingCompletion?: boolean;
   /** When true, fetch immediately; when false, wait for priority fetches first. */
   isPriority?: boolean;
   /** Skip comment fetch entirely (for far panels in mobile swipe view). */
@@ -79,7 +77,7 @@ function fetchesComments(item: Item): boolean {
   return item.type !== 'comment' && !isPollOption(item);
 }
 
-export function useItemWithComments(itemId: number | string, { initialItem = null, skipOrderingCompletion = false, isPriority = true, deferComments = false }: UseItemWithCommentsOptions = {}): UseItemWithCommentsResult {
+export function useItemWithComments(itemId: number | string, { initialItem = null, isPriority = true, deferComments = false }: UseItemWithCommentsOptions = {}): UseItemWithCommentsResult {
   const [initialCache] = useState(() => getCachedItem(itemId));
   
   // Lazy initialization from cache or initialItem for instant render
@@ -102,7 +100,6 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   const getStableOptions = useEffectEvent(() => ({
     isPriority,
     initialItem,
-    skipOrderingCompletion
   }));
 
   const getStateSnapshot = useEffectEvent(() => ({
@@ -120,7 +117,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   });
   
   useEffect(() => {
-    const { isPriority, initialItem, skipOrderingCompletion } = getStableOptions();
+    const { isPriority, initialItem } = getStableOptions();
     const { currentItemId, hasComments, currentItem } = getStateSnapshot();
     
     // Captured for cleanup: lets us detect itemId changes when the effect re-runs.
@@ -165,11 +162,8 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     // A poll whose options failed to load with its comments reads them again.
     const lacksPollOptions = hasItem?.type === 'poll' && !hasItem.pollOptions;
     const needsFullFetch = !cached?.isFresh || !hasItem || !cached?.comments || lacksPollOptions;
-    // Mobile swipe mode skips ordering completion — users swipe fast and deep
-    // order isn't visible.
-    const needsOrderingCompletion = !skipOrderingCompletion && cached?.isFresh && cached?.orderedDepth < 3;
     
-    if (cached?.isFresh && hasItem && cached?.comments && cached?.orderedDepth >= 3 && !lacksPollOptions) {
+    if (!needsFullFetch) {
       return;
     }
     
@@ -179,7 +173,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     
     // SYNC: priority panels register BEFORE any async work so non-priority
     // panels wait even if their effect happens to run first.
-    if (isPriority && needsFullFetch && !cached?.comments) {
+    if (isPriority && !cached?.comments) {
       registerPriorityFetch();
       didRegister = true;
     }
@@ -191,17 +185,13 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     };
     releasePriorityRef.current = releasePriority;
 
-    async function loadItem() {
-      if (initialItem) {
-        return initialItem;
-      }
-      
+    async function loadItem(itemRead: Promise<Item>) {
       if (!cached?.item) {
         setItemLoading(true);
       }
       
       try {
-        const itemData = await fetchItemOnly(itemId);
+        const itemData = await itemRead;
         if (!controller.signal.aborted) {
           setItem(itemData);
           setItemLoading(false);
@@ -221,16 +211,15 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       }
     }
 
-    async function loadComments(itemData: Item | null, isBackgroundReorder = false) {
+    async function loadComments(itemData: Item, commentsRead?: Promise<PrefetchResult>) {
       if (controller.signal.aborted) return;
       
-      const shouldSetLoading = !cached?.comments && !isBackgroundReorder;
-      if (shouldSetLoading) {
+      if (!cached?.comments) {
         setCommentsLoading(true);
       }
       
       try {
-        const { item: fetchedItem, comments: commentsData } = await fetchItemWithComments(itemId, controller.signal);
+        const { item: fetchedItem, comments: commentsData } = await (commentsRead ?? fetchItemWithComments(itemId, controller.signal));
         if (!controller.signal.aborted) {
           setItem(current => withFetchedFields(current, fetchedItem));
           setComments(commentsData);
@@ -239,7 +228,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
           
           const fullItem = withFetchedFields(itemData, fetchedItem);
           if (fullItem) {
-            setCachedItem(itemId, fullItem, commentsData, 3);
+            setCachedItem(itemId, fullItem, commentsData);
           }
           
           // Unregister priority so section prefetch and other lower-priority
@@ -264,15 +253,15 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       setError(null);
       setIsNotFound(false);
       
-      if (needsOrderingCompletion && hasItem) {
-        // Show partial-ordering data immediately, complete ordering in background.
-        await loadComments(hasItem, true);
-      } else if (needsFullFetch) {
-        const itemData = hasItem ?? await loadItem();
-        
-        if (itemData && fetchesComments(itemData) && !controller.signal.aborted) {
-          await loadComments(itemData, false);
-        }
+      // With no copy of the item, the comments fetch starts alongside the
+      // item's, sharing its read. A comment or poll option turns out to need
+      // none, and its result goes unused.
+      const reads = hasItem ? undefined : fetchItemAndComments(itemId, controller.signal);
+      reads?.thread.catch(() => { /* loadComments handles it, if it's used */ });
+      const itemData = reads ? await loadItem(reads.item) : hasItem;
+      
+      if (itemData && fetchesComments(itemData) && !controller.signal.aborted) {
+        await loadComments(itemData, reads?.thread);
       }
       // A comment item or poll option fetches nothing more. After an abort,
       // whoever aborted releases it.
@@ -336,7 +325,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
         setCommentsLoading(false);
         setCommentsError(null);
         const fullItem = withFetchedFields(item, fetchedItem);
-        if (fullItem) setCachedItem(itemId, fullItem, commentsData, 3);
+        if (fullItem) setCachedItem(itemId, fullItem, commentsData);
       })
       .catch(err => {
         if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
@@ -405,7 +394,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       setComments(commentsData);
       setCommentsError(null);
       const fullItem = withFetchedFields(item, fetchedItem);
-      if (fullItem) setCachedItem(itemId, fullItem, commentsData, 3);
+      if (fullItem) setCachedItem(itemId, fullItem, commentsData);
     } catch (err) {
       setItem(current => withFailedFetchFields(current, err));
       setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');

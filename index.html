@@ -2,6 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- No-op <base> (no href, _self is the default target). React Router's
+         hash history runs querySelector("base") for every <Link> href, which
+         scans the whole DOM when no <base> exists. -->
+    <base target="_self" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- color-scheme on :root + html.light/html.dark in index.css pins UA

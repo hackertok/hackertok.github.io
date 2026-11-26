@@ -150,7 +150,6 @@ export interface CachedItem {
   comments: Comment[];
   timestamp: number;
   isFresh: boolean;
-  orderedDepth: number;
 }
 
 export interface CachedFeed {

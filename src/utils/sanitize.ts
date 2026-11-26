@@ -371,9 +371,10 @@ export function sanitizeHtml(html: string | null | undefined): string {
   // DOM by `autoLinkUrls`, so untrusted markup can never reach an `innerHTML`
   // write unsanitized (and CodeQL sees the DOMPurify barrier before the sink).
   // The second pass re-runs the afterSanitizeAttributes hook on the anchors
-  // that auto-linking just created.
+  // that auto-linking just created, so it's skipped when nothing was linked.
   const sanitized = DOMPurify.sanitize(html, PURIFY_CONFIG);
-  return DOMPurify.sanitize(autoLinkUrls(sanitized), PURIFY_CONFIG);
+  const linked = autoLinkUrls(sanitized);
+  return linked === sanitized ? sanitized : DOMPurify.sanitize(linked, PURIFY_CONFIG);
 }
 
 /**
