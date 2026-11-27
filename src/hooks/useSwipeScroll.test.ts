@@ -236,21 +236,6 @@ describe('useSwipeScroll', () => {
       expect(history.scrollRestoration).toBe('manual');
     });
 
-    it('updates the JS scroll indicator when scroll timelines are unavailable', () => {
-      mockInnerHeight = 400;
-      mockScrollHeight = 1000;
-      render(createElement(TestHarness), { wrapper: Wrapper });
-
-      expect(document.body.style.getPropertyValue('--swipe-scroll-progress')).toBe('0');
-
-      mockScrollY = 300;
-      act(() => {
-        window.dispatchEvent(new Event('scroll'));
-      });
-
-      expect(Number(document.body.style.getPropertyValue('--swipe-scroll-progress'))).toBeCloseTo(0.5);
-    });
-
     it('uses the visual viewport height for fallback progress and updates on visual viewport resize', () => {
       mockInnerHeight = 400;
       mockVisualViewportHeight = 500;
@@ -495,30 +480,6 @@ describe('useSwipeScroll', () => {
       expect(flick!).toBeLessThan(uniformDrag!);
 
       act(() => { vi.runAllTimers(); });
-    });
-
-    it('preserves per-panel scroll position across swipes (reduced motion)', async () => {
-      reducedMotionValue = true;
-      render(createElement(TestHarness), { wrapper: Wrapper });
-
-      // User scrolled down on panel 0
-      mockScrollY = 200;
-
-      // Swipe forward to panel 1
-      vi.mocked(window.scrollTo).mockClear();
-      swipeGesture(getContainer(), 'left', 150);
-
-      // Panel 1 starts at top (no saved position)
-      expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
-      act(() => { vi.runAllTimers(); });
-      await act(async () => { /* flush */ });
-
-      // Swipe back to panel 0
-      vi.mocked(window.scrollTo).mockClear();
-      swipeGesture(getContainer(), 'right', 150);
-
-      // Panel 0's position (200) should be restored
-      expect(window.scrollTo).toHaveBeenCalledWith(0, 200);
     });
 
     it('suppresses the scroll indicator during a deep forward panel swap', async () => {

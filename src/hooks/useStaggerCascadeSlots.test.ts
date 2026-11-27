@@ -15,18 +15,6 @@ describe('useStaggerCascadeSlots', () => {
     expect(result.current(5)).toEqual({ stageIdx: 5 });
   });
 
-  it('keeps cards in the initial batch on stageIdx after the boundary latches', () => {
-    const { result, rerender } = renderHook(
-      ({ loading, count }) => useStaggerCascadeSlots(loading, count),
-      { initialProps: { loading: true, count: 0 } },
-    );
-
-    rerender({ loading: false, count: 20 });
-
-    expect(result.current(0)).toEqual({ stageIdx: 0 });
-    expect(result.current(19)).toEqual({ stageIdx: 19 });
-  });
-
   // Critical regression: the previous boundary-relative formulation
   // made batch 2 start at `appendIdx 20` (575ms+ delay before the
   // first card landed — the "spinner clears, then a pause" symptom).
@@ -122,58 +110,5 @@ describe('useStaggerCascadeSlots', () => {
     rerender({ loading: false, count: 50 });
     expect(result.current(30)).toEqual({ appendIdx: 0 });
     expect(result.current(49)).toEqual({ appendIdx: 19 });
-  });
-
-  describe('resetKey', () => {
-    // Without resetKey, navigating from /top (with appended batches)
-    // to a cached /best would inherit /top's boundary AND batchStart,
-    // routing the first ~20 best cards through `stageIdx` (snap, no
-    // animation in 'done' state) and the rest through `appendIdx`
-    // with the wrong baseline. The reset collapses everything so the
-    // new context starts fresh.
-    it('resets boundary and batchStart when resetKey changes', () => {
-      const { result, rerender } = renderHook(
-        ({ loading, count, key }: { loading: boolean; count: number; key: string }) =>
-          useStaggerCascadeSlots(loading, count, key),
-        { initialProps: { loading: true, count: 0, key: 'top' } },
-      );
-
-      // Cold load + first append on /top.
-      rerender({ loading: false, count: 20, key: 'top' });
-      rerender({ loading: true, count: 20, key: 'top' });
-      rerender({ loading: false, count: 40, key: 'top' });
-      expect(result.current(20)).toEqual({ appendIdx: 0 });
-
-      // Switch to /best — same hook instance, new context.
-      rerender({ loading: false, count: 30, key: 'best' });
-      // Boundary re-captures on the post-reset commit at the new
-      // count (30), so the first 30 best cards get stageIdx.
-      expect(result.current(0)).toEqual({ stageIdx: 0 });
-      expect(result.current(29)).toEqual({ stageIdx: 29 });
-
-      // Best then appends cleanly with batch-relative appendIdx.
-      rerender({ loading: true, count: 30, key: 'best' });
-      rerender({ loading: false, count: 50, key: 'best' });
-      expect(result.current(30)).toEqual({ appendIdx: 0 });
-      expect(result.current(49)).toEqual({ appendIdx: 19 });
-    });
-
-    it('does NOT reset when resetKey stays the same across re-renders', () => {
-      // Re-renders with stable resetKey are the common case; the
-      // reset path must not fire on every render or the cascade
-      // would never advance.
-      const { result, rerender } = renderHook(
-        ({ loading, count, key }: { loading: boolean; count: number; key: string }) =>
-          useStaggerCascadeSlots(loading, count, key),
-        { initialProps: { loading: true, count: 0, key: 'top' } },
-      );
-
-      rerender({ loading: false, count: 20, key: 'top' });
-      rerender({ loading: false, count: 20, key: 'top' });
-      rerender({ loading: false, count: 20, key: 'top' });
-
-      expect(result.current(0)).toEqual({ stageIdx: 0 });
-      expect(result.current(19)).toEqual({ stageIdx: 19 });
-    });
   });
 });

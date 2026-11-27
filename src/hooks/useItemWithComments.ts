@@ -3,6 +3,7 @@ import { fetchItemAndComments, fetchItemOnly, fetchItemWithComments, isPollOptio
 import { getCachedItem, setCachedItem } from '../utils/itemCache';
 import { registerPriorityFetch, unregisterPriorityFetch } from '../utils/fetchPriority';
 import { useNetworkStatus } from './useNetworkStatus';
+import { errorMessage, isAbortError } from '../utils/errors';
 import type { Item, Comment, StoryItem, PrefetchResult } from '../types';
 
 interface UseItemWithCommentsOptions {
@@ -17,7 +18,6 @@ interface UseItemWithCommentsOptions {
 interface UseItemWithCommentsResult {
   item: Item | null;
   comments: Comment[] | null;
-  loading: boolean;
   itemLoading: boolean;
   commentsLoading: boolean;
   error: string | null;
@@ -89,6 +89,22 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   const [error, setError] = useState<string | null>(null);
   const [isNotFound, setIsNotFound] = useState(false);
   const [commentsError, setCommentsError] = useState<string | null>(null);
+
+  // A comments fetch reads the item too. `base` is the caller's copy of the
+  // item, cached with the thread. Callers settle `commentsLoading` themselves.
+  const applyThread = useCallback((base: Item | null, { item: fetchedItem, comments: commentsData }: PrefetchResult) => {
+    setItem(current => withFetchedFields(current, fetchedItem));
+    setComments(commentsData);
+    setCommentsError(null);
+    const fullItem = withFetchedFields(base, fetchedItem);
+    if (fullItem) setCachedItem(itemId, fullItem, commentsData);
+  }, [itemId]);
+
+  // A failed comments fetch: the item stays usable, with the error surfaced.
+  const applyThreadError = useCallback((err: unknown) => {
+    setItem(current => withFailedFetchFields(current, err));
+    setCommentsError(errorMessage(err, 'Failed to load comments'));
+  }, []);
 
   // Ref to the main effect's AbortController so the reconnect handler can abort stale fetches
   const controllerRef = useRef<AbortController | null>(null);
@@ -198,8 +214,8 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
         }
         return itemData;
       } catch (err) {
-        if (!controller.signal.aborted && !(err instanceof Error && err.name === 'AbortError')) {
-          setError(err instanceof Error ? err.message : String(err));
+        if (!controller.signal.aborted && !isAbortError(err)) {
+          setError(errorMessage(err));
           setIsNotFound(err instanceof NotFoundError);
           setItemLoading(false);
           setCommentsLoading(false);
@@ -219,28 +235,20 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       }
       
       try {
-        const { item: fetchedItem, comments: commentsData } = await (commentsRead ?? fetchItemWithComments(itemId, controller.signal));
+        const thread = await (commentsRead ?? fetchItemWithComments(itemId, controller.signal));
         if (!controller.signal.aborted) {
-          setItem(current => withFetchedFields(current, fetchedItem));
-          setComments(commentsData);
+          applyThread(itemData, thread);
           setCommentsLoading(false);
-          setCommentsError(null);
-          
-          const fullItem = withFetchedFields(itemData, fetchedItem);
-          if (fullItem) {
-            setCachedItem(itemId, fullItem, commentsData);
-          }
           
           // Unregister priority so section prefetch and other lower-priority
           // fetches can proceed.
           releasePriority();
         }
       } catch (err) {
-        if (!controller.signal.aborted && !(err instanceof Error && err.name === 'AbortError')) {
+        if (!controller.signal.aborted && !isAbortError(err)) {
           // Comments failed but item succeeded — still usable, but surface the error.
-          setItem(current => withFailedFetchFields(current, err));
+          applyThreadError(err);
           setCommentsLoading(false);
-          setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
           console.warn('Failed to load comments:', err);
           
           // Unregister priority even on failure so prefetchers aren't blocked forever
@@ -280,7 +288,8 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       controllerRef.current = null;
       releasePriority();
     };
-  }, [itemId, deferComments]); // All other values read via Effect Events
+    // The apply helpers change only with itemId; all other values are read via Effect Events.
+  }, [itemId, deferComments, applyThread, applyThreadError]);
 
   // Reconnect: when going online with a stale comment fetch hanging, abort it and retry.
   // The main effect's fetch may be pending indefinitely (TCP doesn't fail instantly on
@@ -318,20 +327,15 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     setCommentsLoading(true);
 
     void fetchItemWithComments(itemId, controller.signal)
-      .then(({ item: fetchedItem, comments: commentsData }) => {
+      .then(thread => {
         if (controller.signal.aborted) return;
-        setItem(current => withFetchedFields(current, fetchedItem));
-        setComments(commentsData);
+        applyThread(item, thread);
         setCommentsLoading(false);
-        setCommentsError(null);
-        const fullItem = withFetchedFields(item, fetchedItem);
-        if (fullItem) setCachedItem(itemId, fullItem, commentsData);
       })
       .catch(err => {
-        if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
-        setItem(current => withFailedFetchFields(current, err));
+        if (controller.signal.aborted || isAbortError(err)) return;
+        applyThreadError(err);
         setCommentsLoading(false);
-        setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
       })
       .finally(() => releasePriority?.());
 
@@ -339,10 +343,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       controller.abort();
       if (controllerRef.current === controller) controllerRef.current = null;
     };
-  }, [isOnline, itemId]);
-
-  // Combined loading state for backward compatibility
-  const loading = itemLoading && commentsLoading;
+  }, [isOnline, itemId, applyThread, applyThreadError]);
 
   // Refetch behind the error states' retry action. No gesture reaches this: the
   // root contains its overscroll, so there is no pull-to-refresh.
@@ -358,7 +359,7 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
       itemData = await fetchItemOnly(itemId);
       setItem(itemData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
       setIsNotFound(err instanceof NotFoundError);
       setItemLoading(false);
       setCommentsLoading(false);
@@ -369,19 +370,14 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     if (fetchesComments(itemData)) {
       try {
         // Its read of the item carries a poll's options, which fetchItemOnly's doesn't.
-        const { item: fetchedItem, comments: commentsData } = await fetchItemWithComments(itemId);
-        const fullItem = withFetchedFields(itemData, fetchedItem) ?? itemData;
-        setItem(fullItem);
-        setComments(commentsData);
-        setCachedItem(itemId, fullItem, commentsData);
+        applyThread(itemData, await fetchItemWithComments(itemId));
       } catch (err) {
         // The item loaded, so the page can show it with the comments error.
-        setItem(withFailedFetchFields(itemData, err) ?? itemData);
-        setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
+        applyThreadError(err);
       }
     }
     setCommentsLoading(false);
-  }, [itemId]);
+  }, [itemId, applyThread, applyThreadError]);
 
   // Behind the comments section's retry. `commentsError` stays set until the
   // fetch settles: the section shows its skeleton for it, and clearing it
@@ -389,23 +385,16 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   // useAutoRetry counts the attempt.
   const retryComments = useCallback(async () => {
     try {
-      const { item: fetchedItem, comments: commentsData } = await fetchItemWithComments(itemId);
-      setItem(current => withFetchedFields(current, fetchedItem));
-      setComments(commentsData);
-      setCommentsError(null);
-      const fullItem = withFetchedFields(item, fetchedItem);
-      if (fullItem) setCachedItem(itemId, fullItem, commentsData);
+      applyThread(item, await fetchItemWithComments(itemId));
     } catch (err) {
-      setItem(current => withFailedFetchFields(current, err));
-      setCommentsError(err instanceof Error ? err.message : 'Failed to load comments');
+      applyThreadError(err);
       throw err;
     }
-  }, [itemId, item]);
+  }, [itemId, item, applyThread, applyThreadError]);
 
   return { 
     item, 
     comments,
-    loading,
     itemLoading,
     commentsLoading,
     error,

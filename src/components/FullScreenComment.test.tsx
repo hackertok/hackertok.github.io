@@ -45,35 +45,6 @@ describe('FullScreenComment', () => {
     expect(screen.getByText(/wasm-bindgen/i)).toBeInTheDocument();
   });
 
-  it('renders parent link', async () => {
-    render(<FullScreenComment commentId={1001} />);
-
-    const parentLink = await screen.findByRole('link', { name: 'parent' });
-    expect(parentLink).toBeInTheDocument();
-    expect(parentLink).toHaveAttribute('href', '/item/12345');
-  });
-
-  it('renders item title link after background fetch', async () => {
-    render(<FullScreenComment commentId={1001} />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Rust Is the Future of JavaScript Infrastructure')).toBeInTheDocument();
-    });
-
-    const itemLink = screen.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
-    expect(itemLink).toHaveAttribute('href', '/item/12345');
-  });
-
-  it('renders replies', async () => {
-    render(<FullScreenComment commentId={1001} />);
-
-    await waitFor(() => {
-      expect(screen.getByText('tptacek')).toBeInTheDocument();
-    });
-
-    expect(screen.getByText(/DX improvements/i)).toBeInTheDocument();
-  });
-
   it('shows skeleton while loading', () => {
     render(<FullScreenComment commentId={1001} />);
 

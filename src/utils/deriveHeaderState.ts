@@ -1,8 +1,9 @@
+import { FEED_TYPES } from '../config/feedTypes';
 import type { LocationState, FeedType } from '../types';
 
-/** Visible feed tabs (excludes 'top'). Order: Best > Show > Ask > New (never reordered). */
-export const FEED_TABS = ['best', 'show', 'ask', 'newest'] as const;
-export type NavFeedType = (typeof FEED_TABS)[number];
+export type NavFeedType = Exclude<FeedType, 'top'>;
+/** Visible feed tabs, in FEED_TYPES order: Best > Show > Ask > New. */
+const FEED_TABS = FEED_TYPES.filter((f): f is NavFeedType => f !== 'top');
 
 /** Contextual pills: comments > user > from (priority order, mutually exclusive). */
 export type ContextualKey = 'comments' | 'user' | 'from';

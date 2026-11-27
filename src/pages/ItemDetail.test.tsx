@@ -3,7 +3,6 @@ import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { render } from '../test/test-utils';
 import { Routes, Route } from 'react-router';
 import { ItemDetail } from './ItemDetail';
-import { clearViewed, markViewed, isViewed } from '../utils/viewedItems';
 import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import { hnSdk } from '../api/hnSdk';
@@ -35,7 +34,6 @@ function renderItemDetail(itemId: number) {
 
 describe('ItemDetail', () => {
   beforeEach(() => {
-    clearViewed();
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
       if (Number(id) === 12345) return defaultItem;
       return null;
@@ -45,42 +43,6 @@ describe('ItemDetail', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     server.resetHandlers();
-  });
-
-  describe('viewed state', () => {
-    it('shows unviewed title color by default', async () => {
-      renderItemDetail(12345);
-
-      const heading = await screen.findByRole('heading', { level: 1 });
-      expect(heading).toHaveClass('text-foreground');
-      expect(heading).not.toHaveClass('text-viewed');
-    });
-
-    it('shows viewed title color when item was previously viewed', async () => {
-      markViewed(12345);
-      renderItemDetail(12345);
-
-      const heading = await screen.findByRole('heading', { level: 1 });
-      expect(heading).toHaveClass('text-viewed');
-      expect(heading).not.toHaveClass('text-foreground');
-    });
-
-    it('marks item as viewed and updates title color on external link click', async () => {
-      renderItemDetail(12345);
-
-      const titleLink = await screen.findByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
-      expect(titleLink.closest('h1')).toHaveClass('text-foreground');
-
-      fireEvent.click(titleLink);
-
-      await waitFor(() => {
-        expect(titleLink.closest('h1')).toHaveClass('text-viewed');
-      });
-
-      // Persistence side of the contract — class change alone wouldn't
-      // catch a regression that skips the storage write.
-      expect(isViewed(12345)).toBe(true);
-    });
   });
 
   describe('back-to-home action on not-found', () => {

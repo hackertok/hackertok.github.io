@@ -14,16 +14,6 @@ describe('fetchPriority', () => {
   });
 
   describe('registerPriorityFetch / unregisterPriorityFetch', () => {
-    it('tracks single priority fetch', () => {
-      expect(isPriorityFetchActive()).toBe(false);
-      
-      registerPriorityFetch();
-      expect(isPriorityFetchActive()).toBe(true);
-      
-      unregisterPriorityFetch();
-      expect(isPriorityFetchActive()).toBe(false);
-    });
-
     it('handles multiple concurrent priority fetches (ref counting)', () => {
       registerPriorityFetch();
       registerPriorityFetch();

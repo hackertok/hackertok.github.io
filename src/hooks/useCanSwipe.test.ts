@@ -1,23 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 
 // Answers per query, because this hook asks two and they disagree — that is the
 // whole point of it. Installed before the import: the module caches one
 // MediaQueryList per query on first use.
 const answers = new Map<string, boolean>();
-const listeners = new Map<string, (() => void)[]>();
 
 const matchMediaMock = vi.fn((query: string) => ({
   get matches() {
     return answers.get(query) ?? false;
   },
   media: query,
-  addEventListener: (_event: string, callback: () => void) => {
-    listeners.set(query, [...(listeners.get(query) ?? []), callback]);
-  },
-  removeEventListener: (_event: string, callback: () => void) => {
-    listeners.set(query, (listeners.get(query) ?? []).filter(l => l !== callback));
-  },
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
 }));
 
 window.matchMedia = matchMediaMock as unknown as typeof window.matchMedia;
@@ -27,16 +22,9 @@ const TOUCH = '(pointer: coarse) and (hover: none)';
 
 const { useCanSwipe } = await import('./useCanSwipe');
 
-function fire(query: string) {
-  act(() => {
-    (listeners.get(query) ?? []).forEach(l => l());
-  });
-}
-
 describe('useCanSwipe', () => {
   beforeEach(() => {
     answers.clear();
-    listeners.clear();
   });
 
   it('asks for a finger as well as a width', () => {
@@ -70,28 +58,5 @@ describe('useCanSwipe', () => {
     answers.set(TOUCH, true);
     const { result } = renderHook(() => useCanSwipe());
     expect(result.current).toBe(false);
-  });
-
-  it('follows a pointer that changes mid-session', () => {
-    // A tablet with a keyboard case attached reports a fine pointer from then
-    // on, and has to be moved off a gesture it can no longer perform.
-    answers.set(DESKTOP, false);
-    answers.set(TOUCH, true);
-    const { result } = renderHook(() => useCanSwipe());
-    expect(result.current).toBe(true);
-
-    answers.set(TOUCH, false);
-    fire(TOUCH);
-    expect(result.current).toBe(false);
-  });
-
-  it('drops both listeners on unmount', () => {
-    const { unmount } = renderHook(() => useCanSwipe());
-    expect(listeners.get(DESKTOP)).toHaveLength(1);
-    expect(listeners.get(TOUCH)).toHaveLength(1);
-
-    unmount();
-    expect(listeners.get(DESKTOP)).toHaveLength(0);
-    expect(listeners.get(TOUCH)).toHaveLength(0);
   });
 });

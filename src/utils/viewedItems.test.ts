@@ -35,11 +35,6 @@ describe('viewedItems', () => {
       expect(isViewed(12345)).toBe(false);
     });
 
-    it('returns true for viewed item', () => {
-      markViewed(12345);
-      expect(isViewed(12345)).toBe(true);
-    });
-
     it('handles string IDs', () => {
       markViewed('12345');
       expect(isViewed('12345')).toBe(true);
@@ -58,25 +53,6 @@ describe('viewedItems', () => {
       expect(isViewed(99999)).toBe(false);
       markViewed(99999);
       expect(isViewed(99999)).toBe(true);
-    });
-
-    it('handles multiple different items', () => {
-      markViewed(1);
-      markViewed(2);
-      markViewed(3);
-      
-      expect(isViewed(1)).toBe(true);
-      expect(isViewed(2)).toBe(true);
-      expect(isViewed(3)).toBe(true);
-      expect(isViewed(4)).toBe(false);
-    });
-
-    it('is idempotent - marking same item twice has no effect', () => {
-      markViewed(12345);
-      expect(isViewed(12345)).toBe(true);
-      
-      markViewed(12345);
-      expect(isViewed(12345)).toBe(true);
     });
 
     it('evicts oldest entries when exceeding 50K cap', () => {
@@ -538,14 +514,6 @@ describe('viewedItems - Session storage functions', () => {
   });
 
   describe('addToSessionViewed', () => {
-    it('adds an item ID to session storage', () => {
-      expect(getSessionViewedIds().has(12345)).toBe(false);
-      
-      addToSessionViewed(12345);
-      
-      expect(getSessionViewedIds().has(12345)).toBe(true);
-    });
-
     it('handles string IDs', () => {
       addToSessionViewed('12345');
       

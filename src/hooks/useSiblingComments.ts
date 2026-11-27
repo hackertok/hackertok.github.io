@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchFirebaseItem, fetchHiddenCommentIds } from '../api/hn';
+import { errorMessage, isAbortError } from '../utils/errors';
 
 const NO_IDS: ReadonlySet<number> = new Set();
 
@@ -70,8 +71,8 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
         );
       }
     } catch (err) {
-      if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
-      setError(err instanceof Error ? err.message : String(err));
+      if (signal.aborted || isAbortError(err)) return;
+      setError(errorMessage(err));
       setLoading(false);
       throw err;
     }

@@ -5,7 +5,9 @@
  * We use a discriminated union so TypeScript can narrow by `type`.
  */
 
-export type FeedType = 'top' | 'show' | 'ask' | 'best' | 'newest';
+import type { FeedType } from './config/feedTypes';
+
+export type { FeedType };
 
 interface ItemBase {
   id: number;
@@ -143,18 +145,6 @@ export interface AlgoliaItemResponse {
   parent_id: number | null;
   story_id: number | null;
   children: AlgoliaItemChild[];
-}
-
-export interface CachedItem {
-  item: Item;
-  comments: Comment[];
-  timestamp: number;
-  isFresh: boolean;
-}
-
-export interface CachedFeed {
-  stories: StoryItem[];
-  timestamp: number;
 }
 
 export interface ListSessionState {

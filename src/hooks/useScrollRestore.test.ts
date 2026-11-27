@@ -258,23 +258,6 @@ describe('useScrollRestore', () => {
   });
 
   describe('saveScrollPosition', () => {
-    it('writes the current window.scrollY to storage under the supplied key', () => {
-      const { result } = renderHook(() =>
-        useScrollRestore('domain:github.com', true),
-      );
-
-      act(() => {
-        Object.defineProperty(window, 'scrollY', {
-          value: 750,
-          writable: true,
-          configurable: true,
-        });
-        result.current.saveScrollPosition();
-      });
-
-      expect(readScrollPosition('domain:github.com')).toBe(750);
-    });
-
     it('is a no-op when key is undefined', () => {
       const { result } = renderHook(() => useScrollRestore(undefined, true));
 

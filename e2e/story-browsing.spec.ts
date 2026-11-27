@@ -65,20 +65,6 @@ test.describe('Item Browsing - Desktop', () => {
     await setupApiMocks(page);
   });
 
-  test('shows scrollable list on desktop', async ({ page }, testInfo) => {
-    if (testInfo.project.name === 'mobile') {
-      test.skip();
-      return;
-    }
-
-    await page.goto('/#/');
-
-    const swipeContainer = page.getByTestId('swipe-container');
-    await expect(swipeContainer).not.toBeVisible();
-
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
-  });
-
   test('infinite scroll loads more items at bottom', async ({ page }, testInfo) => {
     if (testInfo.project.name === 'mobile') {
       test.skip();

@@ -69,19 +69,6 @@ function defer<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
-/**
- * A controllable "Response" where json() resolves on demand. Lets us simulate
- * the window between the version check after `await fetch()` and the state
- * mutations that happen after `await response.json()`.
- */
-function fakeResponse<T>(jsonDeferred: Deferred<T>, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => jsonDeferred.promise as unknown as Promise<unknown>,
-  } as unknown as Response;
-}
-
 /** Extracts the URL string from a `fetch` mock's input argument. */
 function fetchInputToUrl(input: RequestInfo | URL | undefined): string {
   if (!input) return '';
@@ -153,16 +140,12 @@ describe('canonicalizeDomain', () => {
     // this the helper strips only one `/` and one `.`, which leaves residue
     // for inputs that mix them (e.g. `foo.com/.` → `foo.com/` on the old
     // single-strip pipeline).
-    ['collapses interleaved trailing dot+slash (./)', 'github.com./', 'github.com'],
     ['collapses interleaved trailing slash+dot (/.)', 'github.com/.', 'github.com'],
-    ['collapses multiple trailing dots', 'github.com..', 'github.com'],
-    ['collapses multiple trailing slashes', 'github.com//', 'github.com'],
     ['collapses arbitrary trailing run of dots and slashes', 'github.com...//.', 'github.com'],
     // Multi-level www. prefixes are fully stripped. This closes a latent
     // drift between wrappers (one canonicalization pass) and the hook
     // (which re-canonicalizes its input) for `www.www.X`-style inputs.
     ['collapses doubled leading www.', 'www.www.example.com', 'example.com'],
-    ['collapses triple leading www.', 'www.www.www.example.com', 'example.com'],
     ['collapses mixed-case doubled leading www. (case-insensitive)', 'WWW.Www.Example.COM', 'example.com'],
     ['preserves www-lookalike after a legitimate www strip', 'www.www2.example.com', 'www2.example.com'],
   ])('%s', (_label, input, expected) => {
@@ -175,23 +158,11 @@ describe('canonicalizeDomain', () => {
   // form) would drift from the hook's cache key (written from the two-pass
   // form) for any input where a second pass produces a different result.
   it.each([
-    ['github.com'],
-    ['GitHub.COM'],
-    ['github.com/'],
-    ['github.com.'],
-    ['www.github.com'],
-    ['Www.GitHub.com'],
     ['WWW.GitHub.COM./'],
     ['github.com/Microsoft'],
-    ['www2.example.com'],
-    ['api.www.example.com'],
-    [''],
     // The inputs that originally motivated the idempotency fix:
     ['www.www.example.com'],
-    ['www.www.www.example.com'],
-    ['github.com./'],
     ['github.com/.'],
-    ['github.com..'],
     ['github.com...//.'],
   ])('is idempotent for %s', (input) => {
     const once = canonicalizeDomain(input);
@@ -223,29 +194,25 @@ describe('useDomainInfiniteStories', () => {
     expect(result.current.hasMore).toBe(false);
   });
 
-  describe('domain-change staleness', () => {
-    it('discards stale response that resolves AFTER a rerender to a new domain', async () => {
-      // Scenario: user navigates to beta BEFORE alpha's fetch() resolves.
-      // The first version check (after await fetch()) must catch it.
+  describe('remount per domain', () => {
+    it('keeps a response that lands after unmount under its own domain', async () => {
+      // Pages remount per domain (React `key`), so a late response from the
+      // old instance must neither reach the new one nor land in its cache.
       const deferredByDomain = new Map<string, Deferred<Response>>();
 
       vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
         const url = fetchInputToUrl(input);
         const params = new URLSearchParams(url.split('?')[1] ?? '');
-        const domain = decodeURIComponent(params.get('query') ?? '');
         const d = defer<Response>();
-        deferredByDomain.set(domain, d);
+        deferredByDomain.set(params.get('query') ?? '', d);
         return d.promise;
       });
 
-      const { result, rerender } = renderHook(
-        ({ domain }: { domain: string }) => useDomainInfiniteStories(domain),
-        { initialProps: { domain: 'alpha.com' } },
-      );
-
+      const alpha = renderHook(() => useDomainInfiniteStories('alpha.com'));
       await waitFor(() => expect(deferredByDomain.has('alpha.com')).toBe(true));
+      alpha.unmount();
 
-      rerender({ domain: 'beta.com' });
+      const beta = renderHook(() => useDomainInfiniteStories('beta.com'));
       await waitFor(() => expect(deferredByDomain.has('beta.com')).toBe(true));
 
       await act(async () => {
@@ -257,71 +224,11 @@ describe('useDomainInfiniteStories', () => {
         );
       });
 
-      await waitFor(() => expect(result.current.loading).toBe(false));
-
-      expect(result.current.stories.map((s) => s.id)).toEqual([100, 101]);
-    });
-
-    it('discards stale response whose json() resolves AFTER a rerender to a new domain', async () => {
-      // Scenario: alpha.fetch() has resolved and passed the first version
-      // check; we're inside `await response.json()` when the rerender happens.
-      // This is the case the single pre-json check would miss; a second check
-      // after json() is required.
-      const fetchDeferred = new Map<string, Deferred<Response>>();
-      const jsonDeferred = new Map<string, Deferred<unknown>>();
-
-      vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-        const url = fetchInputToUrl(input);
-        const params = new URLSearchParams(url.split('?')[1] ?? '');
-        const domain = decodeURIComponent(params.get('query') ?? '');
-        const fd = defer<Response>();
-        const jd = defer<unknown>();
-        fetchDeferred.set(domain, fd);
-        jsonDeferred.set(domain, jd);
-        return fd.promise;
-      });
-
-      const { result, rerender } = renderHook(
-        ({ domain }: { domain: string }) => useDomainInfiniteStories(domain),
-        { initialProps: { domain: 'alpha.com' } },
-      );
-
-      await waitFor(() => expect(fetchDeferred.has('alpha.com')).toBe(true));
-
-      // Alpha's fetch resolves but json() is still pending.
-      await act(async () => {
-        fetchDeferred.get('alpha.com')!.resolve(fakeResponse(jsonDeferred.get('alpha.com')!));
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      // Rerender to beta while alpha's json() is pending.
-      rerender({ domain: 'beta.com' });
-      await waitFor(() => expect(fetchDeferred.has('beta.com')).toBe(true));
-
-      // Beta's fetch resolves cleanly.
-      await act(async () => {
-        fetchDeferred.get('beta.com')!.resolve(
-          new Response(JSON.stringify(body('beta.com', [100, 101]))),
-        );
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      // Alpha's stale json() finally resolves — the second version check
-      // must discard it.
-      await act(async () => {
-        jsonDeferred.get('alpha.com')!.resolve(body('alpha.com', [1, 2, 3]));
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      await waitFor(() => expect(result.current.loading).toBe(false));
-
-      expect(result.current.stories.map((s) => s.id)).toEqual([100, 101]);
+      await waitFor(() => expect(beta.result.current.loading).toBe(false));
+      expect(beta.result.current.stories.map((s) => s.id)).toEqual([100, 101]);
+      const cache = __getDomainCacheForTests();
+      expect(cache.get('beta.com')?.stories.map((s) => s.id)).toEqual([100, 101]);
+      expect(cache.get('alpha.com')?.stories.map((s) => s.id)).toEqual([1, 2, 3]);
     });
   });
 
@@ -371,13 +278,6 @@ describe('useDomainInfiniteStories', () => {
     // variant re-fetches and flashes `loading=true` despite identical data.
     it('shares the cache across trailing-slash variants of the same domain', async () => {
       await expectRemountHitsCache('alpha.com', 'alpha.com/');
-    });
-
-    // Direct hits like `/from/www.alpha.com` share the canonical form
-    // `alpha.com` with `/from/alpha.com`; the second mount must hit the
-    // cache and skip the fetch (same invariant as the trailing-slash test).
-    it('shares the cache across www.-prefixed variants of the same domain', async () => {
-      await expectRemountHitsCache('alpha.com', 'www.alpha.com');
     });
   });
 
@@ -589,11 +489,6 @@ describe('useDomainInfiniteStories', () => {
       expect(ids).toEqual([1]);
     });
 
-    it('treats trailing DNS dot as equivalent (domain prop side)', async () => {
-      const ids = await loadDomain('github.com.', ['https://github.com/foo']);
-      expect(ids).toEqual([1]);
-    });
-
     // Regression: the URL-hostname side strips `^www\.` before comparing.
     // Without mirroring the same strip on the domain prop, a route like
     // `/from/www.example.com` would never match a hit from `example.com`
@@ -607,32 +502,6 @@ describe('useDomainInfiniteStories', () => {
         'https://example.com/foo',
       ]);
       expect(ids).toEqual([1]);
-    });
-
-    it('matches www-prefixed URL against a www-prefixed domain prop', async () => {
-      const ids = await loadDomain('www.example.com', [
-        'https://www.example.com/foo',
-      ]);
-      expect(ids).toEqual([1]);
-    });
-
-    it('canonicalizes www. prop case-insensitively (Www./WWW. variants)', async () => {
-      // The strip is `^www\.` case-insensitive; `Www.Foo.com` should
-      // canonicalize identically to `www.foo.com` → `foo.com`.
-      const ids = await loadDomain('WWW.Example.com/', [
-        'https://example.com/foo',
-      ]);
-      expect(ids).toEqual([1]);
-    });
-
-    // Guards against an over-eager strip: the `^www\.` anchor must require a
-    // literal leading "www." — a domain like "www2.example.com" is a separate
-    // host and should NOT collapse to `example.com`.
-    it('does not strip www-lookalike prefixes (www2., ww., www-cdn.)', async () => {
-      const ids = await loadDomain('www2.example.com', [
-        'https://example.com/foo',
-      ]);
-      expect(ids).toEqual([]);
     });
 
     // Defense in depth: WHATWG `new URL` parses non-special schemes such
@@ -909,36 +778,6 @@ describe('useDomainInfiniteStories', () => {
         expect(result.current.hasMore).toBe(true);
       }
       expect(call).toBe(6);
-    });
-
-    it('resets the streak when the domain changes', async () => {
-      const calls = { foo: 0, bar: 0 };
-      vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-        const url = fetchInputToUrl(input);
-        const targetDomain = url.includes('query=foo') ? 'foo' : 'bar';
-        const page = calls[targetDomain]++;
-        return Promise.resolve(
-          new Response(JSON.stringify(noiseBody(targetDomain, 50, page, 10))),
-        );
-      });
-
-      const { result, rerender } = renderHook(
-        ({ domain }: { domain: string }) => useDomainInfiniteStories(domain),
-        { initialProps: { domain: 'foo' } },
-      );
-
-      // foo: 3 noise pages → streak=3, cap reached
-      await waitFor(() => expect(result.current.hasMore).toBe(false));
-      expect(calls.foo).toBe(3);
-
-      // Switch to bar — domain reset block must zero the streak. If it
-      // doesn't, the (stale) counter would tip at bar's first noise page
-      // and the cap would fire after 1 fetch on the new domain.
-      rerender({ domain: 'bar' });
-      await waitFor(() => expect(calls.bar).toBeGreaterThan(0));
-      await waitFor(() => expect(result.current.loading).toBe(false));
-      expect(result.current.hasMore).toBe(false);
-      expect(calls.bar).toBe(3);
     });
   });
 

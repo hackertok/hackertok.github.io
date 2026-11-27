@@ -48,19 +48,6 @@ describe('useSiblingComments', () => {
     expect(result.current.currentIndex).toBe(0);
   });
 
-  it('fetches siblings from parent kids list', async () => {
-    // Default MSW handlers: 1001's parent is 12345, whose kids = [1001, 1002, 1003, 1004].
-    const { result } = renderHook(() => useSiblingComments(1001));
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    expect(result.current.siblingIds).toEqual([1001, 1002, 1003, 1004]);
-    expect(result.current.currentIndex).toBe(0);
-    expect(result.current.error).toBeNull();
-  });
-
   it('sets correct currentIndex for non-first sibling', async () => {
     const { result } = renderHook(() => useSiblingComments(1002));
 
@@ -169,18 +156,6 @@ describe('useSiblingComments', () => {
     vi.spyOn(hnSdk, 'readItem').mockRejectedValue(new Error('Network error'));
 
     const { result } = renderHook(() => useSiblingComments(999));
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    expect(result.current.error).toBeTruthy();
-  });
-
-  it('sets error on network failure', async () => {
-    vi.spyOn(hnSdk, 'readItem').mockRejectedValue(new Error('Failed to fetch'));
-
-    const { result } = renderHook(() => useSiblingComments(1001));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

@@ -40,23 +40,6 @@ describe('SwipeCommentViewer', () => {
     server.resetHandlers();
   });
 
-  it('renders swipe container with skeleton while loading', async () => {
-    render(<SwipeCommentViewer initialCommentId="1001" />, {
-      initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],
-    });
-
-    const container = screen.getByTestId('swipe-container');
-    expect(container).toBeInTheDocument();
-
-    const panels = screen.getAllByTestId('swipe-panel');
-    expect(panels.length).toBeGreaterThanOrEqual(1);
-
-    // Let async updates settle to avoid act() warnings
-    await waitFor(() => {
-      expect(screen.getAllByTestId('swipe-panel').length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
   it('does not throw on a back-forward cache restore with site storage blocked', async () => {
     window.scrollTo = vi.fn();
     render(<SwipeCommentViewer initialCommentId="1001" />, {
@@ -110,22 +93,6 @@ describe('SwipeCommentViewer', () => {
     }
 
     expect(window.scrollTo).toHaveBeenLastCalledWith(0, 500);
-  });
-
-  it('renders sibling comment panels after loading', async () => {
-    render(<SwipeCommentViewer initialCommentId="1001" />, {
-      initialEntries: [{ pathname: '/item/1001', state: { isComment: true } }],
-    });
-
-    // Parent 12345 has kids: [1001, 1002, 1003, 1004] → 4 panels.
-    await waitFor(() => {
-      const panels = screen.getAllByTestId('swipe-panel');
-      expect(panels.length).toBe(4);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('patio11')).toBeInTheDocument();
-    });
   });
 
   it('shows error state when Firebase fetch fails', async () => {

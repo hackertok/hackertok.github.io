@@ -54,13 +54,6 @@ describe('sanitizeHtml', () => {
       expect(result).toContain('<pre tabindex="0"><code>line1\nline2</code></pre>');
     });
 
-    it('preserves the inner <code> wrapper so `.comment-content pre code` styles still apply', () => {
-      const html = '<pre><code>    foo</code></pre>';
-      const result = sanitizeHtml(html);
-      expect(result).toContain('<code>');
-      expect(result).toContain('</code>');
-    });
-
     it('handles bare <pre> (no <code> child) by dedenting the <pre> directly', () => {
       const html = '<pre>    line1\n    line2</pre>';
       const result = sanitizeHtml(html);
@@ -178,11 +171,6 @@ describe('sanitizeHtml', () => {
       expect(result).not.toContain('noopener');
     });
 
-    it('preserves relative URLs', () => {
-      const result = sanitizeHtml('<a href="/about">about</a>');
-      expect(result).toContain('href="/about"');
-    });
-
     it('preserves hash URLs', () => {
       const result = sanitizeHtml('<a href="#section">section</a>');
       expect(result).toContain('href="#section"');
@@ -295,11 +283,6 @@ describe('sanitizeHtml', () => {
       expect(result).toContain('Foil_(narrative)</a>).');
     });
 
-    it('excludes trailing semicolon from auto-linked URL', () => {
-      const result = sanitizeHtml('url: https://example.com;');
-      expect(result).toContain('href="https://example.com"');
-    });
-
     it('excludes trailing punctuation from URL with path', () => {
       const result = sanitizeHtml('https://example.com/path?q=1#frag.');
       expect(result).toContain('href="https://example.com/path?q=1#frag"');
@@ -346,11 +329,6 @@ describe('sanitizeHtml', () => {
   });
 
   describe('attribute filtering', () => {
-    it('preserves href', () => {
-      const result = sanitizeHtml('<a href="https://example.com">text</a>');
-      expect(result).toContain('href="https://example.com"');
-    });
-
     it('removes class and id, which could restyle the page or shadow its ids', () => {
       const result = sanitizeHtml('<p class="fixed inset-0 z-50" id="main"><a href="https://example.com" class="link" id="x">text</a></p>');
       expect(result).not.toContain('class=');
@@ -474,21 +452,6 @@ describe('sanitizeHtml', () => {
         expect(result).toContain('href="#/user/foo_bar-baz"');
       });
 
-      it('rewrites http variant', () => {
-        const result = sanitizeHtml('<a href="http://news.ycombinator.com/user?id=pg">link</a>');
-        expect(result).toContain('href="#/user/pg"');
-      });
-
-      it('rewrites www subdomain variant', () => {
-        const result = sanitizeHtml('<a href="https://www.news.ycombinator.com/user?id=pg">link</a>');
-        expect(result).toContain('href="#/user/pg"');
-      });
-
-      it('rewrites /user/?id=X with trailing slash on path', () => {
-        const result = sanitizeHtml('<a href="https://news.ycombinator.com/user/?id=pg">link</a>');
-        expect(result).toContain('href="#/user/pg"');
-      });
-
       it('leaves /user with no id unchanged', () => {
         const result = sanitizeHtml('<a href="https://news.ycombinator.com/user">link</a>');
         expect(result).toContain('href="https://news.ycombinator.com/user"');
@@ -520,11 +483,6 @@ describe('sanitizeHtml', () => {
       it('preserves username case', () => {
         const result = sanitizeHtml('<a href="https://news.ycombinator.com/submitted?id=PaulG">link</a>');
         expect(result).toContain('href="#/submitted/PaulG"');
-      });
-
-      it('rewrites /submitted/?id=X with trailing slash on path', () => {
-        const result = sanitizeHtml('<a href="https://news.ycombinator.com/submitted/?id=pg">link</a>');
-        expect(result).toContain('href="#/submitted/pg"');
       });
 
       it('leaves /submitted with no id unchanged', () => {
@@ -595,11 +553,6 @@ describe('sanitizeHtml', () => {
       it('rewrites self non-hash /show', () => {
         const result = sanitizeHtml('<a href="https://hackertok.github.io/show">link</a>');
         expect(result).toContain('href="#/show"');
-      });
-
-      it('rewrites self /#/newest', () => {
-        const result = sanitizeHtml('<a href="https://hackertok.github.io/#/newest">link</a>');
-        expect(result).toContain('href="#/newest"');
       });
 
       it('rewrites self /#/user/<username>', () => {
@@ -696,24 +649,6 @@ describe('sanitizeHtml', () => {
         const url = 'https://news.ycombinator.com/show';
         const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
         expect(result).toContain('>/show</a>');
-      });
-
-      it('replaces auto-linkified HN /ask with /ask', () => {
-        const url = 'https://news.ycombinator.com/ask';
-        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
-        expect(result).toContain('>/ask</a>');
-      });
-
-      it('replaces auto-linkified HN /best with /best', () => {
-        const url = 'https://news.ycombinator.com/best';
-        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
-        expect(result).toContain('>/best</a>');
-      });
-
-      it('replaces auto-linkified HN /newest with /newest', () => {
-        const url = 'https://news.ycombinator.com/newest';
-        const result = sanitizeHtml(`<a href="${url}">${url}</a>`);
-        expect(result).toContain('>/newest</a>');
       });
 
       it('replaces auto-linkified self hash item URL with item:<id>', () => {

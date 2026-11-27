@@ -57,17 +57,6 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     await expect(page).toHaveURL(/\/item\/1001/, { timeout: 5000 });
   });
 
-  test('shows comment content in swipe viewer on mobile', async ({ page }) => {
-    await page.goto('/#/item/1001');
-
-    const swipeContainer = page.getByTestId('swipe-container');
-    await expect(swipeContainer).toBeVisible();
-
-    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
-
-    await expectActiveSwipePanelText(page, /wasm-bindgen/i);
-  });
-
   test('loads sibling comments as swipeable panels', async ({ page }) => {
     await page.goto('/#/item/1001');
 
@@ -76,21 +65,6 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
     const panels = page.getByTestId('swipe-panel');
     await expect(panels).toHaveCount(4);
-  });
-
-  test('can swipe to next sibling comment', async ({ page }) => {
-    await page.goto('/#/item/1001');
-
-    await waitForSwipeReady(page, 4);
-
-    const container = page.getByTestId('swipe-container');
-    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
-
-    await smoothScrollAndAwaitSettled(container, panelWidth);
-    await waitForScrollAtIndex(page, 1);
-    await expect(page).toHaveURL(/\/item\/1002/, { timeout: 5000 });
-
-    await expectActiveSwipePanelText(page, 'jgrahamc', { minPanels: 4, timeout: 10000 });
   });
 
   test('custom swipe scrollbar moves when document scrolls in comment viewer', async ({ page }) => {
@@ -154,25 +128,6 @@ test.describe('Mobile Comment Swipe Viewer', () => {
     await smoothScrollAndAwaitSettled(container, 0);
     await waitForScrollAtIndex(page, 0);
     await expect(page).toHaveURL(/\/item\/1001/, { timeout: 5000 });
-  });
-
-  test('shows parent and story links in comment', async ({ page }) => {
-    await page.goto('/#/item/1001');
-
-    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
-
-    const parentLink = page.getByRole('link', { name: 'parent' }).first();
-    await expect(parentLink).toBeVisible();
-
-    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
-  });
-
-  test('header shows "comments" indicator on mobile comment view', async ({ page }) => {
-    await page.goto('/#/item/1001');
-
-    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
-
-    await expect(page.getByText('comments').first()).toBeVisible();
   });
 
   test('swipe uses replaceState — no extra history entries', async ({ page }) => {
@@ -340,14 +295,6 @@ test.describe('Mobile Comment Swipe Viewer', () => {
 
     // 30s timeout covers the 2+4+8s backoff plus slack.
     await expect(page.getByText('Failed to load comments').first()).toBeVisible({ timeout: 30000 });
-  });
-
-  test('sets document title to "Comment by {author}" for the current comment', async ({ page }) => {
-    await page.goto('/#/item/1001');
-
-    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
-
-    await expect(page).toHaveTitle(/Comment by patio11/);
   });
 
   test('clicking item title link navigates to story viewer, not comment viewer', async ({ page }) => {

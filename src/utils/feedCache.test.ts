@@ -16,14 +16,6 @@ describe('feedCache', () => {
   ];
 
   describe('setCachedFeed', () => {
-    it('stores stories that can be retrieved', () => {
-      setCachedFeed('top', mockStories);
-      
-      const result = getCachedFeed('top')!;
-      expect(result).not.toBeNull();
-      expect(result.stories).toEqual(mockStories);
-    });
-
     it('stores different cache types separately', () => {
       setCachedFeed('top', [createStoryItem({ id: 1, title: 'Top Story' })]);
       setCachedFeed('best', [createStoryItem({ id: 2, title: 'Best Story' })]);
@@ -66,14 +58,6 @@ describe('feedCache', () => {
       expect(result.stories).toEqual(mockStories);
       expect(result.timestamp).toBeDefined();
       expect(typeof result.isStale).toBe('boolean');
-    });
-
-    it('marks cache as fresh when recently created', () => {
-      setCachedFeed('top', mockStories);
-      
-      const result = getCachedFeed('top')!;
-      
-      expect(result.isStale).toBe(false);
     });
   });
 

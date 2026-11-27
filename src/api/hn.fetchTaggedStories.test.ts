@@ -67,7 +67,7 @@ describe('fetchTaggedStoriesForDay', () => {
     expect(result[2].points).toBe(10);
   });
 
-  it('filters titles when excludeTitles is provided', async () => {
+  it('filters hiring threads with excludeHiring', async () => {
     const hits = [
       makeHit(1, 'Ask HN: Who is hiring? (May 2026)', 300, ['ask_hn']),
       makeHit(2, 'Ask HN: Real question', 100, ['ask_hn']),
@@ -78,28 +78,10 @@ describe('fetchTaggedStoriesForDay', () => {
       json: async () => mockAlgoliaResponse(hits),
     });
 
-    const result = await fetchTaggedStoriesForDay('ask_hn', 1, [
-      'who is hiring',
-      'who wants to be hired',
-    ]);
+    const result = await fetchTaggedStoriesForDay('ask_hn', 1, true);
 
     expect(result).toHaveLength(1);
     expect(result[0].title).toBe('Ask HN: Real question');
-  });
-
-  it('does not filter when excludeTitles is empty', async () => {
-    const hits = [
-      makeHit(1, 'Show HN: Something', 100, ['show_hn']),
-      makeHit(2, 'Show HN: Who is hiring helper', 50, ['show_hn']),
-    ];
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => mockAlgoliaResponse(hits),
-    });
-
-    const result = await fetchTaggedStoriesForDay('show_hn', 1);
-
-    expect(result).toHaveLength(2);
   });
 
   it('throws on non-OK response', async () => {
@@ -125,18 +107,6 @@ describe('fetchTaggedStoriesForDay', () => {
     expect(url).toContain('tags=story,show_hn');
     expect(url).toContain('numericFilters=created_at_i>=');
     expect(url).toContain('hitsPerPage=30');
-  });
-
-  it('correctly maps show_hn tag to type "show"', async () => {
-    const hits = [makeHit(1, 'Show HN: Test', 100, ['show_hn'])];
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => mockAlgoliaResponse(hits),
-    });
-
-    const result = await fetchTaggedStoriesForDay('show_hn', 1);
-
-    expect(result[0].type).toBe('show');
   });
 });
 

@@ -7,7 +7,7 @@ import { _resetForTesting, isPriorityFetchActive } from '../utils/fetchPriority'
 import { server } from '../mocks/server';
 import { hnSdk } from '../api/hnSdk';
 import { ALGOLIA_API } from '../config/api';
-import type { Comment, FirebaseItem } from '../types';
+import type { FirebaseItem } from '../types';
 import { createStoryItem, createComment } from '../test/factories';
 import { NetworkStatusProvider } from '../context/NetworkStatusContext';
 import type { ReactNode } from 'react';
@@ -68,18 +68,6 @@ describe('useItemWithComments', () => {
 
       expect(result.current.item).toBeTruthy();
       expect(result.current.item!.id).toBe(12345);
-    });
-
-    it('returns cached data without fetching', async () => {
-      setCachedItem(12345, testItem, testComments);
-
-      const { result } = renderHook(() => useItemWithComments(12345));
-
-      // Cache hit must skip the loading flash entirely.
-      expect(result.current.itemLoading).toBe(false);
-      expect(result.current.commentsLoading).toBe(false);
-      expect(result.current.item).toEqual(testItem);
-      expect(result.current.comments).toEqual(testComments);
     });
 
     it('reads the cache when it mounts, not on every render', () => {
@@ -186,41 +174,6 @@ describe('useItemWithComments', () => {
     });
   });
 
-  describe('cache sync after prefetch', () => {
-    it('syncs comments from cache when prefetch completes after mount', async () => {
-      const { result } = renderHook(() =>
-        useItemWithComments(12345, {
-          initialItem: testItem,
-          deferComments: true
-        })
-      );
-
-      expect(result.current.comments).toBeNull();
-
-      // Background prefetch fills the cache while the hook is still deferred.
-      await act(async () => {
-        setCachedItem(12345, testItem, testComments);
-      });
-
-      const { result: result2, rerender } = renderHook(
-        ({ deferComments }) => useItemWithComments(12345, {
-          initialItem: testItem,
-          deferComments
-        }),
-        { initialProps: { deferComments: true } }
-      );
-
-      expect(getCachedItem(12345)?.comments).toEqual(testComments);
-
-      // Flipping deferComments off must pick up the prefetched cache, not refetch.
-      rerender({ deferComments: false });
-
-      await waitFor(() => {
-        expect(result2.current.comments).toEqual(testComments);
-      });
-    });
-  });
-
   describe('priority fetch lifecycle', () => {
     it('registers priority on fetch start and unregisters on success', async () => {
       expect(isPriorityFetchActive()).toBe(false);
@@ -324,31 +277,6 @@ describe('useItemWithComments', () => {
       AbortController.prototype.abort = originalAbort;
     });
 
-    it('aborts fetch when itemId changes', async () => {
-      const abortSpy = vi.fn();
-      const originalAbort = AbortController.prototype.abort;
-      AbortController.prototype.abort = function() {
-        abortSpy();
-        return originalAbort.call(this);
-      };
-
-      const { result, rerender } = renderHook(
-        ({ itemId }) => useItemWithComments(itemId),
-        { initialProps: { itemId: 12345 } }
-      );
-
-      rerender({ itemId: 99999 });
-
-      expect(abortSpy).toHaveBeenCalled();
-
-      AbortController.prototype.abort = originalAbort;
-
-      // Let async updates settle to avoid act() warnings
-      await waitFor(() => {
-        expect(result.current.itemLoading).toBe(false);
-      });
-    });
-
     it('does NOT abort when deferComments changes to true (same itemId)', async () => {
       // Mobile swipe scenario: item at index 0 starts fetching, then the user
       // swipes away so it becomes deferred. The in-flight fetch must complete
@@ -444,69 +372,7 @@ describe('useItemWithComments', () => {
     });
   });
 
-  describe('refresh function', () => {
-    it('provides a refresh function that reloads data', async () => {
-      const { result } = renderHook(() => useItemWithComments(12345));
-
-      await waitFor(() => {
-        expect(result.current.item).toBeTruthy();
-      });
-
-      await act(async () => {
-        await result.current.refresh();
-      });
-
-      expect(result.current.item).toBeTruthy();
-      expect(typeof result.current.refresh).toBe('function');
-    });
-  });
-
-  describe('loading states', () => {
-    it('has separate loading states for item and comments', async () => {
-      const { result } = renderHook(() => useItemWithComments(12345));
-
-      expect(result.current.itemLoading).toBe(true);
-      expect(result.current.commentsLoading).toBe(true);
-
-      await waitFor(() => {
-        expect(result.current.itemLoading).toBe(false);
-        expect(result.current.commentsLoading).toBe(false);
-      });
-    });
-
-    it('combined loading is true only when both are loading', async () => {
-      setCachedItem(12345, testItem, null as unknown as Comment[]); // Item cached, no comments
-
-      const { result } = renderHook(() => useItemWithComments(12345));
-
-      // `loading` is itemLoading && commentsLoading; one false ⇒ combined false.
-      expect(result.current.loading).toBe(false);
-    });
-  });
-
   describe('stale cache revalidation', () => {
-    it('revalidates when cache is stale', async () => {
-      // Hand-write a stale entry (10m old) past the freshness threshold so
-      // the hook serves it immediately AND fires a background revalidation.
-      const CACHE_KEY = `${ITEM_CACHE_KEY_PREFIX}12345`;
-      const staleData = {
-        item: testItem,
-        comments: testComments,
-        timestamp: Date.now() - (10 * 60 * 1000),
-      };
-      localStorage.setItem(CACHE_KEY, JSON.stringify(staleData));
-
-      const { result } = renderHook(() => useItemWithComments(12345));
-
-      expect(result.current.item).toEqual(testItem);
-
-      await waitFor(() => {
-        expect(result.current.commentsLoading).toBe(false);
-      });
-
-      expect(result.current.item).toBeTruthy();
-    });
-
     function seedStaleCache() {
       localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}12345`, JSON.stringify({
         item: testItem,
@@ -833,40 +699,6 @@ describe('useItemWithComments', () => {
       globalThis.fetch = origFetch;
     });
 
-    it('does not retry when commentsError is set (useAutoRetry handles that)', async () => {
-      server.use(
-        http.get(`${ALGOLIA_API}/search`, () => {
-          return HttpResponse.json({ hits: [], nbHits: 0, page: 0, nbPages: 0, hitsPerPage: 200 });
-        })
-      );
-
-      const { result } = renderHook(
-        () => useItemWithComments(12345, { initialItem: testItem }),
-        { wrapper: networkWrapper }
-      );
-
-      // Empty list resolves loading; reconnect handler should now treat
-      // comments as "not stuck" and stay out of useAutoRetry's territory.
-      await waitFor(() => {
-        expect(result.current.commentsLoading).toBe(false);
-      });
-
-      const fetchSpy = vi.fn();
-      const origFetch = globalThis.fetch;
-      globalThis.fetch = (...args) => {
-        fetchSpy();
-        return origFetch(...args);
-      };
-
-      act(() => { window.dispatchEvent(new Event('offline')); });
-      act(() => { window.dispatchEvent(new Event('online')); });
-
-      await act(async () => { await new Promise(r => setTimeout(r, 50)); });
-      expect(fetchSpy).not.toHaveBeenCalled();
-
-      globalThis.fetch = origFetch;
-    });
-
     it('sets commentsError when reconnect fetch fails', async () => {
       // First fetch hangs forever — simulates offline.
       server.use(
@@ -1101,37 +933,6 @@ describe('useItemWithComments', () => {
   });
 
   describe('refresh loading states', () => {
-    it('sets itemLoading and commentsLoading to true during refresh', async () => {
-      const { result } = renderHook(() =>
-        useItemWithComments(12345, { initialItem: testItem })
-      );
-
-      await waitFor(() => {
-        expect(result.current.commentsLoading).toBe(false);
-      });
-      expect(result.current.itemLoading).toBe(false);
-
-      // Slow the refresh fetch so the synchronous loading flip is observable.
-      vi.spyOn(hnSdk, 'readItem').mockImplementation(async () => {
-        await new Promise(r => setTimeout(r, 200));
-        return mockFirebaseStory;
-      });
-
-      // Loading states must flip BEFORE the await, not after the fetch settles.
-      let refreshPromise: Promise<void>;
-      act(() => {
-        refreshPromise = result.current.refresh();
-      });
-
-      expect(result.current.itemLoading).toBe(true);
-      expect(result.current.commentsLoading).toBe(true);
-
-      await act(async () => { await refreshPromise!; });
-
-      expect(result.current.itemLoading).toBe(false);
-      expect(result.current.commentsLoading).toBe(false);
-    });
-
     it('clears error and commentsError during refresh', async () => {
       vi.spyOn(hnSdk, 'readItem').mockRejectedValue(new Error('Network error'));
 

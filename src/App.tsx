@@ -4,12 +4,12 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ScrollContainerProvider } from './context/ScrollContainerContext';
 import { useScrollContainer } from './hooks/useScrollContainer';
 import { Header, ErrorBoundary, FullScreenCommentSkeletonPanel, StateView, NetworkStatusBar } from './components';
-import { TooltipProvider } from './components/ui';
 import { StoryList } from './pages';
 import { useCanSwipe } from './hooks/useCanSwipe';
 import { useDocumentTitle } from './hooks/useDocumentTitle';
 import { ItemDetail } from './pages/ItemDetail';
 import { DomainStories } from './pages/DomainStories';
+import { canonicalizeDomain } from './hooks/useDomainInfiniteStories';
 import { UserProfile } from './pages/UserProfile';
 import { UserSubmissions } from './pages/UserSubmissions';
 import { SwipeStoryViewer } from './components/SwipeStoryViewer';
@@ -35,7 +35,8 @@ function MobileDomainStoriesWrapper() {
     return <SwipeDomainStoryViewer key={domain} domain={domain} />;
   }
 
-  return <DomainStories />;
+  // Keyed like the swipe viewers: a new domain gets fresh list state.
+  return <DomainStories key={canonicalizeDomain(domain)} />;
 }
 
 // Falls through to the desktop list when the URL has no username so
@@ -55,7 +56,12 @@ function MobileUserSubmissionsWrapper() {
     return <SwipeUserSubmissionsViewer key={username} username={username} />;
   }
 
-  return <UserSubmissions />;
+  return <UserSubmissions key={username} />;
+}
+
+function UserProfileRoute() {
+  const { id } = useParams<{ id: string }>();
+  return <UserProfile key={id} />;
 }
 
 // Maps a viewer context to its swipe viewer (priority fromUser → fromDomain → from;
@@ -280,47 +286,45 @@ function LocationAwareErrorBoundary({ children }: { children: ReactNode }) {
 function App() {
   return (
     <ThemeProvider>
-      <TooltipProvider delayDuration={250}>
-        <NetworkStatusProvider>
-          <ScrollContainerProvider>
-            <HashRouter>
-              <LocationAwareErrorBoundary>
-                <div className="min-h-screen bg-background text-foreground">
-                  <a
-                    href="#main"
-                    className="skip-link"
-                    onClick={(e) => {
-                      // Move focus to <main> without mutating the route hash —
-                      // a bare `#main` jump would make HashRouter navigate to a
-                      // non-existent `main` route and render the 404 page.
-                      e.preventDefault();
-                      document.getElementById('main')?.focus();
-                    }}
-                  >
-                    Skip to main content
-                  </a>
-                  <Header />
-                  <NetworkStatusBar />
-                  <MainContent>
-                    <Routes>
-                      <Route path="/" element={<MobileStoryRoute feed="top" />} />
-                      <Route path="/show" element={<MobileStoryRoute feed="show" />} />
-                      <Route path="/ask" element={<MobileStoryRoute feed="ask" />} />
-                      <Route path="/best" element={<MobileStoryRoute feed="best" />} />
-                      <Route path="/newest" element={<MobileStoryRoute feed="newest" />} />
-                      <Route path="/item/:id" element={<MobileStoryRoute />} />
-                      <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
-                      <Route path="/user/:id" element={<UserProfile />} />
-                      <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
-                      <Route path="*" element={<NotFoundPage />} />
-                    </Routes>
-                  </MainContent>
-                </div>
-              </LocationAwareErrorBoundary>
-            </HashRouter>
-          </ScrollContainerProvider>
-        </NetworkStatusProvider>
-      </TooltipProvider>
+      <NetworkStatusProvider>
+        <ScrollContainerProvider>
+          <HashRouter>
+            <LocationAwareErrorBoundary>
+              <div className="min-h-screen bg-background text-foreground">
+                <a
+                  href="#main"
+                  className="skip-link"
+                  onClick={(e) => {
+                    // Move focus to <main> without mutating the route hash —
+                    // a bare `#main` jump would make HashRouter navigate to a
+                    // non-existent `main` route and render the 404 page.
+                    e.preventDefault();
+                    document.getElementById('main')?.focus();
+                  }}
+                >
+                  Skip to main content
+                </a>
+                <Header />
+                <NetworkStatusBar />
+                <MainContent>
+                  <Routes>
+                    <Route path="/" element={<MobileStoryRoute feed="top" />} />
+                    <Route path="/show" element={<MobileStoryRoute feed="show" />} />
+                    <Route path="/ask" element={<MobileStoryRoute feed="ask" />} />
+                    <Route path="/best" element={<MobileStoryRoute feed="best" />} />
+                    <Route path="/newest" element={<MobileStoryRoute feed="newest" />} />
+                    <Route path="/item/:id" element={<MobileStoryRoute />} />
+                    <Route path="/from/*" element={<MobileDomainStoriesWrapper />} />
+                    <Route path="/user/:id" element={<UserProfileRoute />} />
+                    <Route path="/submitted/:id" element={<MobileUserSubmissionsWrapper />} />
+                    <Route path="*" element={<NotFoundPage />} />
+                  </Routes>
+                </MainContent>
+              </div>
+            </LocationAwareErrorBoundary>
+          </HashRouter>
+        </ScrollContainerProvider>
+      </NetworkStatusProvider>
     </ThemeProvider>
   );
 }

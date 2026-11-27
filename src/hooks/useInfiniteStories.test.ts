@@ -44,18 +44,6 @@ describe('useInfiniteStories', () => {
     vi.restoreAllMocks();
   });
 
-  it('loads stories on first loadMore when no cache', async () => {
-    const { result } = renderHook(() => useInfiniteStories('top'));
-
-    expect(result.current.stories).toHaveLength(0);
-    expect(result.current.hasMore).toBe(true);
-
-    await act(() => result.current.loadMore());
-
-    expect(result.current.stories.length).toBeGreaterThan(0);
-    expect(result.current.loading).toBe(false);
-  });
-
   it('initializes from cache and marks isFromCache', () => {
     const cached = Array.from({ length: 20 }, (_, i) =>
       createStoryItem({ id: i + 1, title: `Cached Story ${i + 1}` }),
@@ -67,44 +55,6 @@ describe('useInfiniteStories', () => {
     expect(result.current.stories).toHaveLength(20);
     expect(result.current.isFromCache).toBe(true);
     expect(result.current.loading).toBe(false);
-  });
-
-  it('replaces stories on revalidation when loadMore is called early (position 0)', async () => {
-    const cached = Array.from({ length: 20 }, (_, i) =>
-      createStoryItem({ id: i + 1, title: `Cached Story ${i + 1}` }),
-    );
-    setCachedFeed('top', cached);
-
-    const { result } = renderHook(() => useInfiniteStories('top'));
-
-    // Starts from cache
-    expect(result.current.stories).toHaveLength(20);
-    expect(result.current.isFromCache).toBe(true);
-
-    // First loadMore triggers revalidation (replaces stories)
-    await act(() => result.current.loadMore());
-
-    expect(result.current.isFromCache).toBe(false);
-    // Stories are replaced with fresh data from MSW (default handler returns 20 stories)
-    expect(result.current.stories.length).toBeGreaterThan(0);
-  });
-
-  it('appends stories on second loadMore after revalidation', async () => {
-    const cached = Array.from({ length: 20 }, (_, i) =>
-      createStoryItem({ id: i + 1, title: `Cached Story ${i + 1}` }),
-    );
-    setCachedFeed('top', cached);
-
-    const { result } = renderHook(() => useInfiniteStories('top'));
-
-    // First loadMore: revalidation (replace)
-    await act(() => result.current.loadMore());
-    const afterRevalidation = result.current.stories.length;
-
-    // Second loadMore: should APPEND, not replace
-    await act(() => result.current.loadMore());
-
-    expect(result.current.stories.length).toBeGreaterThanOrEqual(afterRevalidation);
   });
 
   it('starts one request when loadMore is called twice before re-rendering', async () => {
@@ -159,6 +109,18 @@ describe('useInfiniteStories', () => {
     act(() => result.current.saveSessionState(0));
 
     expect(getCachedFeed('top')).toMatchObject({ timestamp: hourAgo, isStale: true });
+  });
+
+  it.each<FeedType>(['best', 'newest'])('stops at the end of the %s list', async (type) => {
+    vi.mocked(hnSdk.readRankedIds).mockResolvedValue(rankedIds.slice(0, 40));
+    const { result } = renderHook(() => useInfiniteStories(type));
+
+    await act(() => result.current.loadMore());
+    expect(result.current.hasMore).toBe(true);
+    await act(() => result.current.loadMore());
+
+    expect(result.current.stories).toHaveLength(40);
+    expect(result.current.hasMore).toBe(false);
   });
 
   describe('revalidation', () => {

@@ -1,3 +1,4 @@
+import { isAbortError } from './errors';
 /**
  * Sharing an item, with a clipboard path for the browsers that have no share
  * sheet. Kept out of the component so the capability matrix — which is most of
@@ -51,7 +52,7 @@ export async function shareOrCopy(data: { title: string; url: string }): Promise
     } catch (error) {
       // Dismissal arrives as an exception, so it has to be told apart from a
       // real fault before anything is treated as one.
-      if (error instanceof Error && error.name === 'AbortError') return 'dismissed';
+      if (isAbortError(error)) return 'dismissed';
       // Anything else (no activation, an earlier share still pending, an
       // OS-level refusal) still leaves the reader wanting the URL, so fall
       // through rather than dead-ending.

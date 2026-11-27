@@ -1,5 +1,6 @@
 import { ALGOLIA_API } from '../config/api';
 import { hnSdk } from './hnSdk';
+import { errorMessage } from '../utils/errors';
 import type { Item, StoryItem, Comment, AlgoliaHit, AlgoliaComment, AlgoliaSearchResponse, FirebaseItem, PrefetchResult, AlgoliaItemResponse, AlgoliaItemChild, PollOption, PollOptionItem } from '../types';
 
 export class NotFoundError extends Error {
@@ -20,37 +21,23 @@ export class CommentsError extends Error {
   }
 }
 
-let bestStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
-let showStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
-let askStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
-let newStoriesCache: { ids: number[] | null; timestamp: number } = { ids: null, timestamp: 0 };
+const rankedIdsCache = new Map<string, { ids: number[]; timestamp: number }>();
 let storyCommentsCache: { storyId: number; comments: Promise<ThreadComment[] | null>; timestamp: number } | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /** @internal Testing helper to reset module-level caches between tests. */
 export function __resetFetchCachesForTests() {
-  bestStoriesCache = { ids: null, timestamp: 0 };
-  showStoriesCache = { ids: null, timestamp: 0 };
-  askStoriesCache = { ids: null, timestamp: 0 };
-  newStoriesCache = { ids: null, timestamp: 0 };
+  rankedIdsCache.clear();
   storyCommentsCache = null;
   threadDownloads.clear();
 }
 
+const SECONDS_PER_DAY = 86_400;
+
+// Unix time has no leap seconds, so every UTC day is exactly SECONDS_PER_DAY.
 function getDayRange(daysAgo = 0) {
-  const now = new Date();
-  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  
-  const targetDay = new Date(startOfToday);
-  targetDay.setUTCDate(targetDay.getUTCDate() - daysAgo);
-  
-  const nextDay = new Date(targetDay);
-  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-  
-  return {
-    start: Math.floor(targetDay.getTime() / 1000),
-    end: Math.floor(nextDay.getTime() / 1000),
-  };
+  const day = Math.floor(Date.now() / (SECONDS_PER_DAY * 1000)) - daysAgo;
+  return { start: day * SECONDS_PER_DAY, end: (day + 1) * SECONDS_PER_DAY };
 }
 
 // Feed endpoints only return stories (polls among them).
@@ -111,15 +98,7 @@ function normalizeFirebaseItem(fbItem: FirebaseItem): Item {
   // Firebase doesn't distinguish ask/show — they're all type='story'.
   // Only the Algolia path (via _tags) can set 'ask'/'show' sub-types.
   // A poll's options are separate items, read with its comments.
-  return {
-    ...base,
-    type: fbItem.type === 'poll' ? 'poll' : 'story',
-    title: fbItem.title ?? '',
-    url: fbItem.url,
-    text: fbItem.text,
-    points: fbItem.score ?? 0,
-    commentCount: fbItem.descendants ?? 0,
-  };
+  return normalizeFirebaseToStoryItem(fbItem);
 }
 
 /**
@@ -140,8 +119,7 @@ export async function fetchTopStories(limit = 20): Promise<StoryItem[]> {
       if (stories.length >= limit) break;
       if (!item || item.deleted || item.dead) continue;
       if (item.type === 'job') continue;
-      const title = (item.title ?? '').toLowerCase();
-      if (title.includes('who is hiring') || title.includes('who wants to be hired')) continue;
+      if (isHiringThread(item.title)) continue;
       stories.push(normalizeFirebaseToStoryItem(item));
     }
     cursor += batchIds.length;
@@ -150,112 +128,48 @@ export async function fetchTopStories(limit = 20): Promise<StoryItem[]> {
   return stories;
 }
 
-// Algolia's front_page tag only shows the CURRENT front page, not historical.
-// So we fetch stories created on `daysAgo` sorted by points (best approximation).
-export async function fetchFrontPageForDay(daysAgo = 1): Promise<StoryItem[]> {
+/**
+ * One day of stories from Algolia matching `tags`, most points first. Used
+ * where the Firebase ranked lists run out.
+ */
+async function fetchAlgoliaDay(
+  tags: string,
+  daysAgo: number,
+  label: string,
+  keep: (hit: AlgoliaHit) => boolean = () => true,
+): Promise<StoryItem[]> {
   const { start, end } = getDayRange(daysAgo);
-  
-  // story,poll is an OR group: polls are tagged `poll`, not `story`. It still
-  // leaves out jobs and comments; relevance sort factors in points.
-  const url = `${ALGOLIA_API}/search?tags=(story,poll)&numericFilters=created_at_i>=${start},created_at_i<${end}&hitsPerPage=30`;
-  
+  const url = `${ALGOLIA_API}/search?tags=${tags}&numericFilters=created_at_i>=${start},created_at_i<${end}&hitsPerPage=30`;
+
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to fetch front page stories: ${response.status}`);
+    throw new Error(`Failed to fetch ${label} stories: ${response.status}`);
   }
-  
+
   const data = await response.json() as AlgoliaSearchResponse;
-  
-  const filtered = data.hits.filter((hit) => {
-    if (hit.type === 'job' || hit._tags?.includes('job')) {
-      return false;
-    }
-    const title = (hit.title || '').toLowerCase();
-    if (title.includes('who is hiring') ||
-        title.includes('who wants to be hired')) {
-      return false;
-    }
-    return true;
-  });
-  
-  const sorted = filtered.sort((a, b) => (b.points || 0) - (a.points || 0));
-  
-  return sorted.map(normalizeAlgoliaHit);
+  return data.hits
+    .filter(keep)
+    .sort((a, b) => (b.points || 0) - (a.points || 0))
+    .map(normalizeAlgoliaHit);
 }
 
-export async function fetchBestStories(offset = 0, limit = 30) {
-  const now = Date.now();
-  
-  if (!bestStoriesCache.ids || (now - bestStoriesCache.timestamp) >= CACHE_TTL) {
-    bestStoriesCache = { ids: await hnSdk.readRankedIds('beststories'), timestamp: now };
-  }
-  
-  const allIds = bestStoriesCache.ids ?? [];
-  const pageIds = allIds.slice(offset, offset + limit);
-  
-  if (pageIds.length === 0) {
-    return { stories: [] as StoryItem[], hasMore: false, nextOffset: offset };
-  }
-  
-  const fetched = await Promise.all(
-    pageIds.map((id: number) => hnSdk.readItem(id).catch(() => null))
-  );
-  
-  // The whoishiring threads are type='story', not 'job', so the job filter
-  // alone lets them through when they rank among the best.
-  const stories = fetched
-    .filter((fb): fb is FirebaseItem =>
-      fb != null &&
-      !fb.deleted &&
-      !fb.dead &&
-      fb.type !== 'job' &&
-      !isHiringThread(fb.title)
-    )
-    .map(fb => normalizeFirebaseToStoryItem(fb));
-  
-  return {
-    stories,
-    hasMore: offset + limit < allIds.length,
-    nextOffset: offset + limit,
-  };
+// Algolia's front_page tag only shows the CURRENT front page, not historical.
+// So we fetch stories created on `daysAgo` sorted by points (best approximation).
+// story,poll is an OR group: polls are tagged `poll`, not `story`. It still
+// leaves out jobs and comments; relevance sort factors in points.
+export function fetchFrontPageForDay(daysAgo = 1): Promise<StoryItem[]> {
+  return fetchAlgoliaDay('(story,poll)', daysAgo, 'front page', hit =>
+    hit.type !== 'job' && !hit._tags?.includes('job') && !isHiringThread(hit.title));
+}
+
+export function fetchBestStories(offset = 0, limit = 30) {
+  return fetchRankedStories('beststories', offset, { limit, excludeJobs: true, excludeHiring: true });
 }
 
 // Newest feed: reverse-chronological submissions from HN `newstories` (≤500,
-// HN's hard cap). Mirrors fetchBestStories' offset pagination, including the
-// whoishiring filter.
-export async function fetchNewStories(offset = 0, limit = 30) {
-  const now = Date.now();
-
-  if (!newStoriesCache.ids || (now - newStoriesCache.timestamp) >= CACHE_TTL) {
-    newStoriesCache = { ids: await hnSdk.readRankedIds('newstories'), timestamp: now };
-  }
-
-  const allIds = newStoriesCache.ids ?? [];
-  const pageIds = allIds.slice(offset, offset + limit);
-
-  if (pageIds.length === 0) {
-    return { stories: [] as StoryItem[], hasMore: false, nextOffset: offset };
-  }
-
-  const fetched = await Promise.all(
-    pageIds.map((id: number) => hnSdk.readItem(id).catch(() => null))
-  );
-
-  const stories = fetched
-    .filter((fb): fb is FirebaseItem =>
-      fb != null &&
-      !fb.deleted &&
-      !fb.dead &&
-      fb.type !== 'job' &&
-      !isHiringThread(fb.title)
-    )
-    .map(fb => normalizeFirebaseToStoryItem(fb));
-
-  return {
-    stories,
-    hasMore: offset + limit < allIds.length,
-    nextOffset: offset + limit,
-  };
+// HN's hard cap), filtered like the best feed.
+export function fetchNewStories(offset = 0, limit = 30) {
+  return fetchRankedStories('newstories', offset, { limit, excludeJobs: true, excludeHiring: true });
 }
 
 /** A poll option has no title or comments, so it gets a page of its own. */
@@ -277,21 +191,31 @@ function normalizeFirebaseToStoryItem(fb: FirebaseItem): StoryItem {
   };
 }
 
+async function readRankedIdsCached(list: string): Promise<number[]> {
+  const now = Date.now();
+  const cached = rankedIdsCache.get(list);
+  if (cached && now - cached.timestamp < CACHE_TTL) return cached.ids;
+  const ids = await hnSdk.readRankedIds(list);
+  rankedIdsCache.set(list, { ids, timestamp: now });
+  return ids;
+}
+
+interface RankedPageOptions {
+  limit: number;
+  /** Firebase can't tell ask/show from story, so the list sets it. Polls keep theirs. */
+  type?: 'show' | 'ask';
+  excludeJobs?: boolean;
+  // The whoishiring threads are type='story', not 'job', so the job filter
+  // alone lets them through.
+  excludeHiring?: boolean;
+}
+
 async function fetchRankedStories(
   list: string,
-  cache: { ids: number[] | null; timestamp: number },
-  type: 'show' | 'ask',
-  offset = 0,
-  limit = 20,
-  excludeTitles?: string[],
+  offset: number,
+  { limit, type, excludeJobs = false, excludeHiring = false }: RankedPageOptions,
 ) {
-  const now = Date.now();
-  if (!cache.ids || (now - cache.timestamp) >= CACHE_TTL) {
-    cache.ids = await hnSdk.readRankedIds(list);
-    cache.timestamp = now;
-  }
-
-  const allIds = cache.ids ?? [];
+  const allIds = await readRankedIdsCached(list);
   const pageIds = allIds.slice(offset, offset + limit);
 
   if (pageIds.length === 0) {
@@ -307,9 +231,13 @@ async function fetchRankedStories(
       fb != null &&
       !fb.deleted &&
       !fb.dead &&
-      !excludeTitles?.some(t => (fb.title ?? '').toLowerCase().includes(t))
+      !(excludeJobs && fb.type === 'job') &&
+      !(excludeHiring && isHiringThread(fb.title))
     )
-    .map(fb => ({ ...normalizeFirebaseToStoryItem(fb), type: fb.type === 'poll' ? 'poll' as const : type }));
+    .map(fb => {
+      const story = normalizeFirebaseToStoryItem(fb);
+      return type && story.type !== 'poll' ? { ...story, type } : story;
+    });
 
   return {
     stories,
@@ -319,44 +247,22 @@ async function fetchRankedStories(
 }
 
 export function fetchShowStories(offset = 0) {
-  return fetchRankedStories('showstories', showStoriesCache, 'show', offset);
+  return fetchRankedStories('showstories', offset, { limit: 20, type: 'show' });
 }
 
 // Ask excludes the whoishiring threads, matching fetchAskStoriesForDay. Show is
 // left unfiltered: a Show HN title mentioning hiring is a real project.
 export function fetchAskStories(offset = 0) {
-  return fetchRankedStories('askstories', askStoriesCache, 'ask', offset, 20, HIRING_EXCLUDE_TITLES);
+  return fetchRankedStories('askstories', offset, { limit: 20, type: 'ask', excludeHiring: true });
 }
 
-/**
- * Fetch stories for a specific day from Algolia, filtered by tag.
- * Used for historical fallback when Firebase ranked lists are exhausted.
- */
-export async function fetchTaggedStoriesForDay(
+/** One day of Ask HN or Show HN stories from Algolia. */
+export function fetchTaggedStoriesForDay(
   tag: 'ask_hn' | 'show_hn',
   daysAgo: number,
-  excludeTitles?: string[],
+  excludeHiring = false,
 ): Promise<StoryItem[]> {
-  const { start, end } = getDayRange(daysAgo);
-  const url = `${ALGOLIA_API}/search?tags=story,${tag}&numericFilters=created_at_i>=${start},created_at_i<${end}&hitsPerPage=30`;
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${tag} stories: ${response.status}`);
-  }
-
-  const data = await response.json() as AlgoliaSearchResponse;
-
-  let hits = data.hits;
-  if (excludeTitles && excludeTitles.length > 0) {
-    hits = hits.filter((hit) => {
-      const title = (hit.title || '').toLowerCase();
-      return !excludeTitles.some(t => title.includes(t));
-    });
-  }
-
-  const sorted = hits.sort((a, b) => (b.points || 0) - (a.points || 0));
-  return sorted.map(normalizeAlgoliaHit);
+  return fetchAlgoliaDay(`story,${tag}`, daysAgo, tag, excludeHiring ? hit => !isHiringThread(hit.title) : undefined);
 }
 
 const HIRING_EXCLUDE_TITLES = [
@@ -370,7 +276,7 @@ function isHiringThread(title: string | undefined): boolean {
 }
 
 export function fetchAskStoriesForDay(daysAgo: number): Promise<StoryItem[]> {
-  return fetchTaggedStoriesForDay('ask_hn', daysAgo, HIRING_EXCLUDE_TITLES);
+  return fetchTaggedStoriesForDay('ask_hn', daysAgo, true);
 }
 
 export function fetchShowStoriesForDay(daysAgo: number): Promise<StoryItem[]> {
@@ -378,9 +284,7 @@ export function fetchShowStoriesForDay(daysAgo: number): Promise<StoryItem[]> {
 }
 
 export async function fetchFirebaseItem(id: number | string, signal?: AbortSignal): Promise<FirebaseItem> {
-  if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
+  signal?.throwIfAborted();
   const item = await hnSdk.readItem(id);
   if (item == null) {
     throw new NotFoundError(`Item ${id} not found`);
@@ -395,9 +299,7 @@ export async function fetchFirebaseItem(id: number | string, signal?: AbortSigna
  */
 export async function fetchHiddenCommentIds(ids: number[], keepId: number, signal?: AbortSignal): Promise<Set<number>> {
   const items = await Promise.all(ids.map(id => hnSdk.readItem(id).catch(() => null)));
-  if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
+  signal?.throwIfAborted();
   return new Set(ids.filter((id, i) => {
     const item = items[i];
     return id !== keepId && !!item && !item.kids?.length && (!!item.dead || !!item.deleted);
@@ -637,9 +539,7 @@ async function itemOnly(raw: FirebaseItem): Promise<Item> {
 // order, but HN's pages sort by points; the sort is stable, so ties keep it.
 async function fetchPollOptions(parts: number[], signal?: AbortSignal): Promise<PollOption[]> {
   const items = await Promise.all(parts.map(id => hnSdk.readItem(id)));
-  if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
+  signal?.throwIfAborted();
   return items
     .filter((item): item is FirebaseItem => item != null && !item.deleted && !item.dead)
     .map(item => ({ id: item.id, text: item.text ?? '', points: item.score ?? 0 }))
@@ -669,14 +569,12 @@ async function fetchThread(
     const raw = await itemRead.catch(() => null);
     if (!raw) throw err;
     const item = threadItem(raw, await pollOptionsRead);
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    throw new CommentsError(err instanceof Error ? err.message : String(err), item);
+    signal?.throwIfAborted();
+    throw new CommentsError(errorMessage(err), item);
   });
   const [raw, comments] = await Promise.all([itemRead, commentsRead]);
 
-  if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
+  signal?.throwIfAborted();
 
   const [commentTree, pollOptions] = await Promise.all([
     buildOrderedCommentTree(comments, itemId, raw.kids, signal),
@@ -769,9 +667,7 @@ export async function prefetchItemComments(id: number | string, signal?: AbortSi
 
 /** The comment tree plus the item it hangs off, which the ordering reads anyway. */
 export async function fetchItemWithComments(id: number | string, signal: AbortSignal | null = null): Promise<PrefetchResult> {
-  if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
+  signal?.throwIfAborted();
 
   return downloadThread(Number(id), signal ?? undefined).thread;
 }
@@ -888,16 +784,12 @@ async function hasRepliesOutsideItemTree(id: number, signal?: AbortSignal): Prom
 export async function fetchCommentReplies(item: AlgoliaItemResponse, signal?: AbortSignal): Promise<Comment[]> {
   if (item.story_id == null) return normalizeAlgoliaItemChildren(item.children ?? []);
   const mayHaveMore = !!item.children?.length || await hasRepliesOutsideItemTree(item.id, signal);
-  if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
+  signal?.throwIfAborted();
   if (!mayHaveMore) return [];
 
   // Null for a thread bigger than search returns, which keeps the item tree's replies.
   const storyComments = await fetchStoryComments(item.story_id);
-  if (signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
+  signal?.throwIfAborted();
 
   const replies = flattenAlgoliaItemChildren(item.children ?? []);
   const seen = new Set(replies.map(c => c.objectID));
@@ -927,9 +819,8 @@ export function normalizeAlgoliaItemChildren(children: AlgoliaItemChild[]): Comm
 }
 
 // Format timestamp as a localized absolute date string for tooltips.
-// Guards reject null/undefined/zero (`!timestamp`), NaN, AND ±Infinity —
-// the latter would otherwise slip through (`!Infinity` is false,
-// `isNaN(Infinity)` is false) and make the formatter throw a RangeError.
+// Guards reject null/undefined/zero (`!timestamp`), and `isFinite` rejects NaN
+// and ±Infinity, which would otherwise make the formatter throw a RangeError.
 // The formatter is built once: Date#toLocaleString builds a new one per call,
 // which showed up in swipe profiles (every comment renders a timestamp).
 const absoluteTimeFormat = new Intl.DateTimeFormat(undefined, {
@@ -937,14 +828,14 @@ const absoluteTimeFormat = new Intl.DateTimeFormat(undefined, {
   hour: 'numeric', minute: '2-digit',
 });
 export function formatAbsoluteTime(timestamp: number): string {
-  if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) return '';
+  if (!timestamp || !isFinite(timestamp)) return '';
   return absoluteTimeFormat.format(timestamp);
 }
 
 // Long-month date-only (e.g. "October 9, 2006") for profile creation dates
 // where minute precision isn't meaningful.
 export function formatAbsoluteDate(timestamp: number): string {
-  if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) return '';
+  if (!timestamp || !isFinite(timestamp)) return '';
   return new Date(timestamp).toLocaleString(undefined, {
     year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -953,13 +844,13 @@ export function formatAbsoluteDate(timestamp: number): string {
 // Safe ISO string for <time> dateTime — isFinite gate required because
 // Date#toISOString throws RangeError on non-finite inputs.
 export function safeISOString(timestamp: number): string {
-  if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) return '';
+  if (!timestamp || !isFinite(timestamp)) return '';
   return new Date(timestamp).toISOString();
 }
 
 // Relative time (e.g. "3 hours ago").
 export function formatTimeAgo(timestamp: number): string {
-  if (!timestamp || !isFinite(timestamp) || isNaN(timestamp)) {
+  if (!timestamp || !isFinite(timestamp)) {
     return '';
   }
   

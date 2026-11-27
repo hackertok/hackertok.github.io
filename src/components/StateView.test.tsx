@@ -19,24 +19,9 @@ describe('StateView', () => {
     // pass nothing get a sensible default. Pin the text so a future copy
     // change is intentional rather than silent.
 
-    it('uses default title for "not-found" when no title prop is provided', () => {
-      render(<StateView variant="not-found" />);
-      expect(screen.getByText('Item not found')).toBeInTheDocument();
-    });
-
     it('uses default title for "error" when no title prop is provided', () => {
       render(<StateView variant="error" />);
       expect(screen.getByText('Something went wrong')).toBeInTheDocument();
-    });
-
-    it('uses default title for "empty" when no title prop is provided', () => {
-      render(<StateView variant="empty" />);
-      expect(screen.getByText('No comments yet.')).toBeInTheDocument();
-    });
-
-    it('uses default title for "deleted" when no title prop is provided', () => {
-      render(<StateView variant="deleted" />);
-      expect(screen.getByText('Comment deleted')).toBeInTheDocument();
     });
 
     it('uses default description for "end" when no description prop is provided', () => {

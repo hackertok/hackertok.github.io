@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { hnSdk } from '../api/hnSdk';
 import { NotFoundError } from '../api/hn';
+import { errorMessage } from '../utils/errors';
 import type { UserProfile } from '../types';
 
 // Module-level profile cache (session-lifetime, not persisted).
@@ -30,6 +31,7 @@ interface UseUserProfileResult {
 /**
  * Firebase user profile fetch with cache and not-found handling.
  * Case-sensitive — caller must preserve case from the route param.
+ * Remount (React `key`) to change user.
  */
 export function useUserProfile(username: string): UseUserProfileResult {
   const cached = username ? userProfileCache.get(username) : undefined;
@@ -38,28 +40,9 @@ export function useUserProfile(username: string): UseUserProfileResult {
   const [loading, setLoading] = useState(!cached && !!username);
   const [error, setError] = useState<string | null>(null);
   const [isNotFound, setIsNotFound] = useState(false);
-  const [prevUsername, setPrevUsername] = useState(username);
 
+  // Bumped by `refresh` so the response it replaces is dropped.
   const versionRef = useRef(0);
-
-  // Prop-derived state: reset when username changes without waiting for an
-  // effect. Mirrors `useDomainInfiniteStories`' pattern.
-  // https://react.dev/reference/react/useState#storing-information-from-previous-renders
-  if (prevUsername !== username) {
-    setPrevUsername(username);
-    const newCached = username ? userProfileCache.get(username) : undefined;
-    setProfile(newCached ?? null);
-    setLoading(!newCached && !!username);
-    setError(null);
-    setIsNotFound(false);
-  }
-
-  // Bump version when username changes so in-flight fetches for the old user
-  // are discarded. useLayoutEffect (not useEffect) so the bump happens
-  // synchronously after commit, before any stale fetch microtask can fire.
-  useLayoutEffect(() => {
-    versionRef.current += 1;
-  }, [username]);
 
   const load = useCallback(async () => {
     if (!username) return;
@@ -82,7 +65,7 @@ export function useUserProfile(username: string): UseUserProfileResult {
         setIsNotFound(true);
         setError(err.message);
       } else {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
       }
     } finally {
       if (versionRef.current === currentVersion) {

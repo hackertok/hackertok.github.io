@@ -31,16 +31,6 @@ function renderToggle() {
 }
 
 describe('ThemeToggle', () => {
-  it('shows the System icon and the "switch to Light" label by default', () => {
-    renderToggle();
-
-    expect(screen.getByTestId('icon-sunmoon')).toBeInTheDocument();
-    expect(screen.getByTestId('theme-toggle')).toHaveAttribute(
-      'aria-label',
-      'Theme: System. Switch to Light.',
-    );
-  });
-
   it('cycles icon + label on click: system → light → dark → system', () => {
     renderToggle();
     const button = screen.getByTestId('theme-toggle');

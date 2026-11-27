@@ -2,7 +2,7 @@ import { useItemWithComments } from '../hooks/useItemWithComments';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
 import { isPollOption } from '../api/hn';
-import { CommentSkeletonTree } from '../components';
+import { CommentSkeletonTree } from './CommentSkeleton';
 import { CommentsSection } from './CommentsSection';
 import { FullScreenChrome } from './FullScreenChrome';
 import { ItemArticle } from './ItemArticle';
@@ -12,7 +12,7 @@ import type { StoryItem } from '../types';
 
 // Inner content ONLY — consumer supplies chrome.
 // Title h-6 ≤ real h1 to prevent PageStage contraction.
-export function FullScreenItemSkeleton() {
+function FullScreenItemSkeleton() {
   return (
     <div className="animate-pulse">
       <div className="mb-2">

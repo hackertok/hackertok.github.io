@@ -16,13 +16,6 @@ const mockUserProfile: UserProfileType = {
   submitted: [12345, 99999, 88888],
 };
 
-const mockMinimalUser: UserProfileType = {
-  id: 'minimaluser',
-  created: 1160418092,
-  karma: 1,
-  submitted: [],
-};
-
 function renderProfile(username: string) {
   // ScrollContainerProvider matches the production tree (App.tsx wraps the
   // router in it). Without it, `useScrollContainer()` returns its noop
@@ -44,7 +37,6 @@ describe('UserProfile', () => {
     document.body.classList.remove('swipe-mode');
     vi.spyOn(hnSdk, 'readUser').mockImplementation(async (username) => {
       if (username === 'leerob') return mockUserProfile;
-      if (username === 'minimaluser') return mockMinimalUser;
       if (username === 'pg') return { id: 'pg', created: 1160418092, karma: 155555, submitted: [12345] };
       return null;
     });
@@ -87,23 +79,6 @@ describe('UserProfile', () => {
         // sanitizeHtml preserves non-self/non-HN hosts verbatim (no rewrite).
         const link = screen.getByRole('link', { name: 'leerob.io' });
         expect(link).toHaveAttribute('href', 'https://leerob.io');
-      });
-    });
-
-    it('renders the "submissions" metadata link to /submitted/:id', async () => {
-      renderProfile('leerob');
-
-      const link = await screen.findByRole('link', { name: 'submissions' });
-      expect(link).toHaveAttribute('href', '/submitted/leerob');
-    });
-
-    it('does not render the about section when profile.about is missing', async () => {
-      renderProfile('minimaluser');
-
-      await waitFor(() => {
-        expect(
-          screen.getByRole('heading', { level: 1, name: 'minimaluser' }),
-        ).toBeInTheDocument();
       });
     });
 

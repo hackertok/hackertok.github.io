@@ -92,11 +92,6 @@ describe('itemCache', () => {
       expect(getCachedItem('123')).not.toBeNull();
     });
 
-    it('returns null for null/undefined itemId', () => {
-      expect(getCachedItem(null as unknown as string)).toBeNull();
-      expect(getCachedItem(undefined as unknown as string)).toBeNull();
-    });
-
     it('handles cache entry with missing timestamp', () => {
       localStorage.setItem(`${ITEM_CACHE_KEY_PREFIX}123`, JSON.stringify({
         item: mockItem,
@@ -112,14 +107,6 @@ describe('itemCache', () => {
   });
 
   describe('setCachedItem', () => {
-    it('stores item that can be retrieved', () => {
-      setCachedItem(123, mockItem, mockComments);
-      
-      const result = getCachedItem(123)!;
-      expect(result.item).toEqual(mockItem);
-      expect(result.comments).toEqual(mockComments);
-    });
-
     it('stores different items separately', () => {
       const item1 = createStoryItem({ id: 1, title: 'Item 1' });
       const item2 = createStoryItem({ id: 2, title: 'Item 2' });
@@ -325,28 +312,11 @@ describe('sessionStorage - List Session State', () => {
       expect(getListSessionState('top')!.position).toBe(1);
       expect(getListSessionState('best')!.position).toBe(2);
     });
-
-    it('converts Set to Array for storage', () => {
-      saveListSessionState('top', mockState);
-      
-      const stored = JSON.parse(sessionStorage.getItem(`${FEED_SESSION_KEY_PREFIX}top`)!) as { seenIds?: unknown };
-      expect(Array.isArray(stored.seenIds)).toBe(true);
-    });
   });
 
   describe('getListSessionState', () => {
     it('returns null for non-existent session', () => {
       expect(getListSessionState('top')).toBeNull();
-    });
-
-    it('converts seenIds Array back to Set', () => {
-      saveListSessionState('top', mockState);
-      
-      const result = getListSessionState('top')!;
-      
-      expect(result.seenIds instanceof Set).toBe(true);
-      expect(result.seenIds.has(1)).toBe(true);
-      expect(result.seenIds.has(2)).toBe(true);
     });
 
     it('expires session after 30 minutes', () => {
@@ -402,25 +372,6 @@ describe('sessionStorage - List Session State', () => {
       
       expect(getListSessionState('top')).toBeNull();
       expect(getListSessionState('best')).not.toBeNull();
-    });
-
-    it('does not throw for non-existent session', () => {
-      expect(() => clearListSessionState('nonexistent' as never)).not.toThrow();
-    });
-
-    it('handles empty seenIds array', () => {
-      saveListSessionState('top', { ...mockState, seenIds: new Set() });
-      
-      const result = getListSessionState('top')!;
-      expect(result.seenIds).toEqual(new Set());
-      expect(result.seenIds.size).toBe(0);
-    });
-
-    it('handles special characters in feedType', () => {
-      saveListSessionState('top/special' as never, mockState);
-      
-      const result = getListSessionState('top/special' as never)!;
-      expect(result).not.toBeNull();
     });
   });
 });

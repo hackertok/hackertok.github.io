@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ComponentProps } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { useInfiniteStories } from '../hooks/useInfiniteStories';
 import { useSwipeScroll } from '../hooks/useSwipeScroll';
@@ -15,7 +15,32 @@ import { useViewDwell } from '../hooks/useViewDwell';
 import { FEED_TYPE_TITLES } from '../config/feedTypes';
 import { FullScreenItem, FullScreenItemSkeletonPanel } from './FullScreenItem';
 import { StateView } from './StateView';
+import { errorMessage } from '../utils/errors';
 import type { StoryItem, FeedType, LocationState } from '../types';
+
+// History navigation carries the state we wrote (`from` for feeds,
+// `fromDomain` for domain swipe, `fromUser` for user submissions).
+function namesViewer(state: LocationState | null | undefined): boolean {
+  return !!(state?.from ?? state?.fromDomain ?? state?.fromUser);
+}
+
+function SwipeSkeleton() {
+  return (
+    <div className="swipe-snap-container" data-testid="swipe-container">
+      <div className="swipe-snap-panel active" data-testid="swipe-panel">
+        <FullScreenItemSkeletonPanel />
+      </div>
+    </div>
+  );
+}
+
+function SwipeStateView(props: Omit<ComponentProps<typeof StateView>, 'className'>) {
+  return (
+    <div className="swipe-snap-container" data-testid="swipe-container">
+      <StateView {...props} className="swipe-state-center" />
+    </div>
+  );
+}
 
 interface SwipeStoryViewerCoreProps {
   /** Story data from the consumer's data source (feed, domain, etc.) */
@@ -91,8 +116,7 @@ export function SwipeStoryViewerCore({
   const [anchorStoryId, setAnchorStoryId] = useState<number | null>(() => {
     // A matching snapshot counts as history nav: on a stateless reload `locationState`
     // is null, so `isRestoringPosition` is what suppresses the index-0 anchor.
-    const isHistoryNav = isRestoringPosition ||
-      !!(locationState?.from ?? locationState?.fromDomain ?? locationState?.fromUser);
+    const isHistoryNav = isRestoringPosition || namesViewer(locationState);
     return isHistoryNav ? null : initialItemIdNum ?? null;
   });
   const lastInitialStoryIdRef = useRef(initialItemId);
@@ -290,7 +314,7 @@ export function SwipeStoryViewerCore({
         // Only update state if this is still the story we want
         if (initialItemIdNum === fetchedStoryIdRef.current) {
           setInjectedLoading(false);
-          setInjectedError(err instanceof Error ? err.message : 'Story not found');
+          setInjectedError(errorMessage(err, 'Story not found'));
           setIsInjectedItemNotFound(err instanceof NotFoundError);
         }
       });
@@ -383,31 +407,26 @@ export function SwipeStoryViewerCore({
       savedScrollYOnHideRef.current = window.scrollY;
       persistSnapshot();
     };
+
+    const restoreSavedPosition = () => {
+      const targetIndex = savedIndexOnHideRef.current;
+      if (targetIndex === null) return;
+      savedIndexOnHideRef.current = null;
+      scrollToIndex(targetIndex);
+      // Restore scrollY after panel activation
+      window.scrollTo(0, savedScrollYOnHideRef.current);
+    };
     
     // Restore position when page is shown from bfcache (persisted=true)
     // This fires BEFORE first paint, preventing flash of wrong item
     const handlePageShow = (event: PageTransitionEvent) => {
-      if (event.persisted && savedIndexOnHideRef.current !== null) {
-        const targetIndex = savedIndexOnHideRef.current;
-        savedIndexOnHideRef.current = null;
-        scrollToIndex(targetIndex);
-        // Restore scrollY after panel activation
-        window.scrollTo(0, savedScrollYOnHideRef.current);
-      }
+      if (event.persisted) restoreSavedPosition();
     };
     
     // Fallback: visibilitychange for non-bfcache cases (tab switches, etc)
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        savedIndexOnHideRef.current = currentIndexRef.current;
-        savedScrollYOnHideRef.current = window.scrollY;
-        persistSnapshot();
-      } else if (document.visibilityState === 'visible' && savedIndexOnHideRef.current !== null) {
-        const targetIndex = savedIndexOnHideRef.current;
-        savedIndexOnHideRef.current = null;
-        scrollToIndex(targetIndex);
-        window.scrollTo(0, savedScrollYOnHideRef.current);
-      }
+      if (document.visibilityState === 'hidden') handlePageHide();
+      else if (document.visibilityState === 'visible') restoreSavedPosition();
     };
     
     window.addEventListener('pagehide', handlePageHide);
@@ -443,10 +462,8 @@ export function SwipeStoryViewerCore({
       lastInitialStoryIdRef.current = initialItemId;
       
       if (initialItemId) {
-        // History navigation carries our previously-written state (`from` for feeds,
-        // `fromDomain` for domain swipe, `fromUser` for user submissions) — any
-        // of those signals "don't reorder, return to the same position".
-        const isHistoryNavigation = !!(locationState?.from ?? locationState?.fromDomain ?? locationState?.fromUser);
+        // History navigation: don't reorder, return to the same position.
+        const isHistoryNavigation = namesViewer(locationState);
         
         if (isHistoryNavigation) {
           // History navigation (browser back/forward, return from external)
@@ -583,15 +600,12 @@ export function SwipeStoryViewerCore({
   
   if (injectedError) {
     return (
-      <div className="swipe-snap-container" data-testid="swipe-container">
-        <StateView
-          variant={isInjectedNotFound ? 'not-found' : 'error'}
-          title={isNonStoryError ? 'This item is not a story' : isInjectedNotFound ? undefined : 'Failed to load item'}
-          description={isInjectedNotFound ? undefined : injectedError}
-          action={isInjectedNotFound ? { label: 'Back to Home', to: '/' } : { label: 'Try Again', onClick: () => void navigate(0) }}
-          className="swipe-state-center"
-        />
-      </div>
+      <SwipeStateView
+        variant={isInjectedNotFound ? 'not-found' : 'error'}
+        title={isNonStoryError ? 'This item is not a story' : isInjectedNotFound ? undefined : 'Failed to load item'}
+        description={isInjectedNotFound ? undefined : injectedError}
+        action={isInjectedNotFound ? { label: 'Back to Home', to: '/' } : { label: 'Try Again', onClick: () => void navigate(0) }}
+      />
     );
   }
   
@@ -606,42 +620,18 @@ export function SwipeStoryViewerCore({
     // If anchor story isn't resolved yet (not in feed, not injected), show loading skeleton
     // This ensures we wait for fetchItemOnly to complete before deciding what to show
     if (!anchorInFeed && !anchorIsInjected) {
-      return (
-        <div className="swipe-snap-container" data-testid="swipe-container">
-          <div className="swipe-snap-panel active" data-testid="swipe-panel">
-            <FullScreenItemSkeletonPanel />
-          </div>
-        </div>
-      );
+      return <SwipeSkeleton />;
     }
   }
   
-  // Initial loading state (also show when fetching injected story)
-  if (mergedStories.length === 0 && (loading || injectedLoading)) {
-    return (
-      <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel active" data-testid="swipe-panel">
-          <FullScreenItemSkeletonPanel />
-        </div>
-      </div>
-    );
+  // Initial loading state (also while fetching the injected story or auto-retrying)
+  if (mergedStories.length === 0 && (loading || injectedLoading || (error && isRetrying))) {
+    return <SwipeSkeleton />;
   }
   
-  if (error && mergedStories.length === 0 && !isRetrying) {
+  if (error && mergedStories.length === 0) {
     return (
-      <div className="swipe-snap-container" data-testid="swipe-container">
-        <StateView variant="error" title="Failed to load item" action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore().catch(() => { /* error state set internally */ }); } }} className="swipe-state-center" />
-      </div>
-    );
-  }
-  
-  if (error && mergedStories.length === 0 && isRetrying) {
-    return (
-      <div className="swipe-snap-container" data-testid="swipe-container">
-        <div className="swipe-snap-panel active" data-testid="swipe-panel">
-          <FullScreenItemSkeletonPanel />
-        </div>
-      </div>
+      <SwipeStateView variant="error" title="Failed to load item" action={{ label: 'Try Again', onClick: () => { resetRetry(); void loadMore().catch(() => { /* error state set internally */ }); } }} />
     );
   }
 
@@ -658,11 +648,7 @@ export function SwipeStoryViewerCore({
     !injectedError &&
     !initialItemId
   ) {
-    return (
-      <div className="swipe-snap-container" data-testid="swipe-container">
-        <StateView variant="empty" title={emptyTitle} className="swipe-state-center" />
-      </div>
-    );
+    return <SwipeStateView variant="empty" title={emptyTitle} />;
   }
   
   // Virtualization: render heavy content (FullScreenItem ≈ 100+ DOM nodes) only for

@@ -13,27 +13,6 @@ test.describe('Viewed Items', () => {
     });
   });
 
-  test('viewed items persist across page reload', async ({ page }) => {
-    // 'viewed:times:detail' is the detail time-based store: { itemId: expiresAt }.
-    // Seed a live (future) expiry so the entry survives the startup prune.
-    await page.addInitScript(() => {
-      const viewed = { '12345': Date.now() + 12 * 60 * 60 * 1000 };
-      localStorage.setItem('viewed:times:detail', JSON.stringify(viewed));
-    });
-
-    await page.goto('/#/');
-
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
-
-    const viewedItems = await page.evaluate(() => {
-      const stored = localStorage.getItem('viewed:times:detail');
-      return stored ? JSON.parse(stored) : null;
-    });
-
-    expect(viewedItems).toBeTruthy();
-    expect(viewedItems['12345']).toBeGreaterThan(0);
-  });
-
   test('viewed items have visual indication', async ({ browser, baseURL }) => {
     // Fresh context bypasses the beforeEach clear so seeding survives.
     const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 720 } });

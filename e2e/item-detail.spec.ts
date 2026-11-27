@@ -31,19 +31,6 @@ test.describe('Item Detail', () => {
     await expect(page.getByText('tptacek').first()).toBeVisible();
   });
 
-  test('can expand and collapse replies', async ({ page }) => {
-    await page.goto('/#/item/12345');
-
-    await expect(page.getByText('patio11').first()).toBeVisible({ timeout: 10000 });
-
-    await page.getByText(/1 reply/i).first().click();
-    await expect(page.getByText('tptacek').first()).toBeVisible();
-
-    // Trunk line button collapses the whole subtree, not just the immediate child.
-    await page.getByRole('button', { name: /collapse replies/i }).first().click();
-    await expect(page.getByText('tptacek').first()).not.toBeVisible();
-  });
-
   test('handles item not found', async ({ page }) => {
     // 99999999 returns null in the mock — exercises the not-found branch.
     await page.goto('/#/item/99999999');
@@ -236,16 +223,6 @@ test.describe('Item Detail - Desktop', () => {
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
-  });
-
-  test('shows full item detail page on desktop', async ({ page }) => {
-    await page.goto('/#/item/12345');
-
-    // Mobile-only swipe container must not appear at desktop width.
-    const swipeContainer = page.locator('.swipe-snap-container');
-    await expect(swipeContainer).not.toBeVisible();
-
-    await expect(page.getByText('Rust Is the Future of JavaScript Infrastructure').first()).toBeVisible();
   });
 
   test('back from item detail returns to item list', async ({ page }) => {

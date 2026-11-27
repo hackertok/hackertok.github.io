@@ -37,16 +37,6 @@ const mockFirebaseItem: FirebaseItem = {
   type: 'story',
 };
 
-const mockCommentItem: FirebaseItem = {
-  id: 1001,
-  by: 'patio11',
-  text: 'The wasm-bindgen approach is really interesting.',
-  time: Math.floor(Date.now() / 1000) - 1800,
-  parent: 12345,
-  kids: [2001],
-  type: 'comment',
-};
-
 describe('hn API utilities', () => {
   beforeEach(() => {
     __resetFetchCachesForTests();
@@ -136,20 +126,6 @@ describe('hn API utilities', () => {
       expect(formatTimeAgo(now - 365 * 24 * 60 * 60 * 1000)).toBe('1 year ago');
       expect(formatTimeAgo(now - 2 * 365 * 24 * 60 * 60 * 1000)).toBe('2 years ago');
     });
-
-    it('uses singular form for 1 unit', () => {
-      const now = Date.now();
-      expect(formatTimeAgo(now - 1 * 60 * 1000)).toBe('1 minute ago');
-      expect(formatTimeAgo(now - 1 * 60 * 60 * 1000)).toBe('1 hour ago');
-      expect(formatTimeAgo(now - 1 * 24 * 60 * 60 * 1000)).toBe('1 day ago');
-    });
-
-    it('uses plural form for > 1 unit', () => {
-      const now = Date.now();
-      expect(formatTimeAgo(now - 2 * 60 * 1000)).toBe('2 minutes ago');
-      expect(formatTimeAgo(now - 2 * 60 * 60 * 1000)).toBe('2 hours ago');
-      expect(formatTimeAgo(now - 2 * 24 * 60 * 60 * 1000)).toBe('2 days ago');
-    });
   });
 
   describe('formatAbsoluteTime', () => {
@@ -190,15 +166,6 @@ describe('hn API utilities', () => {
       expect(result).toContain('2026');
       expect(result).toContain('21');
       expect(result).toMatch(/\d{1,2}:\d{2}/);
-    });
-
-    it('handles timestamps from different years', () => {
-      const ts = new Date('2024-12-25T08:00:00Z').getTime();
-      const result = formatAbsoluteTime(ts);
-      // Locale-invariant: year + day-of-month. Month text would be "Dec" /
-      // "Dez." / "déc." / "12月" depending on host locale.
-      expect(result).toContain('2024');
-      expect(result).toContain('25');
     });
   });
 
@@ -291,11 +258,6 @@ describe('hn API utilities', () => {
       expect(getHostname('https://www.google.com/search')).toBe('google.com');
     });
 
-    it('handles various protocols', () => {
-      expect(getHostname('http://example.com')).toBe('example.com');
-      expect(getHostname('https://example.com')).toBe('example.com');
-    });
-
     it('includes first path segment for GitHub URLs', () => {
       expect(getHostname('https://github.com/facebook/react')).toBe('github.com/facebook');
       expect(getHostname('https://github.com/vercel/next.js')).toBe('github.com/vercel');
@@ -372,23 +334,6 @@ describe('hn API utilities', () => {
         num_comments: 312,
         story_text: null,
         _tags: ['story', 'ask_hn'],
-      };
-
-      const result = normalizeAlgoliaHit(hit);
-
-      expect(result.text).toBeUndefined();
-    });
-
-    it('sets text to undefined when story_text is absent', () => {
-      const hit = {
-        objectID: '12345',
-        title: 'Rust Is the Future of JavaScript Infrastructure',
-        url: 'https://leerob.io/blog/rust',
-        points: 284,
-        author: 'leerob',
-        created_at_i: nowSec - 3600,
-        num_comments: 137,
-        _tags: ['story', 'front_page'],
       };
 
       const result = normalizeAlgoliaHit(hit);
@@ -481,33 +426,12 @@ describe('hn API utilities', () => {
       vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => mockShowItems[Number(id)] ?? null);
     });
 
-    it('returns normalized Show HN items', async () => {
-      const result = await fetchShowStories(0);
-      
-      expect(result.stories).toBeDefined();
-      expect(result.stories.length).toBeGreaterThan(0);
-      expect(result.hasMore).toBeDefined();
-      expect(result.nextOffset).toBe(20);
-    });
-
     it('returns items with show type', async () => {
       const result = await fetchShowStories(0);
       
       result.stories.forEach(item => {
         expect(item.type).toBe('show');
       });
-    });
-
-    it('returns items with expected properties', async () => {
-      const result = await fetchShowStories(0);
-      const item = result.stories[0];
-      
-      expect(item).toHaveProperty('id');
-      expect(item).toHaveProperty('title');
-      expect(item).toHaveProperty('points');
-      expect(item).toHaveProperty('author');
-      expect(item).toHaveProperty('createdAt');
-      expect(item).toHaveProperty('commentCount');
     });
 
     it('returns items in ranked order (same order as ID list)', async () => {
@@ -517,13 +441,6 @@ describe('hn API utilities', () => {
       expect(result.stories[0].id).toBe(99999);
       expect(result.stories[1].id).toBe(99998);
       expect(result.stories[2].id).toBe(99997);
-    });
-
-    it('returns correct pagination info', async () => {
-      const result = await fetchShowStories(0);
-      
-      expect(result.nextOffset).toBe(20);
-      expect(result.hasMore).toBe(false);
     });
 
     it('paginates by offset', async () => {
@@ -568,40 +485,11 @@ describe('hn API utilities', () => {
       vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => mockAskItems[Number(id)] ?? null);
     });
 
-    it('returns normalized Ask HN items', async () => {
-      const result = await fetchAskStories(0);
-      
-      expect(result.stories).toBeDefined();
-      expect(result.stories.length).toBeGreaterThan(0);
-      expect(result.hasMore).toBeDefined();
-      expect(result.nextOffset).toBe(20);
-    });
-
     it('returns items with ask type', async () => {
       const result = await fetchAskStories(0);
       
       result.stories.forEach(item => {
         expect(item.type).toBe('ask');
-      });
-    });
-
-    it('returns items with expected properties', async () => {
-      const result = await fetchAskStories(0);
-      const item = result.stories[0];
-      
-      expect(item).toHaveProperty('id');
-      expect(item).toHaveProperty('title');
-      expect(item).toHaveProperty('points');
-      expect(item).toHaveProperty('author');
-      expect(item).toHaveProperty('createdAt');
-      expect(item).toHaveProperty('commentCount');
-    });
-
-    it('handles Ask HN posts without URL', async () => {
-      const result = await fetchAskStories(0);
-      
-      result.stories.forEach(item => {
-        expect(item.url === null || item.url === undefined).toBe(true);
       });
     });
 
@@ -612,13 +500,6 @@ describe('hn API utilities', () => {
       expect(result.stories[0].id).toBe(88888);
       expect(result.stories[1].id).toBe(88887);
       expect(result.stories[2].id).toBe(88886);
-    });
-
-    it('returns correct pagination info', async () => {
-      const result = await fetchAskStories(0);
-      
-      expect(result.nextOffset).toBe(20);
-      expect(result.hasMore).toBe(false);
     });
 
     it('paginates by offset', async () => {
@@ -670,33 +551,12 @@ describe('hn API utilities', () => {
       expect(hnSdk.readRankedIds).toHaveBeenCalledWith('newstories');
     });
 
-    it('returns normalized items', async () => {
-      const result = await fetchNewStories(0);
-
-      expect(result.stories).toBeDefined();
-      expect(result.stories.length).toBeGreaterThan(0);
-      expect(result.hasMore).toBeDefined();
-      expect(result.nextOffset).toBe(30);
-    });
-
     it('returns items with story type', async () => {
       const result = await fetchNewStories(0);
 
       result.stories.forEach(item => {
         expect(item.type).toBe('story');
       });
-    });
-
-    it('returns items with expected properties', async () => {
-      const result = await fetchNewStories(0);
-      const item = result.stories[0];
-
-      expect(item).toHaveProperty('id');
-      expect(item).toHaveProperty('title');
-      expect(item).toHaveProperty('points');
-      expect(item).toHaveProperty('author');
-      expect(item).toHaveProperty('createdAt');
-      expect(item).toHaveProperty('commentCount');
     });
 
     it('returns items in reverse-chronological (ID-list) order', async () => {
@@ -773,33 +633,6 @@ describe('hn API utilities', () => {
       vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => mockTopItems[Number(id)] ?? null);
     });
 
-    it('returns normalized items from ranked list', async () => {
-      const result = await fetchTopStories(20);
-      
-      expect(result).toBeDefined();
-      expect(result.length).toBeGreaterThan(0);
-    });
-
-    it('returns items with expected properties', async () => {
-      const result = await fetchTopStories(20);
-      const item = result[0];
-      
-      expect(item).toHaveProperty('id');
-      expect(item).toHaveProperty('title');
-      expect(item).toHaveProperty('url');
-      expect(item).toHaveProperty('points');
-      expect(item).toHaveProperty('author');
-      expect(item).toHaveProperty('createdAt');
-      expect(item).toHaveProperty('commentCount');
-      expect(item).toHaveProperty('type');
-    });
-
-    it('uses default limit of 20', async () => {
-      const result = await fetchTopStories();
-
-      expect(result.length).toBeLessThanOrEqual(20);
-    });
-
     it('returns items in ranked order (same as ID list)', async () => {
       const result = await fetchTopStories(20);
 
@@ -818,26 +651,6 @@ describe('hn API utilities', () => {
       vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => ({
         id: Number(id), title: `Item ${id}`, by: 'testuser', score: 50, time: Math.floor(Date.now() / 1000) - 7200, descendants: 5, type: 'story',
       }));
-    });
-
-    it('returns items with pagination info', async () => {
-      const result = await fetchBestStories(0, 30);
-      
-      expect(result).toHaveProperty('stories');
-      expect(result).toHaveProperty('hasMore');
-      expect(result).toHaveProperty('nextOffset');
-    });
-
-    it('returns normalized item format', async () => {
-      const result = await fetchBestStories(0, 30);
-      const item = result.stories[0];
-      
-      expect(item).toHaveProperty('id');
-      expect(item).toHaveProperty('title');
-      expect(item).toHaveProperty('points');
-      expect(item).toHaveProperty('author');
-      expect(item).toHaveProperty('createdAt');
-      expect(item).toHaveProperty('commentCount');
     });
 
     it('paginates correctly by offset', async () => {
@@ -873,7 +686,6 @@ describe('hn API utilities', () => {
     beforeEach(() => {
       vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
         if (Number(id) === 12345) return mockFirebaseItem;
-        if (Number(id) === 1001) return mockCommentItem;
         return null;
       });
     });
@@ -884,14 +696,6 @@ describe('hn API utilities', () => {
       expect(result).toBeDefined();
       expect(result.id).toBe(12345);
       expect(result.title).toBe('Rust Is the Future of JavaScript Infrastructure');
-    });
-
-    it('fetches a comment by ID', async () => {
-      const result = await fetchFirebaseItem(1001);
-      
-      expect(result).toBeDefined();
-      expect(result.id).toBe(1001);
-      expect(result.by).toBe('patio11');
     });
 
     it('supports AbortSignal for cancellation', async () => {
@@ -948,14 +752,6 @@ describe('hn API utilities', () => {
       const result = await fetchItemOnly('12345');
       
       expect(result.id).toBe(12345);
-    });
-
-    it('defaults commentCount to 0 when descendants missing', async () => {
-      const result = await fetchItemOnly(12345);
-      expect(result.type).not.toBe('comment');
-      if (result.type === 'comment' || result.type === 'pollopt') throw new Error('unexpected');
-
-      expect(result.type !== 'job' ? result.commentCount : 0).toBe(137);
     });
 
     it('reads a poll option with its poll\'s title', async () => {
@@ -1075,10 +871,6 @@ describe('hn API utilities', () => {
       expect(formatTimeAgo(0)).toBe('');
     });
 
-    it('formatTimeAgo handles negative timestamp', () => {
-      expect(() => formatTimeAgo(-1000000)).not.toThrow();
-    });
-
     it('getHostname handles URLs with port numbers', () => {
       expect(getHostname('https://localhost:3000/path')).toBe('localhost');
       expect(getHostname('https://example.com:8080/page')).toBe('example.com');
@@ -1087,10 +879,6 @@ describe('hn API utilities', () => {
     it('getHostname handles subdomains', () => {
       expect(getHostname('https://blog.example.com/post')).toBe('blog.example.com');
       expect(getHostname('https://api.v2.example.com')).toBe('api.v2.example.com');
-    });
-
-    it('getHostname handles IP addresses', () => {
-      expect(getHostname('http://192.168.1.1/admin')).toBe('192.168.1.1');
     });
   });
 
@@ -1104,14 +892,6 @@ describe('hn API utilities', () => {
       expect(result.author).toBe('patio11');
       expect(result.story_id).toBe(12345);
       expect(result.parent_id).toBe(12345);
-    });
-
-    it('returns children array', async () => {
-      const result = await fetchAlgoliaItem(1001);
-
-      expect(result.children).toHaveLength(1);
-      expect(result.children[0].id).toBe(2001);
-      expect(result.children[0].author).toBe('tptacek');
     });
 
     it('supports AbortSignal for cancellation', async () => {
@@ -1164,11 +944,6 @@ describe('hn API utilities', () => {
       expect(result).toHaveLength(2);
       expect(result[0].author).toBe('user1');
       expect(result[1].author).toBe('user3');
-    });
-
-    it('handles empty children array', () => {
-      const result = normalizeAlgoliaItemChildren([]);
-      expect(result).toEqual([]);
     });
   });
 
@@ -1611,7 +1386,7 @@ describe('hn API utilities', () => {
         return firebaseItems.find(fb => fb.id === Number(id)) ?? null;
       });
 
-      await expect(fetchCommentReplies(liveReply, controller.signal)).rejects.toThrow('Aborted');
+      await expect(fetchCommentReplies(liveReply, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 

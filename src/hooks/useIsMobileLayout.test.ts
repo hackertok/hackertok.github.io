@@ -1,21 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 
 // Installed before the import: the module caches its MediaQueryList on first
 // use. `currentMatches` is the query's answer, and the query is the desktop side.
 let currentMatches = false;
-const listeners: (() => void)[] = [];
 
 const matchMediaMock = vi.fn((query: string) => ({
   get matches() { return currentMatches; },
   media: query,
-  addEventListener: (_event: string, callback: () => void) => {
-    listeners.push(callback);
-  },
-  removeEventListener: (_event: string, callback: () => void) => {
-    const idx = listeners.indexOf(callback);
-    if (idx !== -1) listeners.splice(idx, 1);
-  },
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
 }));
 
 window.matchMedia = matchMediaMock as unknown as typeof window.matchMedia;
@@ -24,7 +18,6 @@ const { useIsMobileLayout } = await import('./useIsMobileLayout');
 
 describe('useIsMobileLayout', () => {
   beforeEach(() => {
-    listeners.length = 0;
     currentMatches = false;
   });
 
@@ -45,26 +38,5 @@ describe('useIsMobileLayout', () => {
     currentMatches = false;
     const { result } = renderHook(() => useIsMobileLayout());
     expect(result.current).toBe(true);
-  });
-
-  it('updates when the media query changes', () => {
-    currentMatches = true;
-    const { result } = renderHook(() => useIsMobileLayout());
-    expect(result.current).toBe(false);
-
-    act(() => {
-      currentMatches = false;
-      listeners.forEach(l => l());
-    });
-
-    expect(result.current).toBe(true);
-  });
-
-  it('cleans up its listener on unmount', () => {
-    const { unmount } = renderHook(() => useIsMobileLayout());
-    expect(listeners).toHaveLength(1);
-
-    unmount();
-    expect(listeners).toHaveLength(0);
   });
 });

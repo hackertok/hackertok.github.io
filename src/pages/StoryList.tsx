@@ -52,7 +52,6 @@ export function StoryList({ type }: { type: FeedType }) {
   return (
     <InfiniteStoryListPage
       result={{ stories, loading, error, hasMore, loadMore }}
-      resetKey={type}
       storyCardExtras={{ listType: type, onBeforeNavigate: saveSessionState }}
     />
   );

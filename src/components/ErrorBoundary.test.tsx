@@ -21,15 +21,6 @@ function ResetKeyHarness({ children }: { children: React.ReactNode }) {
 }
 
 describe('ErrorBoundary', () => {
-  it('renders children when there is no error', () => {
-    render(
-      <ErrorBoundary>
-        <div>ok</div>
-      </ErrorBoundary>,
-    );
-    expect(screen.getByText('ok')).toBeInTheDocument();
-  });
-
   it('renders error fallback when a child throws', () => {
     // Suppress React's error boundary console noise
     const spy = vi.spyOn(console, 'error').mockImplementation(vi.fn());

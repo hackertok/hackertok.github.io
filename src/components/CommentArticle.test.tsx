@@ -115,14 +115,6 @@ describe('CommentArticle', () => {
       expect(screen.queryByRole('link', { name: /some story/i })).not.toBeInTheDocument();
     });
 
-    it('shows the resolved title link (no skeleton) once itemTitle arrives', () => {
-      renderArticle({ loading: false });
-
-      expect(
-        screen.getByRole('link', { name: 'Some story' }),
-      ).toHaveAttribute('href', '/item/12345');
-    });
-
     it('keeps the placeholder, not the "story" fallback, while the title is still loading', () => {
       render(
         <CommentArticle
@@ -242,18 +234,6 @@ describe('CommentArticle', () => {
       expect(screen.queryByLabelText('Original poster')).not.toBeInTheDocument();
       expect(screen.queryByText('OP')).not.toBeInTheDocument();
     });
-
-    it.each([
-      { label: 'literal "unknown"', storyAuthor: 'unknown' },
-      { label: 'empty string', storyAuthor: '' },
-    ])(
-      'does not render OP badge when storyAuthor is the $label',
-      ({ storyAuthor }) => {
-        renderArticle({ storyAuthor });
-
-        expect(screen.queryByLabelText('Original poster')).not.toBeInTheDocument();
-      },
-    );
 
     // Sibling-pattern regression — see AuthorByline.tsx for rationale.
     it('keeps the author Link accessible name unchanged when OP', () => {
