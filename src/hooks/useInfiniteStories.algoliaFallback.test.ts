@@ -253,3 +253,66 @@ describe('useInfiniteStories – Ask/Show Algolia fallback', () => {
     expect(result.current.stories.length).toBeGreaterThan(2);
   });
 });
+
+describe('useInfiniteStories – top feed earlier days', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    clearFeedCache();
+    clearListSessionState('top');
+    __resetFetchCachesForTests();
+    vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue([1, 2, 3]);
+    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => makeFirebaseItem(Number(id)));
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    clearFeedCache();
+    clearListSessionState('top');
+    vi.restoreAllMocks();
+  });
+
+  it('follows the front page with the first earlier day that has unseen stories', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce(mockAlgoliaResponse([]))
+      .mockResolvedValueOnce(mockAlgoliaResponse([makeAlgoliaHit(2, 'story', 300), makeAlgoliaHit(1001, 'story')]));
+    const { result } = renderHook(() => useInfiniteStories('top'));
+
+    await act(() => result.current.loadMore());
+    expect(result.current.stories.map(s => s.id)).toEqual([1, 2, 3]);
+
+    await act(() => result.current.loadMore());
+    expect(result.current.stories.map(s => s.id)).toEqual([1, 2, 3, 1001]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('tries up to 5 empty days per loadMore call', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(mockAlgoliaResponse([]));
+    const { result } = renderHook(() => useInfiniteStories('top'));
+
+    await act(() => result.current.loadMore());
+    await act(() => result.current.loadMore());
+
+    expect(result.current.stories).toHaveLength(3);
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(result.current.hasMore).toBe(true);
+  });
+
+  it('resumes a saved session at the next earlier day', async () => {
+    const { result: first } = renderHook(() => useInfiniteStories('top'));
+    globalThis.fetch = vi.fn().mockResolvedValue(mockAlgoliaResponse([makeAlgoliaHit(1001, 'story')]));
+    await act(() => first.current.loadMore());
+    await act(() => first.current.loadMore());
+    act(() => first.current.saveSessionState(0));
+
+    globalThis.fetch = vi.fn().mockResolvedValue(mockAlgoliaResponse([makeAlgoliaHit(1002, 'story')]));
+    const { result } = renderHook(() => useInfiniteStories('top'));
+    expect(result.current.isFromSession).toBe(true);
+    await act(() => result.current.loadMore());
+
+    expect(result.current.stories.map(s => s.id)).toEqual([1, 2, 3, 1001, 1002]);
+    const url = new URL(vi.mocked(fetch).mock.calls[0]?.[0] as string);
+    const twoDaysAgo = Math.floor(Date.now() / 1000) - 2 * 86400;
+    expect(Number(url.searchParams.get('numericFilters')?.match(/created_at_i>=(\d+)/)?.[1])).toBeLessThanOrEqual(twoDaysAgo);
+  });
+});

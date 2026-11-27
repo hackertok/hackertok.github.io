@@ -161,6 +161,18 @@ describe('useInfiniteStories', () => {
     expect(getCachedFeed('top')).toMatchObject({ timestamp: hourAgo, isStale: true });
   });
 
+  it.each<FeedType>(['best', 'newest'])('stops at the end of the %s list', async (type) => {
+    vi.mocked(hnSdk.readRankedIds).mockResolvedValue(rankedIds.slice(0, 40));
+    const { result } = renderHook(() => useInfiniteStories(type));
+
+    await act(() => result.current.loadMore());
+    expect(result.current.hasMore).toBe(true);
+    await act(() => result.current.loadMore());
+
+    expect(result.current.stories).toHaveLength(40);
+    expect(result.current.hasMore).toBe(false);
+  });
+
   describe('revalidation', () => {
     function seedStaleFeed(type: FeedType) {
       // A cached order the live ranking (1, 2, 3, …) has moved on from.
