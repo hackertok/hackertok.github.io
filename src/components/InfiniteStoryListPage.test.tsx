@@ -37,7 +37,6 @@ function makeResult(
 
 function renderPage(props: {
   result: InfiniteStoryListResult;
-  resetKey?: string;
   storyCardExtras?: StoryCardExtras;
   emptyTitle?: string;
   failTitle?: string;
@@ -52,7 +51,6 @@ function renderPage(props: {
         element={
           <InfiniteStoryListPage
             result={props.result}
-            resetKey={props.resetKey ?? 'test-key'}
             storyCardExtras={props.storyCardExtras}
             emptyTitle={props.emptyTitle}
             failTitle={props.failTitle}
@@ -296,7 +294,6 @@ describe('InfiniteStoryListPage', () => {
       return (
         <InfiniteStoryListPage
           result={{ stories, loading, error: null, hasMore: stories.length < 4, loadMore }}
-          resetKey="test-key"
         />
       );
     }

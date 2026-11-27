@@ -33,11 +33,6 @@ export interface StoryCardExtras {
 
 interface InfiniteStoryListPageProps {
   result: InfiniteStoryListResult;
-  /**
-   * Stable primitive key for context changes. Resets cascade state
-   * so the new feed gets a fresh cold-load entrance.
-   */
-  resetKey: string;
   storyCardExtras?: StoryCardExtras;
   /** Empty-state title. Omit to skip empty rendering. */
   emptyTitle?: string;
@@ -52,14 +47,13 @@ const PRELOAD_MARGIN_PX = 200;
  */
 export function InfiniteStoryListPage({
   result,
-  resetKey,
   storyCardExtras,
   emptyTitle,
   failTitle = 'Failed to load items',
 }: InfiniteStoryListPageProps) {
   const { stories, loading, error, hasMore, loadMore } = result;
 
-  const getSlot = useStaggerCascadeSlots(loading, stories.length, resetKey);
+  const getSlot = useStaggerCascadeSlots(loading, stories.length);
 
   const { ref, inView } = useInView({
     threshold: 0,

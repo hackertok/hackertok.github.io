@@ -36,7 +36,6 @@ export function UserSubmissions() {
   return (
     <InfiniteStoryListPage
       result={result}
-      resetKey={username}
       storyCardExtras={{ fromUser: username, onBeforeNavigate: saveScrollPosition }}
       emptyTitle={formatNoUserSubmissionsTitle(username)}
       failTitle="Failed to load submissions"

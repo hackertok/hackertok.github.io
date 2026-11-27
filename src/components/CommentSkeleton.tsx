@@ -61,6 +61,30 @@ export function CommentSkeletonTree({ count = 12 }: CommentSkeletonTreeProps) {
   );
 }
 
+/**
+ * Skeleton matching `CommentArticle`'s shape. Inner content only: the
+ * consumer supplies the chrome. Takes the same `articleClassName`.
+ */
+export function CommentArticleSkeleton({ articleClassName = 'mb-4' }: { articleClassName?: string }) {
+  return (
+    <div className="animate-pulse">
+      <article className={`${articleClassName} pb-4 border-b border-border`}>
+        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 mb-3 min-h-5">
+          <div className="h-3.5 bg-skeleton rounded w-20" />
+          <div className="h-3.5 bg-skeleton rounded w-16" />
+          <div className="h-3.5 bg-skeleton rounded w-12" />
+          <div className="h-3.5 bg-skeleton rounded w-40" />
+        </div>
+        <div className="space-y-2">
+          <div className="h-4 bg-skeleton rounded w-full" />
+          <div className="h-4 bg-skeleton rounded w-3/4" />
+        </div>
+      </article>
+      <CommentSkeletonTree count={6} />
+    </div>
+  );
+}
+
 // Inner content ONLY (chrome from consumer).
 // Title h-6 ≤ real h1 to prevent PageStage contraction.
 export function ItemDetailSkeleton() {

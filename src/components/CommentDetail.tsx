@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router';
 import { useCommentDetail } from '../hooks/useCommentDetail';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useAutoRetry } from '../hooks/useAutoRetry';
-import { CommentSkeletonTree } from './CommentSkeleton';
+import { CommentArticleSkeleton } from './CommentSkeleton';
 import { CommentArticle } from './CommentArticle';
 import { PageStage } from './PageStage';
 import { StateView } from './StateView';
@@ -18,27 +18,6 @@ interface CommentDetailProps {
     createdAt: number;
     parentId?: number;
   };
-}
-
-/** Skeleton matching CommentArticle's shape. Chrome stays with the parent. */
-function CommentDetailSkeleton() {
-  return (
-    <div className="animate-pulse">
-      <article className="mb-6 pb-4 border-b border-border">
-        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 mb-3 min-h-5">
-          <div className="h-3.5 bg-skeleton rounded w-20" />
-          <div className="h-3.5 bg-skeleton rounded w-16" />
-          <div className="h-3.5 bg-skeleton rounded w-12" />
-          <div className="h-3.5 bg-skeleton rounded w-40" />
-        </div>
-        <div className="space-y-2">
-          <div className="h-4 bg-skeleton rounded w-full" />
-          <div className="h-4 bg-skeleton rounded w-3/4" />
-        </div>
-      </article>
-      <CommentSkeletonTree count={6} />
-    </div>
-  );
 }
 
 export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
@@ -83,7 +62,7 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
   if (error && !comment) {
     return (
       <div className="max-w-6xl mx-auto px-4 md:px-8 lg:px-16 xl:px-24 py-4">
-        <CommentDetailSkeleton />
+        <CommentArticleSkeleton articleClassName="mb-6" />
       </div>
     );
   }
@@ -95,7 +74,7 @@ export function CommentDetail({ commentId, initialData }: CommentDetailProps) {
           'transitioning' so progressive rendering shows the seeded
           byline + text without a skeleton flash. Cold load (no
           initialData) still skeletons normally. */}
-      <PageStage loading={!comment} skeleton={<CommentDetailSkeleton />}>
+      <PageStage loading={!comment} skeleton={<CommentArticleSkeleton articleClassName="mb-6" />}>
         {comment && (
           <CommentArticle
             comment={comment}

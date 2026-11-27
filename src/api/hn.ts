@@ -128,32 +128,38 @@ export async function fetchTopStories(limit = 20): Promise<StoryItem[]> {
   return stories;
 }
 
-// Algolia's front_page tag only shows the CURRENT front page, not historical.
-// So we fetch stories created on `daysAgo` sorted by points (best approximation).
-export async function fetchFrontPageForDay(daysAgo = 1): Promise<StoryItem[]> {
+/**
+ * One day of stories from Algolia matching `tags`, most points first. Used
+ * where the Firebase ranked lists run out.
+ */
+async function fetchAlgoliaDay(
+  tags: string,
+  daysAgo: number,
+  label: string,
+  keep: (hit: AlgoliaHit) => boolean = () => true,
+): Promise<StoryItem[]> {
   const { start, end } = getDayRange(daysAgo);
-  
-  // story,poll is an OR group: polls are tagged `poll`, not `story`. It still
-  // leaves out jobs and comments; relevance sort factors in points.
-  const url = `${ALGOLIA_API}/search?tags=(story,poll)&numericFilters=created_at_i>=${start},created_at_i<${end}&hitsPerPage=30`;
-  
+  const url = `${ALGOLIA_API}/search?tags=${tags}&numericFilters=created_at_i>=${start},created_at_i<${end}&hitsPerPage=30`;
+
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to fetch front page stories: ${response.status}`);
+    throw new Error(`Failed to fetch ${label} stories: ${response.status}`);
   }
-  
+
   const data = await response.json() as AlgoliaSearchResponse;
-  
-  const filtered = data.hits.filter((hit) => {
-    if (hit.type === 'job' || hit._tags?.includes('job')) {
-      return false;
-    }
-    return !isHiringThread(hit.title);
-  });
-  
-  const sorted = filtered.sort((a, b) => (b.points || 0) - (a.points || 0));
-  
-  return sorted.map(normalizeAlgoliaHit);
+  return data.hits
+    .filter(keep)
+    .sort((a, b) => (b.points || 0) - (a.points || 0))
+    .map(normalizeAlgoliaHit);
+}
+
+// Algolia's front_page tag only shows the CURRENT front page, not historical.
+// So we fetch stories created on `daysAgo` sorted by points (best approximation).
+// story,poll is an OR group: polls are tagged `poll`, not `story`. It still
+// leaves out jobs and comments; relevance sort factors in points.
+export function fetchFrontPageForDay(daysAgo = 1): Promise<StoryItem[]> {
+  return fetchAlgoliaDay('(story,poll)', daysAgo, 'front page', hit =>
+    hit.type !== 'job' && !hit._tags?.includes('job') && !isHiringThread(hit.title));
 }
 
 export function fetchBestStories(offset = 0, limit = 30) {
@@ -250,35 +256,13 @@ export function fetchAskStories(offset = 0) {
   return fetchRankedStories('askstories', offset, { limit: 20, type: 'ask', excludeHiring: true });
 }
 
-/**
- * Fetch stories for a specific day from Algolia, filtered by tag.
- * Used for historical fallback when Firebase ranked lists are exhausted.
- */
-export async function fetchTaggedStoriesForDay(
+/** One day of Ask HN or Show HN stories from Algolia. */
+export function fetchTaggedStoriesForDay(
   tag: 'ask_hn' | 'show_hn',
   daysAgo: number,
-  excludeTitles?: string[],
+  excludeHiring = false,
 ): Promise<StoryItem[]> {
-  const { start, end } = getDayRange(daysAgo);
-  const url = `${ALGOLIA_API}/search?tags=story,${tag}&numericFilters=created_at_i>=${start},created_at_i<${end}&hitsPerPage=30`;
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${tag} stories: ${response.status}`);
-  }
-
-  const data = await response.json() as AlgoliaSearchResponse;
-
-  let hits = data.hits;
-  if (excludeTitles && excludeTitles.length > 0) {
-    hits = hits.filter((hit) => {
-      const title = (hit.title || '').toLowerCase();
-      return !excludeTitles.some(t => title.includes(t));
-    });
-  }
-
-  const sorted = hits.sort((a, b) => (b.points || 0) - (a.points || 0));
-  return sorted.map(normalizeAlgoliaHit);
+  return fetchAlgoliaDay(`story,${tag}`, daysAgo, tag, excludeHiring ? hit => !isHiringThread(hit.title) : undefined);
 }
 
 const HIRING_EXCLUDE_TITLES = [
@@ -292,7 +276,7 @@ function isHiringThread(title: string | undefined): boolean {
 }
 
 export function fetchAskStoriesForDay(daysAgo: number): Promise<StoryItem[]> {
-  return fetchTaggedStoriesForDay('ask_hn', daysAgo, HIRING_EXCLUDE_TITLES);
+  return fetchTaggedStoriesForDay('ask_hn', daysAgo, true);
 }
 
 export function fetchShowStoriesForDay(daysAgo: number): Promise<StoryItem[]> {

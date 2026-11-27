@@ -21,30 +21,19 @@ export interface CascadeSlot {
  * or `appendIdx` (per-batch infinite-scroll cascade).
  *
  * `batchStart` resets to 0 per batch so appended cards don't inherit
- * the prior batch's cap. `resetKey` collapses state on context change
- * (MUST be a primitive). `StoryCard` snapshots its slot at mount.
+ * the prior batch's cap. `StoryCard` snapshots its slot at mount. Callers
+ * remount on context change (the list pages are keyed by feed, domain and
+ * user), so state never carries over to a new feed.
  */
 export function useStaggerCascadeSlots(
   loading: boolean,
   count: number,
-  resetKey?: unknown,
 ): (index: number) => CascadeSlot {
   const [initialBoundary, setInitialBoundary] = useState<number | null>(null);
   const [batchStart, setBatchStart] = useState(0);
   const wasLoadingRef = useRef(loading);
-  const resetKeyRef = useRef(resetKey);
 
   useEffect(() => {
-    if (resetKeyRef.current !== resetKey) {
-      resetKeyRef.current = resetKey;
-      setInitialBoundary(null);
-      setBatchStart(0);
-      // Re-baseline the loading edge so the next false→true on the
-      // new context captures batchStart cleanly.
-      wasLoadingRef.current = loading;
-      return;
-    }
-
     if (initialBoundary === null && !loading && count > 0) {
       setInitialBoundary(count);
     }
@@ -54,7 +43,7 @@ export function useStaggerCascadeSlots(
     if (!wasLoading && loading) {
       setBatchStart(count);
     }
-  }, [loading, count, initialBoundary, resetKey]);
+  }, [loading, count, initialBoundary]);
 
   return useCallback(
     (index: number): CascadeSlot => {

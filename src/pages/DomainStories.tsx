@@ -41,7 +41,6 @@ export function DomainStories() {
   return (
     <InfiniteStoryListPage
       result={result}
-      resetKey={domain}
       storyCardExtras={{ fromDomain: domain, onBeforeNavigate: saveScrollPosition }}
       emptyTitle={formatNoSubmissionsTitle(domain)}
     />

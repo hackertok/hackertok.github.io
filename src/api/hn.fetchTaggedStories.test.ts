@@ -67,7 +67,7 @@ describe('fetchTaggedStoriesForDay', () => {
     expect(result[2].points).toBe(10);
   });
 
-  it('filters titles when excludeTitles is provided', async () => {
+  it('filters hiring threads with excludeHiring', async () => {
     const hits = [
       makeHit(1, 'Ask HN: Who is hiring? (May 2026)', 300, ['ask_hn']),
       makeHit(2, 'Ask HN: Real question', 100, ['ask_hn']),
@@ -78,16 +78,13 @@ describe('fetchTaggedStoriesForDay', () => {
       json: async () => mockAlgoliaResponse(hits),
     });
 
-    const result = await fetchTaggedStoriesForDay('ask_hn', 1, [
-      'who is hiring',
-      'who wants to be hired',
-    ]);
+    const result = await fetchTaggedStoriesForDay('ask_hn', 1, true);
 
     expect(result).toHaveLength(1);
     expect(result[0].title).toBe('Ask HN: Real question');
   });
 
-  it('does not filter when excludeTitles is empty', async () => {
+  it('does not filter without excludeHiring', async () => {
     const hits = [
       makeHit(1, 'Show HN: Something', 100, ['show_hn']),
       makeHit(2, 'Show HN: Who is hiring helper', 50, ['show_hn']),
