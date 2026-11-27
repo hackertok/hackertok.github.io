@@ -84,15 +84,14 @@ export function useInfiniteStories(type: FeedType = 'top') {
     initialState.sessionState?.hasMore ?? true
   );
   
+  const session = initialState.sessionState;
+  // A session past position 200 without a phase is a corrupt blob: start over.
+  const isCorruptSession = !!session && !session.phase && session.position > 200;
   // For top: 0 = current front page (Firebase), 1+ = days ago (Algolia)
   // For best: tracks offset into the list
-  // Safety fallback: if phase is missing but position > 200, it's a corrupt session blob
-  const safePosition = (() => {
-    const session = initialState.sessionState;
-    if (session && !session.phase && session.position > 200) return 0;
-    return session?.position ?? 0;
-  })();
-  const positionRef = useRef(safePosition);
+  const positionRef = useRef(isCorruptSession ? 0 : session?.position ?? 0);
+  // For ask/show: tracks whether we've exhausted Firebase and moved to Algolia
+  const phaseRef = useRef<'firebase' | 'algolia'>(isCorruptSession ? 'firebase' : session?.phase ?? 'firebase');
   const seenIdsRef = useRef<Set<number>>(
     new Set(initialState.sessionState?.seenIds)
   );
@@ -107,15 +106,6 @@ export function useInfiniteStories(type: FeedType = 'top') {
   useLayoutEffect(() => {
     storiesRef.current = stories;
   }, [stories]);
-  // For ask/show: tracks whether we've exhausted Firebase and moved to Algolia
-  const phaseRef = useRef<'firebase' | 'algolia'>(
-    (() => {
-      const session = initialState.sessionState;
-      if (!session) return 'firebase';
-      if (!session.phase && session.position > 200) return 'firebase';
-      return session.phase ?? 'firebase';
-    })()
-  );
 
   const loadMore = useCallback(async () => {
     if (loading || !hasMore || inFlightRef.current) return;
@@ -136,187 +126,92 @@ export function useInfiniteStories(type: FeedType = 'top') {
       return kept;
     };
 
+    const takeUnseen = (page: StoryItem[]) => page.filter(story => {
+      if (seenIdsRef.current.has(story.id)) return false;
+      seenIdsRef.current.add(story.id);
+      return true;
+    });
+
+    // A refresh rebuilds the list even with nothing new on it: the cached
+    // stories past the kept ones are no longer in seenIds, so the next page
+    // would repeat them.
+    const showStories = (kept: StoryItem[] | null, unseen: StoryItem[]) => {
+      if (kept) {
+        setStories([...kept, ...unseen]);
+      } else if (unseen.length > 0) {
+        setStories(prev => [...prev, ...unseen]);
+      }
+    };
+
+    // One page of a Firebase ranked list, from positionRef. Resolves to the
+    // list's hasMore, or null when a newer request took over.
+    const loadRankedPage = async (
+      fetchPage: (offset: number) => Promise<{ stories: StoryItem[]; nextOffset: number; hasMore: boolean }>,
+    ) => {
+      const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
+      const page = await fetchPage(positionRef.current);
+
+      if (versionRef.current !== currentVersion) return null;
+      if (isRevalidating && page.stories.length === 0) throw emptyRefreshError(type);
+
+      const kept = isRevalidating ? startRevalidation() : null;
+      const unseen = takeUnseen(page.stories);
+
+      // Fresh once the first page arrives, even if every story on it was
+      // kept: the swipe viewer calls loadMore for as long as isFromCache is set.
+      if (positionRef.current === 0 && page.stories.length > 0) {
+        setCachedFeed(type, page.stories);
+        setIsFromCache(false);
+        hasStaleCacheRef.current = false;
+      }
+
+      positionRef.current = page.nextOffset;
+      showStories(kept, unseen);
+      return page.hasMore;
+    };
+
+    // Walks back a day at a time from positionRef (days ago) until a day has
+    // unseen stories, trying at most maxEmptyDays.
+    const loadDays = async (fetchDay: (daysAgo: number) => Promise<StoryItem[]>, maxEmptyDays: number) => {
+      let unseen: StoryItem[] = [];
+      for (let attempts = 0; unseen.length === 0 && attempts < maxEmptyDays && positionRef.current < 365; attempts++) {
+        const day = await fetchDay(positionRef.current);
+        if (versionRef.current !== currentVersion) return;
+        unseen = takeUnseen(day);
+        positionRef.current += 1;
+      }
+
+      if (unseen.length === 0 && positionRef.current >= 365) {
+        setHasMore(false);
+      } else {
+        showStories(null, unseen);
+      }
+    };
+
     try {
       if (type === 'top') {
-        let newStories: StoryItem[] = [];
-        // Set once a refresh's page arrives, which then rebuilds the list even
-        // with nothing new on it: the cached stories past the kept ones are no
-        // longer in seenIds, so the next page would repeat them.
-        let kept: StoryItem[] | null = null;
-        const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
-        
         if (positionRef.current === 0) {
-          const frontPage = await fetchTopStories(20);
-          
-          if (versionRef.current !== currentVersion) return;
-          if (isRevalidating && frontPage.length === 0) throw emptyRefreshError(type);
-          
-          if (isRevalidating) {
-            kept = startRevalidation();
-          }
-          
-          newStories = frontPage.filter(story => {
-            if (seenIdsRef.current.has(story.id)) {
-              return false;
-            }
-            seenIdsRef.current.add(story.id);
-            return true;
-          });
-          
-          // Fresh once the page arrives, even if every story on it was kept:
-          // the swipe viewer calls loadMore for as long as isFromCache is set.
-          if (frontPage.length > 0) {
-            setCachedFeed(type, frontPage);
-            setIsFromCache(false);
-            hasStaleCacheRef.current = false;
-          }
-          
           // Next load will be yesterday. By design, today's stories ranked
           // past the top 20 are never shown: the feed is HN's front page,
           // then each earlier (UTC) day's front page from Algolia.
-          positionRef.current = 1;
+          await loadRankedPage(async () => ({ stories: await fetchTopStories(20), nextOffset: 1, hasMore: true }));
         } else {
-          let attempts = 0;
-          const maxAttempts = 5; // Try up to 5 days if current day has no stories
-
-          while (newStories.length === 0 && attempts < maxAttempts && positionRef.current < 365) {
-            const dayStories = await fetchFrontPageForDay(positionRef.current);
-            
-            if (versionRef.current !== currentVersion) return;
-            
-            const uniqueStories = dayStories.filter(story => {
-              if (seenIdsRef.current.has(story.id)) {
-                return false;
-              }
-              seenIdsRef.current.add(story.id);
-              return true;
-            });
-
-            newStories = uniqueStories;
-            positionRef.current += 1;
-            attempts += 1;
-          }
-        }
-
-        if (versionRef.current !== currentVersion) return;
-
-        if (newStories.length === 0 && positionRef.current >= 365) {
-          setHasMore(false);
-        } else if (kept) {
-          setStories([...kept, ...newStories]);
-        } else if (newStories.length > 0) {
-          setStories(prev => [...prev, ...newStories]);
+          await loadDays(fetchFrontPageForDay, 5);
         }
       } else if (type === 'best' || type === 'newest') {
-        // Offset-based pagination via Firebase /beststories or /newstories.
-        const isRevalidatingBest = hasStaleCacheRef.current && positionRef.current === 0;
-        const fetchFn = type === 'best' ? fetchBestStories : fetchNewStories;
-        const result = await fetchFn(positionRef.current, 30);
-        
-        if (versionRef.current !== currentVersion) return;
-        if (isRevalidatingBest && result.stories.length === 0) throw emptyRefreshError(type);
-        
-        // As in the top branch.
-        const kept = isRevalidatingBest ? startRevalidation() : null;
-        
-        const uniqueStories = result.stories.filter(story => {
-          if (seenIdsRef.current.has(story.id)) {
-            return false;
-          }
-          seenIdsRef.current.add(story.id);
-          return true;
-        });
-
-        // By the fetched page, as in the top branch.
-        if (positionRef.current === 0 && result.stories.length > 0) {
-          setCachedFeed(type, result.stories);
-          setIsFromCache(false);
-          hasStaleCacheRef.current = false;
+        const fetchPage = type === 'best' ? fetchBestStories : fetchNewStories;
+        const listHasMore = await loadRankedPage(offset => fetchPage(offset, 30));
+        if (listHasMore !== null) setHasMore(listHasMore);
+      } else if (phaseRef.current === 'firebase') {
+        const listHasMore = await loadRankedPage(type === 'show' ? fetchShowStories : fetchAskStories);
+        // Firebase exhausted: carry on from Algolia, which has more, starting
+        // with yesterday.
+        if (listHasMore === false) {
+          phaseRef.current = 'algolia';
+          positionRef.current = 1;
         }
-
-        positionRef.current = result.nextOffset;
-        setHasMore(result.hasMore);
-        
-        if (kept) {
-          setStories([...kept, ...uniqueStories]);
-        } else if (uniqueStories.length > 0) {
-          setStories(prev => [...prev, ...uniqueStories]);
-        }
-      } else if (type === 'show' || type === 'ask') {
-        const isRevalidating = hasStaleCacheRef.current && positionRef.current === 0;
-
-        if (phaseRef.current === 'firebase') {
-          const fetchFn = type === 'show' ? fetchShowStories : fetchAskStories;
-          const result = await fetchFn(positionRef.current);
-
-          if (versionRef.current !== currentVersion) return;
-          if (isRevalidating && result.stories.length === 0) throw emptyRefreshError(type);
-
-          // As in the top branch.
-          const kept = isRevalidating ? startRevalidation() : null;
-
-          const uniqueStories = result.stories.filter(story => {
-            if (seenIdsRef.current.has(story.id)) {
-              return false;
-            }
-            seenIdsRef.current.add(story.id);
-            return true;
-          });
-
-          // By the fetched page, as in the top branch.
-          if (positionRef.current === 0 && result.stories.length > 0) {
-            setCachedFeed(type, result.stories);
-            setIsFromCache(false);
-            hasStaleCacheRef.current = false;
-          }
-
-          positionRef.current = result.nextOffset;
-
-          // Boundary: Firebase exhausted → transition to Algolia
-          if (!result.hasMore) {
-            phaseRef.current = 'algolia';
-            positionRef.current = 1; // Start with yesterday
-            // Do NOT call setHasMore(false) — Algolia has more content
-          }
-
-          if (kept) {
-            setStories([...kept, ...uniqueStories]);
-          } else if (uniqueStories.length > 0) {
-            setStories(prev => [...prev, ...uniqueStories]);
-          }
-        } else {
-          // Algolia phase: fetch day-by-day
-          const fetchDayFn = type === 'ask' ? fetchAskStoriesForDay : fetchShowStoriesForDay;
-          let newStories: StoryItem[] = [];
-          let attempts = 0;
-          const maxAttempts = 14;
-
-          while (newStories.length === 0 && attempts < maxAttempts && positionRef.current < 365) {
-            const dayStories = await fetchDayFn(positionRef.current);
-
-            if (versionRef.current !== currentVersion) return;
-
-            const uniqueStories = dayStories.filter(story => {
-              if (seenIdsRef.current.has(story.id)) {
-                return false;
-              }
-              seenIdsRef.current.add(story.id);
-              return true;
-            });
-
-            newStories = uniqueStories;
-            positionRef.current += 1;
-            attempts += 1;
-          }
-
-          if (versionRef.current !== currentVersion) return;
-
-          if (newStories.length === 0 && positionRef.current >= 365) {
-            setHasMore(false);
-          } else if (newStories.length > 0) {
-            setStories(prev => [...prev, ...newStories]);
-          }
-        }
+      } else {
+        await loadDays(type === 'ask' ? fetchAskStoriesForDay : fetchShowStoriesForDay, 14);
       }
     } catch (err) {
       // Stale-response guard: only surface errors from the current request.
