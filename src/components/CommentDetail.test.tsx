@@ -23,7 +23,7 @@ describe('CommentDetail', () => {
   });
 
   // Content rendering (author, text, parent link, title link, replies) is tested
-  // in FullScreenComment.test.tsx. These tests focus on CommentDetail-specific behavior:
+  // in CommentArticle.test.tsx and FullScreenComment.test.tsx. These tests focus on CommentDetail-specific behavior:
   // routing integration, progressive rendering, skeleton, and document title.
 
   it('shows skeleton while loading', () => {

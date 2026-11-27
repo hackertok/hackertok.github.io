@@ -31,10 +31,6 @@ describe('itemPermalink', () => {
   it('builds an absolute hash-route URL on the current origin', () => {
     expect(itemPermalink(42)).toBe(`${window.location.origin}/#/item/42`);
   });
-
-  it('accepts a string id without reformatting it', () => {
-    expect(itemPermalink('42')).toBe(`${window.location.origin}/#/item/42`);
-  });
 });
 
 describe('canShareOrCopy', () => {

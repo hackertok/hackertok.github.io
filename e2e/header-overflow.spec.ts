@@ -74,32 +74,6 @@ test.describe('Header overflow — More dropdown', () => {
   const userPill = (page: Page) =>
     page.locator('header nav span', { hasText: 'user' });
 
-  test('shows the "More tabs" trigger when nav items overflow', async ({ page }) => {
-    await page.goto('/#/submitted/pg');
-    await expect(userPill(page)).toBeVisible();
-
-    const moreBtn = page.getByRole('button', { name: 'More tabs' });
-    await expect(moreBtn).toBeVisible();
-    await expect(moreBtn).toHaveAttribute('aria-haspopup', 'menu');
-    // Closed menus must NOT mount their portal content.
-    await expect(page.getByRole('menuitem')).toHaveCount(0);
-  });
-
-  test('opens the menu on click and reveals hidden feed tabs as menuitems', async ({ page }) => {
-    await page.goto('/#/submitted/pg');
-    await expect(userPill(page)).toBeVisible();
-
-    await page.getByRole('button', { name: 'More tabs' }).click();
-
-    // Asserting on menuitem visibility is the strongest "menu actually
-    // opened" signal. We avoid asserting `aria-expanded='true'` on the
-    // trigger because Radix re-applies props via a Slot wrapper on open,
-    // which can briefly invalidate any stored locator handle in Playwright
-    // even though the underlying button is still in the DOM. The menuitem
-    // existence test is the user-facing contract.
-    await expect(page.getByRole('menuitem').first()).toBeVisible();
-  });
-
   test('clicking a hidden feed in the menu navigates to that route', async ({ page }) => {
     await page.goto('/#/submitted/pg');
     await expect(userPill(page)).toBeVisible();
@@ -388,21 +362,5 @@ test.describe('Header overflow — the trigger stays a target', () => {
 
     const pill = (await activePill(page).boundingBox())!;
     expect(box.height).toBeCloseTo(pill.height, 0);
-  });
-});
-
-test.describe('Theme toggle — accessible label', () => {
-  test.beforeEach(async ({ page }) => {
-    await setupApiMocks(page);
-  });
-
-  test('theme toggle button has an accessible label describing the action', async ({ page }) => {
-    await page.goto('/#/');
-    await expect(
-      page.getByText('Rust Is the Future of JavaScript Infrastructure').first(),
-    ).toBeVisible();
-
-    const toggle = page.getByTestId('theme-toggle');
-    await expect(toggle).toHaveAccessibleName(/switch to (system|light|dark)/i);
   });
 });

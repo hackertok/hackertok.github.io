@@ -18,7 +18,6 @@ interface UseItemWithCommentsOptions {
 interface UseItemWithCommentsResult {
   item: Item | null;
   comments: Comment[] | null;
-  loading: boolean;
   itemLoading: boolean;
   commentsLoading: boolean;
   error: string | null;
@@ -346,9 +345,6 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
     };
   }, [isOnline, itemId, applyThread, applyThreadError]);
 
-  // Combined loading state for backward compatibility
-  const loading = itemLoading && commentsLoading;
-
   // Refetch behind the error states' retry action. No gesture reaches this: the
   // root contains its overscroll, so there is no pull-to-refresh.
   const refresh = useCallback(async () => {
@@ -399,7 +395,6 @@ export function useItemWithComments(itemId: number | string, { initialItem = nul
   return { 
     item, 
     comments,
-    loading,
     itemLoading,
     commentsLoading,
     error,

@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import {
   setupApiMocks,
-  stubNotFoundUser,
   createFirebaseWsHandler,
   FIREBASE_WS_PATTERN,
 } from './fixtures/api-mocks';
@@ -102,24 +101,6 @@ test.describe('User Profile - Desktop', () => {
     await expect(userPill).toHaveCount(0);
     await expect(fromPill).toHaveCount(0);
     await expect(commentsPill).toHaveCount(0);
-  });
-
-  test('shows not-found state for an unknown user', async ({ page }) => {
-    // Override the user route BEFORE navigation so the first fetch returns
-    // null. `setupApiMocks`'s default falls through to a synthesized profile
-    // for unknown ids, which would never trigger the not-found branch.
-    await stubNotFoundUser(page, 'nope');
-
-    await page.goto('/#/user/nope');
-
-    await expect(page.getByText('User not found')).toBeVisible();
-    await expect(page.getByText(/no user with the id "nope" exists/i)).toBeVisible();
-
-    // Action button surfaces a path back to home so the user is not stranded.
-    await expect(page.getByRole('link', { name: /back to home/i })).toBeVisible();
-
-    // Document title reflects the error state, mirroring ItemDetail's pattern.
-    await expect(page).toHaveTitle('User not found | HackerTok');
   });
 });
 

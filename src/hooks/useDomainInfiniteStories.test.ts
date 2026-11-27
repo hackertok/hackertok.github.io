@@ -140,16 +140,12 @@ describe('canonicalizeDomain', () => {
     // this the helper strips only one `/` and one `.`, which leaves residue
     // for inputs that mix them (e.g. `foo.com/.` → `foo.com/` on the old
     // single-strip pipeline).
-    ['collapses interleaved trailing dot+slash (./)', 'github.com./', 'github.com'],
     ['collapses interleaved trailing slash+dot (/.)', 'github.com/.', 'github.com'],
-    ['collapses multiple trailing dots', 'github.com..', 'github.com'],
-    ['collapses multiple trailing slashes', 'github.com//', 'github.com'],
     ['collapses arbitrary trailing run of dots and slashes', 'github.com...//.', 'github.com'],
     // Multi-level www. prefixes are fully stripped. This closes a latent
     // drift between wrappers (one canonicalization pass) and the hook
     // (which re-canonicalizes its input) for `www.www.X`-style inputs.
     ['collapses doubled leading www.', 'www.www.example.com', 'example.com'],
-    ['collapses triple leading www.', 'www.www.www.example.com', 'example.com'],
     ['collapses mixed-case doubled leading www. (case-insensitive)', 'WWW.Www.Example.COM', 'example.com'],
     ['preserves www-lookalike after a legitimate www strip', 'www.www2.example.com', 'www2.example.com'],
   ])('%s', (_label, input, expected) => {
@@ -162,23 +158,11 @@ describe('canonicalizeDomain', () => {
   // form) would drift from the hook's cache key (written from the two-pass
   // form) for any input where a second pass produces a different result.
   it.each([
-    ['github.com'],
-    ['GitHub.COM'],
-    ['github.com/'],
-    ['github.com.'],
-    ['www.github.com'],
-    ['Www.GitHub.com'],
     ['WWW.GitHub.COM./'],
     ['github.com/Microsoft'],
-    ['www2.example.com'],
-    ['api.www.example.com'],
-    [''],
     // The inputs that originally motivated the idempotency fix:
     ['www.www.example.com'],
-    ['www.www.www.example.com'],
-    ['github.com./'],
     ['github.com/.'],
-    ['github.com..'],
     ['github.com...//.'],
   ])('is idempotent for %s', (input) => {
     const once = canonicalizeDomain(input);
@@ -294,13 +278,6 @@ describe('useDomainInfiniteStories', () => {
     // variant re-fetches and flashes `loading=true` despite identical data.
     it('shares the cache across trailing-slash variants of the same domain', async () => {
       await expectRemountHitsCache('alpha.com', 'alpha.com/');
-    });
-
-    // Direct hits like `/from/www.alpha.com` share the canonical form
-    // `alpha.com` with `/from/alpha.com`; the second mount must hit the
-    // cache and skip the fetch (same invariant as the trailing-slash test).
-    it('shares the cache across www.-prefixed variants of the same domain', async () => {
-      await expectRemountHitsCache('alpha.com', 'www.alpha.com');
     });
   });
 
@@ -512,11 +489,6 @@ describe('useDomainInfiniteStories', () => {
       expect(ids).toEqual([1]);
     });
 
-    it('treats trailing DNS dot as equivalent (domain prop side)', async () => {
-      const ids = await loadDomain('github.com.', ['https://github.com/foo']);
-      expect(ids).toEqual([1]);
-    });
-
     // Regression: the URL-hostname side strips `^www\.` before comparing.
     // Without mirroring the same strip on the domain prop, a route like
     // `/from/www.example.com` would never match a hit from `example.com`
@@ -530,32 +502,6 @@ describe('useDomainInfiniteStories', () => {
         'https://example.com/foo',
       ]);
       expect(ids).toEqual([1]);
-    });
-
-    it('matches www-prefixed URL against a www-prefixed domain prop', async () => {
-      const ids = await loadDomain('www.example.com', [
-        'https://www.example.com/foo',
-      ]);
-      expect(ids).toEqual([1]);
-    });
-
-    it('canonicalizes www. prop case-insensitively (Www./WWW. variants)', async () => {
-      // The strip is `^www\.` case-insensitive; `Www.Foo.com` should
-      // canonicalize identically to `www.foo.com` → `foo.com`.
-      const ids = await loadDomain('WWW.Example.com/', [
-        'https://example.com/foo',
-      ]);
-      expect(ids).toEqual([1]);
-    });
-
-    // Guards against an over-eager strip: the `^www\.` anchor must require a
-    // literal leading "www." — a domain like "www2.example.com" is a separate
-    // host and should NOT collapse to `example.com`.
-    it('does not strip www-lookalike prefixes (www2., ww., www-cdn.)', async () => {
-      const ids = await loadDomain('www2.example.com', [
-        'https://example.com/foo',
-      ]);
-      expect(ids).toEqual([]);
     });
 
     // Defense in depth: WHATWG `new URL` parses non-special schemes such

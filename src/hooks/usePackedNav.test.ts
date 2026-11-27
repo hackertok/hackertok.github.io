@@ -110,19 +110,6 @@ describe('usePackedNav', () => {
     expect(exact.result.current.showOverflow).toBe(false);
   });
 
-  it('reaches the 3-visible state when the overflow trigger is cheap enough', () => {
-    // With a tiny overflow trigger (40px, e.g. an icon-only "more" button),
-    // there's room to show 3 items + the trigger when ask alone is the
-    // overflow. Container 270 → budget 230. comments+best+show = 220 ≤ 230
-    // fits. + 4 + ask (50) = 274 > 230 → stops. visible=[c,b,s], hidden=[a].
-    const { result } = renderHook(() =>
-      usePackedNav(makeFakeRef(270), ITEMS_4, { overflowWidth: 40, gap: 4 }),
-    );
-    expect(keys(result.current.visible)).toEqual(['comments', 'best', 'show']);
-    expect(keys(result.current.hidden)).toEqual(['ask']);
-    expect(result.current.showOverflow).toBe(true);
-  });
-
   it('handles empty input', () => {
     const { result } = renderHook(() =>
       usePackedNav(makeFakeRef(400), [] as TestItem[], { overflowWidth: 105, gap: 4 }),

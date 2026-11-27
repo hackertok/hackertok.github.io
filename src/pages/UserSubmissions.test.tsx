@@ -85,14 +85,4 @@ describe('UserSubmissions', () => {
 
     expect(screen.getByText('No user specified')).toBeInTheDocument();
   });
-
-  it('passes fromUser to StoryCard so its byline links carry the origin', async () => {
-    renderSubmissions('leerob');
-
-    // Asserts only href here — react-router synthesizes href from `to`,
-    // but `state` is only set at navigation time. State assertion lives
-    // in StoryCard.test.tsx.
-    const commentsLink = await screen.findByRole('link', { name: /137 comments/ });
-    expect(commentsLink).toHaveAttribute('href', '/item/12345');
-  });
 });

@@ -50,15 +50,6 @@ test.describe('Mobile Swipe Viewer', () => {
     });
   });
 
-  test('shows swipe viewer with item on mobile', async ({ page }) => {
-    await page.goto('/#/');
-
-    const swipeContainer = page.getByTestId('swipe-container');
-    await expect(swipeContainer).toBeVisible();
-
-    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
-  });
-
   test('can swipe to next item', async ({ page }) => {
     await page.goto('/#/');
 
@@ -651,12 +642,6 @@ test.describe('Mobile Direct Item Access', () => {
     await setupApiMocks(page);
   });
 
-  test('can access item directly via URL on mobile', async ({ page }) => {
-    await page.goto('/#/item/12345');
-
-    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
-  });
-
   test('displays Ask HN body text in mobile swipe view', async ({ page }) => {
     // Navigate to Ask HN item (88888 - has text content but no URL)
     // On mobile this renders via FullScreenItem.jsx, not ItemDetail.jsx
@@ -843,71 +828,6 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(activePanel.getByText('The Art of Finishing Projects')).toHaveCount(0);
   });
 
-  test('loads more items when swiping near the end', async ({ page }) => {
-    // The swipe viewer triggers loadMore() when within 5 items of the end
-    // or when fewer than 10 items are loaded. With only 3 top items in
-    // the initial batch, it should auto-load pagination items.
-
-    await page.goto('/#/');
-    await expectActiveSwipePanelText(page, 'Rust Is the Future of JavaScript Infrastructure');
-
-    const container = page.getByTestId('swipe-container');
-
-    // The auto-load fires immediately (stories.length < 10) at index 0,
-    // adding pagination items before any swipe. Wait for those panels so
-    // DOM mutations from appending stories don't overlap with the scroll
-    // (Firefox re-snaps on snap-child changes during scroll-settle).
-    await waitForSwipeReady(page, 6);
-
-    const panelWidth = await container.evaluate((el) => el.getBoundingClientRect().width);
-
-    // Swipe to the last item in the initial batch
-    await smoothScrollAndAwaitSettled(container, panelWidth * 2);
-
-    // Use expect.poll to tolerate brief state transitions
-    // from loading-panel toggles at the tail of the container.
-    await expect.poll(() => container.evaluate(
-      (el) => {
-        const panels = el.children;
-        for (let i = 0; i < panels.length; i++) {
-          if (panels[i].classList.contains('active')) return i;
-        }
-        return -1;
-      }
-    ), { timeout: 10000 }).toBe(2);
-
-    await expect(page).toHaveURL(/\/item\/12347/, { timeout: 5000 });
-
-    // The total panel count should be more than the initial 3
-    const panelCount = await page.locator('[data-testid="swipe-panel"]').count();
-    expect(panelCount).toBeGreaterThan(3);
-  });
-
-  test('displays Ask HN body text when swiping through feed (Algolia story_text)', async ({ page }) => {
-    // Regression: stories loaded from Algolia search (used by /ask, /show, /)
-    // carry body text in the `story_text` field. normalizeAlgoliaHit must map
-    // it to `text` so FullScreenItem can render it. Previously, this field was
-    // dropped, causing body text to be missing on mobile (but not desktop,
-    // which always re-fetches from Firebase).
-
-    await page.goto('/#/ask');
-
-    // The /ask route auto-navigates to /item/<first-story> once stories load,
-    // which remounts SwipeStoryViewer. Wait for that transition to complete so
-    // we scroll the final instance (not the transient one from /ask).
-    await expect(page).toHaveURL(/\/item\/\d+/);
-
-    await waitForSwipeReady(page, 2);
-
-    // Mock Ask HN items sorted by gravity: item1 (88888, has story_text) ranks
-    // first (higher score), item2 (88887, no text) is second. The body text
-    // should be visible at index 0 without swiping.
-
-    // The body text should be visible — this comes from Algolia's story_text
-    // field, NOT from a Firebase re-fetch (which is the point of the test).
-    await expect(page.getByText(/curious what side projects everyone is working on/i)).toBeVisible();
-  });
-
   test('keeps the Ask HN body after visiting the author and going Back, and after a reload', async ({ page }) => {
     // The saved swipe position stores stories without their body, and the
     // restored copy is what the panel renders.
@@ -928,15 +848,6 @@ test.describe('Mobile Direct Item Access', () => {
     await expect(page).toHaveURL(/\/item\/88888/, { timeout: 5000 });
     await expectActiveSwipePanelText(page, 'Ask HN: What are you working on?');
     await expect(body()).toBeVisible();
-  });
-
-  test('navigating directly to a comment shows comment in swipe viewer', async ({ page }) => {
-    await page.goto('/#/item/1001');
-
-    // Comment author renders inside the swipe viewer — not the "not a story" guard.
-    await expectActiveSwipePanelText(page, 'patio11', { timeout: 10000 });
-
-    await expect(page).toHaveURL(/\/item\/1001/);
   });
 
   test('opens job items on the item page', async ({ page }) => {

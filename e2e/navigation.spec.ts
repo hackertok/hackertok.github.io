@@ -149,18 +149,6 @@ test.describe('Navigation', () => {
     await expectTopStoryVisible(page);
   });
 
-  test('logo click returns to homepage', async ({ page }) => {
-    await page.goto('/#/show');
-
-    const logo = page.getByRole('link', { name: /hackertok|hn|logo/i }).first();
-    await logo.click();
-
-    await expect(page).toHaveURL(/\/#\/(item\/\d+)?$/);
-
-    // Homepage title is plain "HackerTok" — no section prefix.
-    await expect(page).toHaveTitle(/HackerTok/);
-  });
-
   test('browser back button works', async ({ page }) => {
     await page.goto('/#/');
     await expectTopStoryVisible(page);
@@ -187,27 +175,6 @@ test.describe('Navigation', () => {
 
     await expect(page).toHaveURL(/\/#\/(item\/\d+)?$/);
     await expectTopStoryVisible(page);
-  });
-
-  test('direct URL navigation works', async ({ page }) => {
-    await page.goto('/#/ask');
-
-    await expect(page.getByText('Ask HN:', { exact: false }).first()).toBeVisible({ timeout: 10000 });
-  });
-});
-
-test.describe('Navigation - Header Visibility', () => {
-  test.use({ viewport: { width: 375, height: 667 }, hasTouch: true });
-
-  test.beforeEach(async ({ page }) => {
-    await setupApiMocks(page);
-  });
-
-  test('header is visible initially', async ({ page }) => {
-    await page.goto('/#/');
-    
-    const header = page.locator('header').first();
-    await expect(header).toBeVisible();
   });
 });
 

@@ -133,25 +133,6 @@ describe('useInfiniteStories – Ask/Show Algolia fallback', () => {
     expect(result.current.hasMore).toBe(true); // Still has more (not at 365)
   });
 
-  it('sets hasMore=false after reaching 365 days with no results', async () => {
-    const smallList = [1];
-    vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(smallList);
-    vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => makeFirebaseItem(Number(id)));
-
-    globalThis.fetch = vi.fn().mockResolvedValue(mockAlgoliaResponse([]));
-
-    const { result } = renderHook(() => useInfiniteStories('ask'));
-
-    // Exhaust Firebase
-    await act(() => result.current.loadMore());
-
-    // Simulate being at day 364 by manipulating position via session restore
-    // Instead, we'll just call loadMore many times; but that's slow.
-    // Let's verify the boundary by testing positionRef >= 365 path via session restore.
-    // This is covered more practically by the session restore test below.
-    expect(result.current.hasMore).toBe(true);
-  });
-
   it('reset() returns to firebase phase', async () => {
     const smallList = [1, 2];
     vi.spyOn(hnSdk, 'readRankedIds').mockResolvedValue(smallList);

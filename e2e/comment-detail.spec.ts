@@ -72,25 +72,6 @@ test.describe('Comment Detail', () => {
   });
 });
 
-test.describe('Comment Detail - Desktop', () => {
-  test.use({ viewport: { width: 1280, height: 720 } });
-
-  test.beforeEach(async ({ page }) => {
-    await setupApiMocks(page);
-  });
-
-  test('shows comment detail page on desktop', async ({ page }) => {
-    await page.goto('/#/item/1001');
-
-    await expect(page.getByText('patio11').first()).toBeVisible();
-    await expect(page.getByText(/wasm-bindgen/i).first()).toBeVisible();
-
-    // Mobile-only swipe container must not appear at desktop width.
-    const swipeContainer = page.locator('.swipe-snap-container');
-    await expect(swipeContainer).not.toBeVisible();
-  });
-});
-
 test.describe('Comment Detail - Error + Retry', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 

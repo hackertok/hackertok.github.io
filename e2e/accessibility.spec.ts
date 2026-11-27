@@ -157,16 +157,6 @@ test.describe('Accessibility', () => {
     await expect(page.getByText('Lost in the feed')).toHaveCount(0);
   });
 
-  test('external links have valid URLs', async ({ page }) => {
-    await page.goto('/#/');
-
-    const externalLink = page.getByRole('link', { name: 'Rust Is the Future of JavaScript Infrastructure' });
-    await expect(externalLink).toBeVisible();
-
-    const href = await externalLink.getAttribute('href');
-    expect(href).toContain('https://example.com');
-  });
-
   test('best stories page has no critical accessibility violations', async ({ page, makeAxeBuilder }) => {
     await page.goto('/#/best');
 

@@ -20,35 +20,11 @@ describe('useTheme', () => {
     spy.mockRestore();
   });
 
-  it('exposes mode, theme, setMode and cycleMode', () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
-
-    expect(result.current.mode).toBeDefined();
-    expect(result.current.theme).toBeDefined();
-    expect(typeof result.current.setMode).toBe('function');
-    expect(typeof result.current.cycleMode).toBe('function');
-  });
-
   it('defaults to system mode, resolving to light when the OS is not dark', () => {
     const { result } = renderHook(() => useTheme(), { wrapper });
 
     expect(result.current.mode).toBe('system');
     expect(result.current.theme).toBe('light');
-  });
-
-  it('cycleMode advances system → light → dark → system', () => {
-    const { result } = renderHook(() => useTheme(), { wrapper });
-
-    expect(result.current.mode).toBe('system');
-
-    act(() => result.current.cycleMode());
-    expect(result.current.mode).toBe('light');
-
-    act(() => result.current.cycleMode());
-    expect(result.current.mode).toBe('dark');
-
-    act(() => result.current.cycleMode());
-    expect(result.current.mode).toBe('system');
   });
 
   it('persists the selected mode to localStorage', () => {

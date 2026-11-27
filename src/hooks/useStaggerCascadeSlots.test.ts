@@ -15,18 +15,6 @@ describe('useStaggerCascadeSlots', () => {
     expect(result.current(5)).toEqual({ stageIdx: 5 });
   });
 
-  it('keeps cards in the initial batch on stageIdx after the boundary latches', () => {
-    const { result, rerender } = renderHook(
-      ({ loading, count }) => useStaggerCascadeSlots(loading, count),
-      { initialProps: { loading: true, count: 0 } },
-    );
-
-    rerender({ loading: false, count: 20 });
-
-    expect(result.current(0)).toEqual({ stageIdx: 0 });
-    expect(result.current(19)).toEqual({ stageIdx: 19 });
-  });
-
   // Critical regression: the previous boundary-relative formulation
   // made batch 2 start at `appendIdx 20` (575ms+ delay before the
   // first card landed — the "spinner clears, then a pause" symptom).

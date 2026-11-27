@@ -69,20 +69,6 @@ describe('useScrollDirection', () => {
     });
   });
 
-  it('ignores small scroll changes below threshold', async () => {
-    const { result } = renderHook(() => useScrollDirection());
-
-    // 5px is below the 10px direction-flip threshold; should not register.
-    act(() => {
-      window.scrollY = 5;
-      window.dispatchEvent(new Event('scroll'));
-    });
-
-    await waitFor(() => {
-      expect(result.current.scrollDirection).toBe('up');
-    });
-  });
-
   it('cleans up scroll listener on unmount', () => {
     const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
     

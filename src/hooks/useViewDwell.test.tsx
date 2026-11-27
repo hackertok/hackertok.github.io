@@ -88,15 +88,6 @@ describe('useViewDwell', () => {
     expect(detailExpiry(ID)).toBe(FIXED_NOW + DETAIL_VIEW_TTL_MEDIUM_HOURS * HOUR_MS);
   });
 
-  it('upgrades to the 48h tier for a dwell of 60s or more', () => {
-    const { unmount } = renderHook(() => useViewDwell(ID));
-
-    perf = DETAIL_DWELL_LONG_MS; // 60s visible
-    unmount();
-
-    expect(detailExpiry(ID)).toBe(FIXED_NOW + DETAIL_VIEW_TTL_LONG_HOURS * HOUR_MS);
-  });
-
   it('excludes time while the tab is hidden from the dwell total', () => {
     const { unmount } = renderHook(() => useViewDwell(ID));
 

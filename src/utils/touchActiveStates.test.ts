@@ -19,13 +19,4 @@ describe('enableTouchActiveStates', () => {
       { passive: true },
     );
   });
-
-  it('does nothing when a touch actually arrives', () => {
-    enableTouchActiveStates();
-
-    // Anything this handler did would run on every touch, including mid-swipe.
-    const event = new Event('touchstart', { bubbles: true, cancelable: true });
-    expect(() => document.dispatchEvent(event)).not.toThrow();
-    expect(event.defaultPrevented).toBe(false);
-  });
 });

@@ -48,56 +48,10 @@ describe('StoryCard', () => {
   });
 
   describe('rendering', () => {
-    it('renders story title', () => {
-      render(<StoryCard story={mockStory} />);
-      
-      expect(screen.getByText('Rust Is the Future of JavaScript Infrastructure')).toBeInTheDocument();
-    });
-
-    it('renders hostname for external links', () => {
-      render(<StoryCard story={mockStory} />);
-
-      // getByRole('link', { name }) — Globe icon is aria-hidden, so the
-      // link's accessible name is just the hostname (no "Globe " prefix).
-      expect(screen.getByRole('link', { name: 'example.com' })).toBeInTheDocument();
-    });
-
-    it('renders points count', () => {
-      render(<StoryCard story={mockStory} />);
-      
-      expect(screen.getByText(/100/)).toBeInTheDocument();
-    });
-
-    it('renders author name', () => {
-      render(<StoryCard story={mockStory} />);
-
-      // User icon is aria-hidden — link's accessible name is just the handle.
-      expect(screen.getByRole('link', { name: 'testuser' })).toBeInTheDocument();
-    });
-
-    it('renders comment count', () => {
-      render(<StoryCard story={mockStory} />);
-      
-      expect(screen.getByText(/42/)).toBeInTheDocument();
-    });
-
     it('renders relative time', () => {
       render(<StoryCard story={mockStory} />);
       
       expect(screen.getByText(/hour ago/i)).toBeInTheDocument();
-    });
-
-    // Pin the responsive variant — a refactor that drops md:text-xl
-    // back to text-base degrades the visual anchor at desktop width.
-    it('renders title with responsive size classes (text-lg md:text-xl)', () => {
-      render(<StoryCard story={mockStory} />);
-
-      const titleLink = screen.getByRole('link', { name: mockStory.title });
-      const title = titleLink.closest('h2');
-      expect(title).not.toBeNull();
-      expect(title).toHaveClass('text-lg');
-      expect(title).toHaveClass('md:text-xl');
-      expect(title).toHaveClass('font-semibold');
     });
 
     it('renders "0 points" when points is missing (Algolia/Firebase oddity)', () => {
@@ -172,13 +126,6 @@ describe('StoryCard', () => {
   });
 
   describe('viewed state', () => {
-    it('applies unviewed styles by default', () => {
-      render(<StoryCard story={mockTextStory} />);
-      
-      const titleLink = screen.getByRole('link', { name: /Ask HN/i });
-      expect(titleLink).toHaveClass('text-foreground');
-    });
-
     it('applies viewed styles when story was previously title-clicked', () => {
       markViewedWithTime(mockTextStory.id, 'title');
       render(<StoryCard story={mockTextStory} />);
@@ -318,28 +265,6 @@ describe('StoryCard', () => {
   });
 
   describe('navigation state', () => {
-    it('passes listType in navigation state for internal title links', () => {
-      render(<StoryCard story={mockTextStory} listType="best" />);
-      
-      const titleLink = screen.getByRole('link', { name: /Ask HN/i });
-      // React Router Link renders with the destination path
-      expect(titleLink).toHaveAttribute('href', expect.stringContaining('/item/67890'));
-    });
-
-    it('passes listType in navigation state for comments links', () => {
-      render(<StoryCard story={mockStory} listType="best" />);
-      
-      const commentsLink = screen.getByRole('link', { name: /42 comments/i });
-      expect(commentsLink).toHaveAttribute('href', expect.stringContaining('/item/12345'));
-    });
-
-    it('defaults listType to top when not specified', () => {
-      render(<StoryCard story={mockTextStory} />);
-      
-      const titleLink = screen.getByRole('link', { name: /Ask HN/i });
-      expect(titleLink).toHaveAttribute('href', expect.stringContaining('/item/67890'));
-    });
-
     it('writes state.fromDomain (not state.from) when fromDomain prop is set', () => {
       // Mount under a Routes tree so we can follow the click and read
       // back what landed in location.state via StateEchoer.

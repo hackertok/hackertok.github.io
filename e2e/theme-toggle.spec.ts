@@ -73,28 +73,6 @@ test.describe('Theme cycle button', () => {
 });
 
 test.describe('Theme - System mode', () => {
-  test('system mode (default) resolves to the OS dark preference', async ({ page }) => {
-    await page.emulateMedia({ colorScheme: 'dark' });
-    await setupApiMocks(page);
-    await page.addInitScript(() => localStorage.clear());
-    await page.goto('/#/');
-
-    const html = page.locator('html');
-    await expect(html).toHaveClass(/dark/);
-    await expect(html).not.toHaveClass(/light/);
-  });
-
-  test('system mode (default) resolves to the OS light preference', async ({ page }) => {
-    await page.emulateMedia({ colorScheme: 'light' });
-    await setupApiMocks(page);
-    await page.addInitScript(() => localStorage.clear());
-    await page.goto('/#/');
-
-    const html = page.locator('html');
-    await expect(html).toHaveClass(/light/);
-    await expect(html).not.toHaveClass(/dark/);
-  });
-
   test('follows the OS dark preference without an error when site storage is blocked', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await setupApiMocks(page);

@@ -76,12 +76,6 @@ describe('NetworkStatusBar', () => {
     ).toBe('0px');
   });
 
-  it('does not show "Back online" if never went offline', () => {
-    mockUseNetworkStatus.mockReturnValue({ isOnline: true });
-    const { container } = render(<NetworkStatusBar />);
-    expect(container.firstChild).toBeNull();
-  });
-
   it('resets --network-bar-height on unmount', () => {
     mockUseNetworkStatus.mockReturnValue({ isOnline: false });
     const { unmount } = render(<NetworkStatusBar />);

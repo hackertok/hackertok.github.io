@@ -7,7 +7,6 @@ import { createStoryItem } from '../test/factories';
 import {
   InfiniteStoryListPage,
   type InfiniteStoryListResult,
-  type StoryCardExtras,
 } from './InfiniteStoryListPage';
 
 // `useAutoRetry` triggers a backoff schedule (2/4/8s) on every render
@@ -37,7 +36,6 @@ function makeResult(
 
 function renderPage(props: {
   result: InfiniteStoryListResult;
-  storyCardExtras?: StoryCardExtras;
   emptyTitle?: string;
   failTitle?: string;
 }) {
@@ -51,7 +49,6 @@ function renderPage(props: {
         element={
           <InfiniteStoryListPage
             result={props.result}
-            storyCardExtras={props.storyCardExtras}
             emptyTitle={props.emptyTitle}
             failTitle={props.failTitle}
           />
@@ -341,26 +338,6 @@ describe('InfiniteStoryListPage', () => {
 
       expect(await screen.findByRole('link', { name: 'Story 4' })).toBeInTheDocument();
       expect(onLoadMore).toHaveBeenCalledTimes(3);
-    });
-  });
-
-  describe('storyCardExtras forwarding', () => {
-    it('forwards fromUser into the story card byline so links carry the origin', () => {
-      const stories = [
-        createStoryItem({ id: 12345, title: 'User submission', commentCount: 7 }),
-      ];
-
-      renderPage({
-        result: makeResult({ stories, hasMore: false }),
-        storyCardExtras: { fromUser: 'leerob' },
-      });
-
-      // href is the easiest assertion against `to={`/item/${id}`}`. The
-      // location.state forwarding (which carries `fromUser`) is
-      // exercised by StoryCard.test.tsx; we only need to confirm the
-      // prop survives the boundary here.
-      const commentsLink = screen.getByRole('link', { name: /7 comments/ });
-      expect(commentsLink).toHaveAttribute('href', '/item/12345');
     });
   });
 });

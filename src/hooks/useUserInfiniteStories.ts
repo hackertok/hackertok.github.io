@@ -13,11 +13,6 @@ export function __resetUserStoriesCacheForTests() {
   userStoriesCache.clear();
 }
 
-/** @internal Exposes cache for test assertions. */
-export function __getUserStoriesCacheForTests() {
-  return userStoriesCache;
-}
-
 /** Centralized empty-state title for user submission pages. */
 export function formatNoUserSubmissionsTitle(username: string): string {
   return `No submissions found by "${username}"`;

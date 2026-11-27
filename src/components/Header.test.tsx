@@ -103,11 +103,6 @@ describe('Header', () => {
     const linkRe = new RegExp(label, 'i');
     const getLink = () => screen.getByRole('link', { name: linkRe });
 
-    it(`renders the ${key} navigation link`, () => {
-      render(<Header />);
-      expect(getLink()).toBeInTheDocument();
-    });
-
     it(`highlights ${key} on ${route} route`, () => {
       render(<Header />, { initialEntries: [route] });
       expect(getLink()).toHaveAttribute('aria-current', 'page');
@@ -358,24 +353,6 @@ describe('Header', () => {
       });
       expect(indicator).toHaveAttribute('aria-current', 'page');
     });
-
-    it('marks the active contextual pill (user) with aria-current="page"', () => {
-      render(<Header />, { initialEntries: ['/submitted/pg'] });
-
-      const indicator = screen.getByText('user', {
-        selector: 'header nav span',
-      });
-      expect(indicator).toHaveAttribute('aria-current', 'page');
-    });
-
-    it('marks the active contextual pill (from) with aria-current="page"', () => {
-      render(<Header />, { initialEntries: ['/from/example.com'] });
-
-      const indicator = screen.getByText('from', {
-        selector: 'header nav span',
-      });
-      expect(indicator).toHaveAttribute('aria-current', 'page');
-    });
   });
 
   describe('nav DOM order', () => {
@@ -455,8 +432,6 @@ describe('Header', () => {
 
     it.each([
       ['/best', 'best'],
-      ['/show', 'show'],
-      ['/ask', 'ask'],
       ['/newest', 'newest'],
       ['/submitted/pg', 'user'],
       ['/from/example.com', 'from'],

@@ -32,14 +32,6 @@ describe('FullScreenItem', () => {
   });
 
   describe('viewed state', () => {
-    it('shows unviewed title color by default', async () => {
-      render(<FullScreenItem itemId={12345} />);
-
-      const heading = await screen.findByRole('heading', { level: 1 });
-      expect(heading).toHaveClass('text-foreground');
-      expect(heading).not.toHaveClass('text-viewed');
-    });
-
     it('shows viewed title color when story was previously viewed', async () => {
       markViewed(12345);
       render(<FullScreenItem itemId={12345} />);

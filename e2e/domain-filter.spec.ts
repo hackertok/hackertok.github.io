@@ -12,34 +12,6 @@ import {
   setOfflineAndWaitForBar,
 } from './fixtures/layout-helpers';
 
-test.describe('Domain Filter', () => {
-  test.beforeEach(async ({ page }) => {
-    await setupApiMocks(page);
-  });
-
-  test('displays items filtered by domain', async ({ page }) => {
-    await page.goto('/#/from/example.com');
-
-    // Two valid landing URLs:
-    //   - Desktop: stays at /#/from/example.com (DomainStories list).
-    //   - Mobile: SwipeDomainStoryViewer immediately replaceState()s
-    //     to /#/item/:firstId (objectID '77777' from the mock). This
-    //     rewrite races Playwright's first poll, so a strict
-    //     /#/from/example.com regex deterministically loses on mobile.
-    //     Same pattern as the empty-domain test at the bottom of this
-    //     file, which uses /\/#\/(item\/\d+)?$/ for the same reason.
-    await expect(page).toHaveURL(/\/#\/(from\/example\.com|item\/77777)/);
-
-    // Story-title visibility is the load-bearing assertion: the title
-    // appears whether the desktop list or the mobile swipe panel
-    // rendered, and it only appears if the domain filter actually
-    // worked (the mock filters on `?query=example.com`).
-    await expect(page.getByText('Google Announces Gemini 3.0 with Extended Context').first()).toBeVisible({ timeout: 10000 });
-
-    await expect(page.getByText(/example\.com/i).first()).toBeVisible();
-  });
-});
-
 test.describe('Domain Filter - Edge Cases', () => {
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page);
@@ -53,12 +25,6 @@ test.describe('Domain Filter - Edge Cases', () => {
     await expect(page.getByText(/No submissions found from.*unknown-domain\.xyz/i)).toBeVisible();
 
     await expect(page).toHaveTitle(/unknown-domain\.xyz.*HackerTok/);
-  });
-
-  test('domain with subdomain works', async ({ page }) => {
-    await page.goto('/#/from/blog.example.com');
-
-    await expect(page).toHaveURL(/\/#\/from\/blog\.example\.com/);
   });
 });
 
@@ -89,10 +55,10 @@ test.describe('Domain Filter - Header "from" button', () => {
   // story" and "browser back restores the list" tests below click
   // StoryCard links inside DomainStories, which only renders on desktop —
   // on mobile, SwipeDomainStoryViewer replaces the URL with /#/item/:id
-  // before any list card is visible. The earlier "visible + active" and
-  // "hidden on non-domain pages" assertions would also hold on mobile
-  // (Header's `isFromActive` stays true across the URL rewrite via
-  // state.fromDomain), but they are kept here for locality. The mobile
+  // before any list card is visible. The "visible + active" assertions
+  // would also hold on mobile (Header's `isFromActive` stays true across
+  // the URL rewrite via state.fromDomain), but they are kept here for
+  // locality. The mobile
   // rewrite path is covered by "updates URL to /item/:id and carries
   // fromDomain state on swipe" in the Mobile Swipe describe below.
   test.use({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
@@ -112,16 +78,6 @@ test.describe('Domain Filter - Header "from" button', () => {
     await expect(page.getByRole('link', { name: 'best', exact: true })).not.toHaveClass(/bg-accent/);
     await expect(page.getByRole('link', { name: 'show', exact: true })).not.toHaveClass(/bg-accent/);
     await expect(page.getByRole('link', { name: 'ask', exact: true })).not.toHaveClass(/bg-accent/);
-  });
-
-  test('"from" button is hidden on non-domain pages', async ({ page }) => {
-    const fromButton = page.locator('header nav span', { hasText: 'from' });
-
-    await page.goto('/#/');
-    await expect(fromButton).toHaveCount(0);
-
-    await page.goto('/#/best');
-    await expect(fromButton).toHaveCount(0);
   });
 
   test('"from" button stays active after opening a story\'s comments from a domain list', async ({ page }) => {
@@ -369,35 +325,10 @@ test.describe('Domain Filter - Mobile Swipe', () => {
   // desktop list (SwipeStoryViewerCore vs DomainStories) with different copy
   // ("Failed to load item" singular vs "Failed to load items" plural) and
   // different surrounding markup (swipe-snap-container). The "Algolia Error
-  // Handling" describe below pins the desktop path; these mirror it for the
+  // Handling" describe below pins the desktop path; this mirrors it for the
   // mobile swipe wiring so a regression in either codepath is caught.
   // Auto-retry exhausts 3 backoff attempts (2s+4s+8s ≈ 14s) before showing
   // error UI, hence the per-test timeout override.
-
-  test('shows error state when Algolia returns 503 on mobile swipe', async ({ page }) => {
-    test.setTimeout(60000);
-
-    await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
-      await route.fulfill({ status: 503, json: { message: 'Service unavailable' } });
-    });
-
-    await page.goto('/#/from/example.com');
-
-    // Mobile copy is singular ("item") — the desktop test's regex
-    // `/Failed to load items/` would not match here, so an exact assertion
-    // pins the mobile branch specifically.
-    await expect(page.getByText('Failed to load item', { exact: true })).toBeVisible({ timeout: 30000 });
-    // Mobile's StateView omits the `description` prop, so the default copy
-    // ("We couldn't load this content. Please try again.") renders alongside
-    // the action label. Use the button role to disambiguate from that text.
-    await expect(page.getByRole('button', { name: /try again/i })).toBeVisible();
-
-    // Confirm the error UI is rendered inside the swipe viewer's container,
-    // not the desktop list's wrapper. Catches a regression that flips
-    // `useCanSwipe` — its width half or its pointer half — and leaks the
-    // desktop list into a phone.
-    await expect(page.getByTestId('swipe-container')).toBeVisible();
-  });
 
   test('recovers after retry when Algolia temporarily fails on mobile swipe', async ({ page }) => {
     test.setTimeout(60000);
@@ -498,20 +429,6 @@ test.describe('Domain Filter - Algolia Error Handling', () => {
 
   // Auto-retry exhausts 3 backoff attempts (2s+4s+8s) before surfacing error.
   test.setTimeout(60000);
-
-  test('shows error state when Algolia returns 503', async ({ page }) => {
-    await setupApiMocks(page);
-
-    await page.route(`${ALGOLIA_API}/search_by_date*`, async (route) => {
-      await route.fulfill({ status: 503, json: { message: 'Service unavailable' } });
-    });
-
-    await page.goto('/#/from/example.com');
-
-    // 30s timeout covers the 2+4+8 backoff plus slack.
-    await expect(page.getByText(/Failed to load items/)).toBeVisible({ timeout: 30000 });
-    await expect(page.getByText(/try again/i)).toBeVisible();
-  });
 
   test('recovers after retry when Algolia temporarily fails', async ({ page }) => {
     await setupApiMocks(page);

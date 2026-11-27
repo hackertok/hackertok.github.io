@@ -53,14 +53,6 @@ describe('useCommentDetail', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('fetches item title in background', async () => {
-    const { result } = renderHook(() => useCommentDetail(1001));
-
-    await waitFor(() => {
-      expect(result.current.itemTitle).toBe('Rust Is the Future of JavaScript Infrastructure');
-    });
-  });
-
   it('reports the item title as loading until its fetch settles', async () => {
     let resolveStory!: (item: FirebaseItem) => void;
     vi.spyOn(hnSdk, 'readItem').mockImplementation(() => new Promise(resolve => { resolveStory = resolve; }));

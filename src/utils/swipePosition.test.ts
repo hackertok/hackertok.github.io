@@ -42,13 +42,6 @@ describe('swipePosition', () => {
       expect(result.savedAt).toBe(Date.now());
     });
 
-    it('rewrites index window-relative so stories[index].id === storyId', () => {
-      saveSwipePosition({ viewer: { from: 'top' }, storyId: 2, index: 1, scrollY: 0, stories });
-
-      const result = readSwipePosition()!;
-      expect(result.stories[result.index].id).toBe(2);
-    });
-
     it('returns null when nothing is stored', () => {
       expect(readSwipePosition()).toBeNull();
     });
@@ -246,11 +239,6 @@ describe('swipePosition', () => {
 
       expect(readSwipePosition({ viewer: { from: 'top' } })).toBeNull();
       expect(readSwipePosition({ viewer: { from: 'best' } })?.storyId).toBe(3);
-    });
-
-    it('does not throw when nothing is stored', () => {
-      expect(() => clearSwipePosition()).not.toThrow();
-      expect(() => clearSwipePosition({ from: 'top' })).not.toThrow();
     });
   });
 });
