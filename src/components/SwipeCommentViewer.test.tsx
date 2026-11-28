@@ -108,10 +108,10 @@ describe('SwipeCommentViewer', () => {
     }, { timeout: 30000 });
   }, 35000);
 
-  it('renders single panel when comment has no parent', async () => {
+  it('renders a single panel for an item with no parent', async () => {
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
       if (Number(id) === 7777) {
-        return { id: 7777, by: 'solo', text: 'Top-level comment with no parent.', time: Math.floor(Date.now() / 1000) - 300, type: 'comment' };
+        return { id: 7777, by: 'solo', text: 'An item with no parent.', time: Math.floor(Date.now() / 1000) - 300, type: 'story' };
       }
       return null;
     });
@@ -121,9 +121,9 @@ describe('SwipeCommentViewer', () => {
       http.get(`${ALGOLIA_API}/items/:id`, () => {
         return HttpResponse.json({
           id: 7777,
-          type: 'comment',
+          type: 'story',
           author: 'solo',
-          text: 'Top-level comment with no parent.',
+          text: 'An item with no parent.',
           created_at_i: Math.floor(Date.now() / 1000) - 300,
           parent_id: null,
           story_id: null,
