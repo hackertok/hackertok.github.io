@@ -60,6 +60,11 @@ describe('StateView', () => {
       expect(heading).toBeInTheDocument();
     });
 
+    it('hides the illustration, including its decorative glyphs, from screen readers', () => {
+      render(<StateView variant="not-found" />);
+      expect(screen.getByText('{').closest('[aria-hidden="true"]')).not.toBeNull();
+    });
+
     it('does NOT render an <h2> in compact mode (single-row layout)', () => {
       render(<StateView variant="empty" compact title="No replies yet" />);
       expect(

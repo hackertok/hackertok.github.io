@@ -39,7 +39,8 @@ export function useSiblingComments(commentId: number | string): UseSiblingCommen
       const item = await fetchFirebaseItem(numericId, signal);
       if (signal.aborted) return;
 
-      // No parent → top-level comment or deleted; show just this one.
+      // Every comment has a parent, even a deleted one, so this is an item that
+      // isn't a comment (a story, job, poll or poll option); show just this one.
       if (item.parent == null) {
         setSiblingIds([numericId]);
         setCurrentIndex(0);

@@ -113,10 +113,10 @@ describe('useSiblingComments', () => {
     });
   });
 
-  it('returns single comment when parent_id is null', async () => {
+  it('returns just this item when it has no parent', async () => {
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
       if (Number(id) === 7777) {
-        return { id: 7777, by: 'someone', text: 'A top-level comment.', time: Math.floor(Date.now() / 1000) - 300, type: 'comment' };
+        return { id: 7777, by: 'someone', text: 'An item with no parent.', time: Math.floor(Date.now() / 1000) - 300, type: 'story' };
       }
       return null;
     });
@@ -188,7 +188,7 @@ describe('useSiblingComments', () => {
 
     vi.spyOn(hnSdk, 'readItem').mockImplementation(async (id) => {
       if (Number(id) === 7777) {
-        return { id: 7777, by: 'someone', text: 'A top-level comment.', time: Math.floor(Date.now() / 1000) - 300, type: 'comment' };
+        return { id: 7777, by: 'someone', text: 'An item with no parent.', time: Math.floor(Date.now() / 1000) - 300, type: 'story' };
       }
       return null;
     });

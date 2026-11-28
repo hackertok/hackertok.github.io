@@ -49,7 +49,8 @@ describe('CommentArticle', () => {
   });
 
   it('omits the parent link when parentId is null', () => {
-    // Top-level comments have no parent — drop the pill, don't render a dangling link.
+    // A top-level comment's parent is its story, so only an item that isn't a
+    // comment has none: drop the pill rather than render a dangling link.
     renderArticle({ comment: { ...mockComment, parentId: null } });
 
     expect(screen.queryByRole('link', { name: 'parent' })).not.toBeInTheDocument();

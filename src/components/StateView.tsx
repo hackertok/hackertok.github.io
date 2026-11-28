@@ -233,7 +233,7 @@ export function StateView({ variant, title, description, action, compact, classN
 
   return (
     <div className={className ?? 'flex flex-col items-center justify-center text-center p-6'}>
-      <div className="mb-4">
+      <div className="mb-4" aria-hidden="true">
         <Scene />
       </div>
       {resolvedTitle && (

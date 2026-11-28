@@ -147,6 +147,23 @@ describe('usePrefetchItems', () => {
       renderHook(() => usePrefetchItems(0, undefined as unknown as Item[], 3));
     }).not.toThrow();
   });
+
+  it('does not restart an in-flight prefetch when the viewer remounts', async () => {
+    const spy = vi.spyOn(hn, 'prefetchItemComments').mockReturnValue(new Promise(() => { /* in flight */ }));
+    const items = [{ id: 1 }, { id: 2 }, { id: 3 }] as Item[];
+
+    const first = renderHook(() => usePrefetchItems(0, items, 2));
+    await act(async () => { vi.advanceTimersByTime(250); });
+    // A tab switch or Back mounts a new viewer with the same stories ahead.
+    first.unmount();
+    renderHook(() => usePrefetchItems(0, items, 2));
+    await act(async () => { vi.advanceTimersByTime(250); });
+
+    expect(spy.mock.calls.map(([id]) => id)).toEqual([2, 3]);
+    cancelAllPrefetches();
+    expect(spy.mock.calls.every(([, signal]) => signal?.aborted)).toBe(true);
+    spy.mockRestore();
+  });
 });
 
 describe('cancelAllPrefetches', () => {

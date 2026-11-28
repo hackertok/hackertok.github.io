@@ -72,6 +72,8 @@ async function processQueue() {
       if (bestId === null) break;
       
       prefetchQueue.delete(bestId);
+      // A remounted swipe viewer re-queues stories that may still be downloading.
+      if (activePrefetches.has(bestId)) continue;
       
       const cached = getCachedItem(bestId);
       if (cached?.isFresh) {
